@@ -1692,6 +1692,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
           <ChatMarkdown
             text={content}
             cwd={props.markdownCwd}
+            canonicalFileLinks
             threadRef={ctx.threadRef ?? undefined}
             skills={props.skills}
             className="text-message-foreground"
@@ -1714,6 +1715,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
                 <ChatMarkdown
                   text={segment.text.trim()}
                   cwd={props.markdownCwd}
+                  canonicalFileLinks
                   threadRef={ctx.threadRef ?? undefined}
                   skills={props.skills}
                   className="text-message-foreground"
@@ -1802,6 +1804,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
           key="user-message-terminal-context-inline-text"
           text={props.text}
           cwd={props.markdownCwd}
+          canonicalFileLinks
           threadRef={ctx.threadRef ?? undefined}
           skills={props.skills}
           className="text-message-foreground"
@@ -1827,6 +1830,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     <ChatMarkdown
       text={props.text}
       cwd={props.markdownCwd}
+      canonicalFileLinks
       threadRef={ctx.threadRef ?? undefined}
       skills={props.skills}
       className="text-message-foreground"
