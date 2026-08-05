@@ -240,6 +240,22 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
     }
   }
 
+  const quotedPathStart = linePrefix.lastIndexOf('@"');
+  if (
+    quotedPathStart >= 0 &&
+    (quotedPathStart === 0 || isWhitespace(linePrefix[quotedPathStart - 1] ?? ""))
+  ) {
+    const query = linePrefix.slice(quotedPathStart + 2);
+    if (!query.includes('"')) {
+      return {
+        kind: "path",
+        query,
+        rangeStart: lineStart + quotedPathStart,
+        rangeEnd: cursor,
+      };
+    }
+  }
+
   const tokenStart = tokenStartForCursor(text, cursor);
   const token = text.slice(tokenStart, cursor);
   if (token.startsWith("$")) {

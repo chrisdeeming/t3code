@@ -75,6 +75,12 @@ import {
   removeInlineTerminalContextPlaceholder,
 } from "../../lib/terminalContext";
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
+import {
+  canBrowseComposerFilesystemPath,
+  composerFilesystemSuggestionParentPath,
+  composerFilesystemSuggestionPath,
+  isComposerFilesystemPathQuery,
+} from "../../lib/composerFilesystemBrowse";
 import { type ElementContextDraft } from "../../lib/elementContext";
 import { ComposerPendingElementContexts } from "./ComposerPendingElementContexts";
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
@@ -104,6 +110,8 @@ import {
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { basenameOfPath } from "../../pierre-icons";
+import { useEnvironment } from "../../state/environments";
+import { useComposerFilesystemBrowse } from "../../state/queries";
 import { cn, randomUUID } from "~/lib/utils";
 import { Separator } from "../ui/separator";
 
@@ -1018,15 +1026,37 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerTriggerKind = composerTrigger?.kind ?? null;
   const pathTriggerQuery = composerTrigger?.kind === "path" ? composerTrigger.query : "";
   const isPathTrigger = composerTriggerKind === "path";
+  const environment = useEnvironment(environmentId);
+  const environmentPlatform = environment?.serverConfig?.environment.platform.os ?? "";
+  const isFilesystemPathTrigger =
+    isPathTrigger && isComposerFilesystemPathQuery(pathTriggerQuery, environmentPlatform);
+  const canBrowseFilesystemPath =
+    isFilesystemPathTrigger &&
+    canBrowseComposerFilesystemPath(pathTriggerQuery, gitCwd, environmentPlatform);
   const workspaceEntries = useComposerPathSearch({
     environmentId,
-    cwd: isPathTrigger ? gitCwd : null,
-    query: isPathTrigger ? pathTriggerQuery : null,
+    cwd: isPathTrigger && !isFilesystemPathTrigger ? gitCwd : null,
+    query: isPathTrigger && !isFilesystemPathTrigger ? pathTriggerQuery : null,
+  });
+  const filesystemEntries = useComposerFilesystemBrowse({
+    environmentId,
+    cwd: canBrowseFilesystemPath ? gitCwd : null,
+    query: canBrowseFilesystemPath ? pathTriggerQuery : null,
   });
 
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
+      if (isFilesystemPathTrigger) {
+        return filesystemEntries.entries.map((entry) => ({
+          id: `filesystem-path:${entry.kind ?? "directory"}:${entry.fullPath}`,
+          type: "path" as const,
+          path: composerFilesystemSuggestionPath(pathTriggerQuery, entry.name),
+          pathKind: entry.kind ?? "directory",
+          label: entry.name,
+          description: composerFilesystemSuggestionParentPath(pathTriggerQuery),
+        }));
+      }
       return workspaceEntries.entries.map((entry) => ({
         id: `path:${entry.kind}:${entry.path}`,
         type: "path",
@@ -1099,7 +1129,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return [];
   }, [
     composerTrigger,
+    filesystemEntries.entries,
+    isFilesystemPathTrigger,
     planModeUiEnabled,
+    pathTriggerQuery,
     selectedProvider,
     selectedProviderStatus,
     workspaceEntries.entries,
@@ -1167,7 +1200,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ]);
 
   const isComposerMenuLoading =
-    composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending;
+    composerTriggerKind === "path" &&
+    pathTriggerQuery.length > 0 &&
+    (isFilesystemPathTrigger ? filesystemEntries.isPending : workspaceEntries.isPending);
   const composerMenuEmptyState = useMemo(() => {
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
