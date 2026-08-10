@@ -544,7 +544,11 @@ async function rasterizeFavicon(
       const rasterize = async () => {
         try {
           const source = Uint8Array.from(atob("${payload}"), (char) => char.charCodeAt(0));
-          const bitmap = await createImageBitmap(new Blob([source], { type: "${blobType}" }));
+          const bitmap = await createImageBitmap(new Blob([source], { type: "${blobType}" }), {
+            resizeWidth: 32,
+            resizeHeight: 32,
+            resizeQuality: "high",
+          });
           try {
             if (bitmap.width <= 0 || bitmap.height <= 0 || bitmap.width * bitmap.height > ${MAX_FAVICON_SOURCE_PIXELS}) {
               return null;

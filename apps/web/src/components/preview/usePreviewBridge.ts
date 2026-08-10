@@ -8,7 +8,7 @@ import type {
 } from "@t3tools/contracts";
 import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import * as Option from "effect/Option";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef } from "react";
 
 import {
   flushPendingFaviconsForThread,
@@ -61,12 +61,8 @@ export function usePreviewBridge(input: {
   const lastReportedUrl = useRef<string | null>(null);
   const lastReportedKind = useRef<DesktopPreviewTabState["navStatus"]["kind"] | null>(null);
   const lastDesktopNavStatus = useRef<DesktopPreviewTabState["navStatus"] | null>(null);
-  useEffect(() => {
-    if (!bridge || typeof window === "undefined") return;
-    lastReportedUrl.current = null;
-    lastReportedKind.current = null;
-    lastDesktopNavStatus.current = null;
-    const unsubscribe = bridge.onStateChange((changedTabId, state) => {
+  const handleStateChange = useEffectEvent(
+    (changedTabId: string, state: DesktopPreviewTabState): void => {
       if (changedTabId !== runtimeTabId) return;
       if (shouldClearBrowserPointer(lastDesktopNavStatus.current, state.navStatus)) {
         clearBrowserPointer(runtimeTabId);
@@ -90,18 +86,15 @@ export function usePreviewBridge(input: {
         environmentId: stableThreadRef.environmentId,
         input: reported.input,
       });
-    });
-    return unsubscribe;
-  }, [
-    bridge,
-    clearBrowserPointer,
-    environmentHostname,
-    projectRef,
-    reportStatus,
-    runtimeTabId,
-    stableThreadRef,
-    tabId,
-  ]);
+    },
+  );
+  useEffect(() => {
+    if (!bridge || typeof window === "undefined") return;
+    lastReportedUrl.current = null;
+    lastReportedKind.current = null;
+    lastDesktopNavStatus.current = null;
+    return bridge.onStateChange(handleStateChange);
+  }, [bridge, runtimeTabId, stableThreadRef, tabId]);
   useEffect(() => {
     if (!projectRef) return;
     flushPendingFaviconsForThread(stableThreadRef, projectRef, environmentHostname);

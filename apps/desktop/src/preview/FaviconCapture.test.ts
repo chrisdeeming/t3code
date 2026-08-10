@@ -316,6 +316,26 @@ describe("captureFavicon", () => {
     expect(executeJavaScriptInIsolatedWorld).toHaveBeenCalledTimes(4);
   });
 
+  it("requests a 32x32 bitmap decode before drawing the normalized icon", async () => {
+    const { webContents } = makeWebContents({
+      rasterize: async (code) => {
+        expect(code).toContain("resizeWidth: 32");
+        expect(code).toContain("resizeHeight: 32");
+        expect(code).toContain('resizeQuality: "high"');
+        return PNG;
+      },
+    });
+
+    expect(
+      await captureFavicon({
+        webContents,
+        pageUrl: "https://example.com/page",
+        candidates: [SOURCE_PNG_URL],
+        signal: new AbortController().signal,
+      }),
+    ).toEqual({ kind: "captured", dataUrl: PNG });
+  });
+
   it("rejects an unsafe PNG size before rasterization", async () => {
     const buffer = makeUnsafePng();
     const { webContents, executeJavaScriptInIsolatedWorld } = makeWebContents({
