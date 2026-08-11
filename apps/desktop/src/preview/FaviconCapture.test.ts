@@ -182,11 +182,11 @@ describe("captureFavicon", () => {
 
   it("decodes base64 and percent-encoded inline images without fetching", async () => {
     const { webContents, fetch, executeJavaScriptInIsolatedWorld } = makeWebContents();
+    const percentEncodedPng = [...SOURCE_PNG]
+      .map((byte) => `%${byte.toString(16).padStart(2, "0")}`)
+      .join("");
 
-    for (const candidate of [
-      SOURCE_PNG_URL,
-      "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%2F%3E",
-    ]) {
+    for (const candidate of [SOURCE_PNG_URL, `data:image/png,${percentEncodedPng}`]) {
       expect(
         await captureFavicon({
           webContents,
@@ -375,32 +375,12 @@ describe("captureFavicon", () => {
     ["WebP", "image/webp", sourceWebp(4096, 4096)],
     ["ICO with PNG", "image/x-icon", sourceIco(makeUnsafePng())],
     ["ICO with DIB", "image/x-icon", sourceIco(makeUnsafeDib())],
-    ["SVG", "image/svg+xml", Buffer.from('<svg viewBox="0 0 4096 4096"/>')],
+    ["SVG", "image/svg+xml", Buffer.from('<svg width="1" height="1"/>')],
     [
-      "SVG attribute decoy",
-      "image/svg+xml",
-      Buffer.from(`<svg data-note='width="1" height="1"' width="4096" height="4096"/>`),
-    ],
-    [
-      "SVG comment decoy",
-      "image/svg+xml",
-      Buffer.from('<!-- <svg width="1" height="1"/> --><svg width="4096" height="4096"/>'),
-    ],
-    [
-      "SVG entity dimensions",
-      "image/svg+xml",
-      Buffer.from('<!DOCTYPE svg [<!ENTITY size "4096">]><svg width="&size;" height="&size;"/>'),
-    ],
-    [
-      "SVG styled dimensions",
-      "image/svg+xml",
-      Buffer.from('<svg width="1" height="1" style="width:4096px;height:4096px"/>'),
-    ],
-    [
-      "SVG namespaced style",
+      "SVG with embedded bitmap",
       "image/svg+xml",
       Buffer.from(
-        '<svg xmlns:s="http://www.w3.org/2000/svg" width="1" height="1"><s:style>svg{width:4096px;height:4096px}</s:style></svg>',
+        `<svg width="1" height="1"><image href="data:image/png;base64,${makeUnsafePng().toString("base64")}"/></svg>`,
       ),
     ],
     [
@@ -415,7 +395,7 @@ describe("captureFavicon", () => {
         return buffer;
       })(),
     ],
-  ])("rejects unsafe %s dimensions before rasterization", async (_label, mime, buffer) => {
+  ])("rejects unsafe or unsupported %s before rasterization", async (_label, mime, buffer) => {
     const { webContents, executeJavaScriptInIsolatedWorld } = makeWebContents();
     const candidate = `data:${mime};base64,${buffer.toString("base64")}`;
     expect(
@@ -444,7 +424,7 @@ describe("captureFavicon", () => {
     ).toEqual({ kind: "none" });
   });
 
-  it("lets a newer attempt publish after a logical rasterization timeout", async () => {
+  it("waits for physical rasterization settlement after a logical timeout", async () => {
     vi.useFakeTimers();
     try {
       let resolveOld!: (value: unknown) => void;
@@ -470,9 +450,10 @@ describe("captureFavicon", () => {
       expect(await timedOut).toEqual({ kind: "timed-out" });
 
       const newer = captureFavicon(input);
-      expect(await newer).toEqual({ kind: "captured", dataUrl: PNG });
-      resolveOld(PNG);
       await Promise.resolve();
+      expect(executions).toBe(1);
+      resolveOld(PNG);
+      expect(await newer).toEqual({ kind: "captured", dataUrl: PNG });
       expect(executions).toBe(2);
     } finally {
       vi.useRealTimers();

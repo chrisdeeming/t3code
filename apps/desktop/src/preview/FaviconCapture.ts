@@ -419,74 +419,13 @@ function icoDimensions(buffer: Buffer): ImageDimensions | null {
   return { width, height };
 }
 
-function svgDimensions(buffer: Buffer): ImageDimensions | null {
-  const source = buffer.toString("utf8").replace(/^\uFEFF/u, "");
-  if (/<!--|-->|<!DOCTYPE|<!ENTITY|<(?:[a-z_][\w.-]*:)?style(?=[\s/>])/iu.test(source)) {
-    return null;
-  }
-  const root = /^(?:\s*<\?xml[^?]*\?>)?\s*<svg(?=[\s/>])/iu.exec(source);
-  if (!root) return null;
-  let offset = root[0].length;
-  const attributes = new Map<string, string>();
-  while (offset < source.length) {
-    while (/\s/u.test(source[offset] ?? "")) offset += 1;
-    if (source[offset] === ">" || (source[offset] === "/" && source[offset + 1] === ">")) break;
-    const name = /^[a-z_:][a-z0-9_.:-]*/iu.exec(source.slice(offset))?.[0];
-    if (!name) return null;
-    offset += name.length;
-    while (/\s/u.test(source[offset] ?? "")) offset += 1;
-    if (source[offset] !== "=") return null;
-    offset += 1;
-    while (/\s/u.test(source[offset] ?? "")) offset += 1;
-    const quote = source[offset];
-    if (quote !== '"' && quote !== "'") return null;
-    const valueEnd = source.indexOf(quote, offset + 1);
-    if (valueEnd === -1) return null;
-    const value = source.slice(offset + 1, valueEnd);
-    const normalizedName = name.toLowerCase();
-    if (normalizedName === "style" || value.includes("&") || attributes.has(normalizedName)) {
-      return null;
-    }
-    attributes.set(normalizedName, value);
-    offset = valueEnd + 1;
-  }
-  if (source[offset] !== ">" && !(source[offset] === "/" && source[offset + 1] === ">"))
-    return null;
-  const readLength = (name: string, fallback: number): number | null => {
-    const value = attributes.get(name);
-    if (value === undefined) return fallback;
-    const match = /^\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)\s*(?:px)?\s*$/iu.exec(value);
-    return match?.[1] === undefined ? null : Number(match[1]);
-  };
-  const width = readLength("width", 300);
-  const height = readLength("height", 150);
-  if (width === null || height === null) return null;
-  const viewBox = attributes
-    .get("viewbox")
-    ?.trim()
-    .split(/[\s,]+/u)
-    .map(Number);
-  if (viewBox && (viewBox.length !== 4 || viewBox.some((part) => !Number.isFinite(part)))) {
-    return null;
-  }
-  const viewBoxWidth = viewBox ? Math.abs(viewBox[2]!) : 0;
-  const viewBoxHeight = viewBox ? Math.abs(viewBox[3]!) : 0;
-  return {
-    width: Math.max(width, viewBoxWidth),
-    height: Math.max(height, viewBoxHeight),
-  };
-}
-
-function sourceDimensions(buffer: Buffer, mime: string | null): ImageDimensions | null {
+function sourceDimensions(buffer: Buffer): ImageDimensions | null {
   return (
     pngDimensions(buffer) ??
     gifDimensions(buffer) ??
     jpegDimensions(buffer) ??
     webpDimensions(buffer) ??
-    icoDimensions(buffer) ??
-    (mime === "image/svg+xml" || buffer.subarray(0, 256).toString("utf8").includes("<svg")
-      ? svgDimensions(buffer)
-      : null)
+    icoDimensions(buffer)
   );
 }
 
@@ -505,8 +444,9 @@ async function normalizeFaviconBuffer(
         : declaredMime;
   if (
     (normalizedMime !== null && !/^image\/[a-z0-9.+-]+$/i.test(normalizedMime)) ||
+    normalizedMime === "image/svg+xml" ||
     buffer.byteLength > MAX_FAVICON_RESPONSE_BYTES ||
-    !safeDimensions(sourceDimensions(buffer, normalizedMime))
+    !safeDimensions(sourceDimensions(buffer))
   ) {
     return { kind: "none" };
   }
@@ -596,7 +536,9 @@ async function rasterizeFavicon(
       },
     );
   });
-  const launchAllowed = result.then(
+  // The logical timeout does not cancel Electron's renderer work. Keep the
+  // gate closed until that physical execution actually settles.
+  const launchAllowed = execution.then(
     () => undefined,
     () => undefined,
   );

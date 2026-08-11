@@ -193,4 +193,26 @@ describe("browser favicon store", () => {
     storage.setItem("key", "value");
     expect(storage.getItem("key")).toBe("value");
   });
+
+  it("falls back to memory when localStorage operations throw", () => {
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: vi.fn(() => {
+          throw new Error("read blocked");
+        }),
+        setItem: vi.fn(() => {
+          throw new Error("quota exceeded");
+        }),
+        removeItem: vi.fn(() => {
+          throw new Error("remove blocked");
+        }),
+      },
+    });
+    const storage = resolveBrowserFaviconStorage();
+
+    storage.setItem("key", "value");
+    expect(storage.getItem("key")).toBe("value");
+    storage.removeItem("key");
+    expect(storage.getItem("key")).toBeNull();
+  });
 });

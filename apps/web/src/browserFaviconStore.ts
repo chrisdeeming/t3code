@@ -21,7 +21,7 @@ import {
   isValidFaviconCapturedAt,
   migratePersistedBrowserFaviconState,
 } from "./browserFaviconLogic";
-import { resolveStorage } from "./lib/storage";
+import { createMemoryStorage, type StateStorage } from "./lib/storage";
 
 const BROWSER_FAVICON_STORAGE_KEY = "t3code:browser-favicons:v1";
 const MAX_PENDING_ORIGINS_PER_THREAD = 10;
@@ -71,12 +71,40 @@ function addPendingFavicon(
   );
 }
 
-export function resolveBrowserFaviconStorage() {
+export function resolveBrowserFaviconStorage(): StateStorage {
+  const fallback = createMemoryStorage();
+  let primary: Storage;
   try {
-    return resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined);
+    if (typeof window === "undefined") return fallback;
+    primary = window.localStorage;
   } catch {
-    return resolveStorage(undefined);
+    return fallback;
   }
+  return {
+    getItem: (name) => {
+      try {
+        return primary.getItem(name);
+      } catch {
+        return fallback.getItem(name);
+      }
+    },
+    setItem: (name, value) => {
+      fallback.setItem(name, value);
+      try {
+        primary.setItem(name, value);
+      } catch {
+        // The in-memory copy remains available for this session.
+      }
+    },
+    removeItem: (name) => {
+      fallback.removeItem(name);
+      try {
+        primary.removeItem(name);
+      } catch {
+        // The in-memory copy has already been removed.
+      }
+    },
+  };
 }
 
 export const useBrowserFaviconStore = create<BrowserFaviconStoreState>()(
