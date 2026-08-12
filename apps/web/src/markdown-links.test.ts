@@ -2,16 +2,16 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   preserveWindowsMarkdownFileHref,
-  resolveCanonicalMarkdownFileLinkMeta,
+  resolveExplicitFileMentionMeta,
   resolveInlineCodeFileLinkMeta,
   resolveMarkdownFileLinkMeta,
   resolveMarkdownFileLinkTarget,
   rewriteMarkdownFileUriHref,
 } from "./markdown-links";
 
-describe("resolveCanonicalMarkdownFileLinkMeta", () => {
+describe("resolveExplicitFileMentionMeta", () => {
   it("recognizes absolute extensionless paths outside conventional roots", () => {
-    expect(resolveCanonicalMarkdownFileLinkMeta("data", "/custom/mount/data")).toMatchObject({
+    expect(resolveExplicitFileMentionMeta("/custom/mount/data")).toMatchObject({
       filePath: "/custom/mount/data",
       openTargetPath: "/custom/mount/data",
       basename: "data",
@@ -19,7 +19,7 @@ describe("resolveCanonicalMarkdownFileLinkMeta", () => {
   });
 
   it("resolves relative canonical paths against the cwd", () => {
-    expect(resolveCanonicalMarkdownFileLinkMeta("shared", "../shared", "/repo/app")).toMatchObject({
+    expect(resolveExplicitFileMentionMeta("../shared", "/repo/app")).toMatchObject({
       targetPath: "/repo/shared",
       openTargetPath: "/repo/shared",
       workspaceRelativePath: null,
@@ -27,9 +27,7 @@ describe("resolveCanonicalMarkdownFileLinkMeta", () => {
   });
 
   it("keeps unresolved home paths displayable but inert", () => {
-    expect(
-      resolveCanonicalMarkdownFileLinkMeta("project", "~/project", "/workspace/repo"),
-    ).toMatchObject({
+    expect(resolveExplicitFileMentionMeta("~/project", "/workspace/repo")).toMatchObject({
       targetPath: "~/project",
       openTargetPath: null,
       displayPath: "~/project",
@@ -37,24 +35,8 @@ describe("resolveCanonicalMarkdownFileLinkMeta", () => {
     });
   });
 
-  it("rejects label mismatches and external links", () => {
-    expect(resolveCanonicalMarkdownFileLinkMeta("other", "/custom/mount/data")).toBeNull();
-    expect(resolveCanonicalMarkdownFileLinkMeta("docs", "https://example.com/docs")).toBeNull();
-  });
-
-  it("does not promote app routes without file evidence", () => {
-    expect(resolveCanonicalMarkdownFileLinkMeta("settings", "/chat/settings", "/repo")).toBeNull();
-    expect(
-      resolveCanonicalMarkdownFileLinkMeta("general", "/settings/general", "/repo"),
-    ).toBeNull();
-    expect(resolveCanonicalMarkdownFileLinkMeta("connections", "/connections", "/repo")).toBeNull();
-    expect(
-      resolveCanonicalMarkdownFileLinkMeta("settings.ts", "/chat/settings.ts", "/repo"),
-    ).toMatchObject({ targetPath: "/chat/settings.ts" });
-  });
-
   it("does not interpret numeric filename suffixes as source positions", () => {
-    const meta = resolveCanonicalMarkdownFileLinkMeta("report:12", "/tmp/report:12");
+    const meta = resolveExplicitFileMentionMeta("/tmp/report:12");
     expect(meta).toMatchObject({
       filePath: "/tmp/report:12",
       openTargetPath: "/tmp/report:12",
@@ -64,9 +46,7 @@ describe("resolveCanonicalMarkdownFileLinkMeta", () => {
   });
 
   it("resolves a canonical path under a scoped directory against the cwd", () => {
-    expect(
-      resolveCanonicalMarkdownFileLinkMeta("package.json", "@scope/package.json", "/repo"),
-    ).toMatchObject({
+    expect(resolveExplicitFileMentionMeta("@scope/package.json", "/repo")).toMatchObject({
       targetPath: "/repo/@scope/package.json",
       openTargetPath: "/repo/@scope/package.json",
       basename: "package.json",
@@ -74,27 +54,25 @@ describe("resolveCanonicalMarkdownFileLinkMeta", () => {
   });
 
   it("still resolves an ordinary relative path against the cwd", () => {
-    expect(resolveCanonicalMarkdownFileLinkMeta("index.ts", "src/index.ts", "/repo")).toMatchObject(
-      {
-        targetPath: "/repo/src/index.ts",
-        openTargetPath: "/repo/src/index.ts",
-      },
-    );
+    expect(resolveExplicitFileMentionMeta("src/index.ts", "/repo")).toMatchObject({
+      targetPath: "/repo/src/index.ts",
+      openTargetPath: "/repo/src/index.ts",
+    });
   });
 
   it("normalizes absolute paths before workspace containment", () => {
-    expect(
-      resolveCanonicalMarkdownFileLinkMeta("page.html", "/repo/../outside/page.html", "/repo"),
-    ).toMatchObject({ workspaceRelativePath: null });
+    expect(resolveExplicitFileMentionMeta("/repo/../outside/page.html", "/repo")).toMatchObject({
+      workspaceRelativePath: null,
+    });
   });
 
   it("uses platform-appropriate casing for workspace containment", () => {
-    expect(resolveCanonicalMarkdownFileLinkMeta("Page.ts", "/Repo/Page.ts", "/repo")).toMatchObject(
-      { workspaceRelativePath: null },
-    );
-    expect(
-      resolveCanonicalMarkdownFileLinkMeta("Page.ts", "C:/Repo/Page.ts", "c:/repo"),
-    ).toMatchObject({ workspaceRelativePath: "Page.ts" });
+    expect(resolveExplicitFileMentionMeta("/Repo/Page.ts", "/repo")).toMatchObject({
+      workspaceRelativePath: null,
+    });
+    expect(resolveExplicitFileMentionMeta("C:/Repo/Page.ts", "c:/repo")).toMatchObject({
+      workspaceRelativePath: "Page.ts",
+    });
   });
 });
 

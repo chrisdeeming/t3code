@@ -18,6 +18,7 @@ import {
 } from "../auth/http.ts";
 import { OrchestrationEngineService } from "./Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./Services/ProjectionSnapshotQuery.ts";
+import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 
 export const orchestrationHttpApiLayer = HttpApiBuilder.group(
   EnvironmentHttpApi,
@@ -25,6 +26,7 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
   Effect.fnUntraced(function* (handlers) {
     const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
     const orchestrationEngine = yield* OrchestrationEngineService;
+    const serverEnvironment = yield* ServerEnvironment;
 
     return handlers
       .handle(
@@ -93,9 +95,9 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.orchestration.dispatch")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
-          const normalizedCommand = yield* normalizeDispatchCommand(args.payload).pipe(
-            Effect.catch(() => failEnvironmentInvalidRequest("invalid_command")),
-          );
+          const normalizedCommand = yield* normalizeDispatchCommand(args.payload, {
+            environmentId: yield* serverEnvironment.getEnvironmentId,
+          }).pipe(Effect.catch(() => failEnvironmentInvalidRequest("invalid_command")));
           return yield* orchestrationEngine
             .dispatch(normalizedCommand)
             .pipe(

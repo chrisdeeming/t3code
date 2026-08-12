@@ -16,6 +16,7 @@ import {
   type ProviderOptionSelection,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
+import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 
 // The composer draft's `modelSelectionByProvider` and
 // `stickyModelSelectionByProvider` maps are keyed by `ProviderInstanceId`
@@ -781,6 +782,26 @@ describe("composerDraftStore project draft thread mapping", () => {
     expect(useComposerDraftStore.getState().getDraftThreadByProjectRef(projectRef)).toBeNull();
     expect(useComposerDraftStore.getState().getDraftThread(draftId)).toBeNull();
     expect(draftByKey(draftId)).toBeUndefined();
+  });
+
+  it("persists explicit file mention provenance with its prompt", () => {
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(projectRef, draftId, { threadId });
+    const prompt = serializeComposerFileLink("/tmp/example.ts");
+    store.setPrompt(draftId, prompt, [
+      {
+        version: 1,
+        environmentId: TEST_ENVIRONMENT_ID,
+        path: "/tmp/example.ts",
+        kind: "file",
+        start: 0,
+        end: prompt.length,
+      },
+    ]);
+
+    expect(draftByKey(draftId)?.fileMentions).toEqual([
+      expect.objectContaining({ path: "/tmp/example.ts", end: prompt.length }),
+    ]);
   });
 
   it("clears project draft mapping by project id", () => {

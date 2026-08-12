@@ -1,5 +1,3 @@
-import { decodeCanonicalComposerFileLinkPath } from "@t3tools/shared/composerInlineTokens";
-
 import { formatWorkspaceRelativePath } from "./filePathDisplay";
 import { isExplicitRelativeProjectPath, resolveProjectPathForDispatch } from "./lib/projectPaths";
 import { resolvePathLinkTarget, splitPathAndPosition } from "./terminal-links";
@@ -40,18 +38,6 @@ const POSIX_FILE_ROOT_PREFIXES = [
   "/workspace/",
   "/workspaces/",
 ] as const;
-const APP_ROUTE_ROOT_SEGMENTS = new Set([
-  "app",
-  "chat",
-  "connect",
-  "connections",
-  "draft",
-  "pair",
-  "projects",
-  "pull-requests",
-  "settings",
-  "usage",
-]);
 
 export interface MarkdownFileLinkMeta {
   filePath: string;
@@ -135,12 +121,6 @@ function looksLikePosixFilesystemPath(path: string): boolean {
   if (POSITION_SUFFIX_PATTERN.test(path)) return true;
   const basename = path.slice(path.lastIndexOf("/") + 1);
   return /\.[A-Za-z0-9_-]+$/.test(basename);
-}
-
-function looksLikeAppRoute(path: string): boolean {
-  if (!path.startsWith("/") || looksLikePosixFilesystemPath(path)) return false;
-  const rootSegment = path.slice(1).split("/", 1)[0];
-  return rootSegment !== undefined && APP_ROUTE_ROOT_SEGMENTS.has(rootSegment);
 }
 
 function appendLineColumnFromHash(path: string, hash: string): string {
@@ -441,18 +421,10 @@ export function resolveMarkdownFileLinkMeta(
   return buildFileLinkMetaFromTarget(targetPath, cwd);
 }
 
-export function resolveCanonicalMarkdownFileLinkMeta(
-  label: string,
-  href: string,
+export function resolveExplicitFileMentionMeta(
+  authoredPath: string,
   cwd?: string,
 ): MarkdownFileLinkMeta | null {
-  const authoredPath = decodeCanonicalComposerFileLinkPath(
-    label,
-    normalizeMarkdownLinkDestination(href),
-  );
-  if (authoredPath === null) return null;
-  if (looksLikeAppRoute(authoredPath)) return null;
-
   if (!isRelativePath(authoredPath)) {
     return buildFileLinkMetaFromTarget(authoredPath, cwd, { parsePosition: false });
   }

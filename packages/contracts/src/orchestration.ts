@@ -10,6 +10,7 @@ import {
   CheckpointRef,
   CommandId,
   EventId,
+  EnvironmentId,
   IsoDateTime,
   MessageId,
   NonNegativeInt,
@@ -181,6 +182,26 @@ export type ChatAttachment = typeof ChatAttachment.Type;
 const UploadChatAttachment = Schema.Union([UploadChatImageAttachment]);
 export type UploadChatAttachment = typeof UploadChatAttachment.Type;
 
+/**
+ * Explicit provenance for a file tag inserted by a T3 composer.
+ * `start` and `end` are a half-open range of UTF-16 code units in the
+ * containing message text, matching JavaScript string offsets.
+ */
+export const ExplicitFileMention = Schema.Struct({
+  version: Schema.Literal(1),
+  environmentId: EnvironmentId,
+  path: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(4096)),
+  kind: Schema.Literals(["file", "directory"]),
+  start: NonNegativeInt,
+  end: PositiveInt,
+});
+export type ExplicitFileMention = typeof ExplicitFileMention.Type;
+
+export const ExplicitFileMentions = Schema.Array(ExplicitFileMention).check(
+  Schema.isMaxLength(100),
+);
+export type ExplicitFileMentions = typeof ExplicitFileMentions.Type;
+
 export const ProjectScriptIcon = Schema.Literals([
   "play",
   "test",
@@ -243,6 +264,7 @@ export const OrchestrationMessage = Schema.Struct({
   role: OrchestrationMessageRole,
   text: Schema.String,
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
+  fileMentions: Schema.optional(ExplicitFileMentions),
   turnId: Schema.NullOr(TurnId),
   streaming: Schema.Boolean,
   createdAt: IsoDateTime,
@@ -817,6 +839,7 @@ export const ThreadTurnStartCommand = Schema.Struct({
     role: Schema.Literal("user"),
     text: Schema.String,
     attachments: Schema.Array(ChatAttachment),
+    fileMentions: Schema.optional(ExplicitFileMentions),
   }),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
@@ -838,6 +861,7 @@ const ClientThreadTurnStartCommand = Schema.Struct({
     role: Schema.Literal("user"),
     text: Schema.String,
     attachments: Schema.Array(UploadChatAttachment),
+    fileMentions: Schema.optional(ExplicitFileMentions),
   }),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
@@ -1224,6 +1248,7 @@ export const ThreadMessageSentPayload = Schema.Struct({
   role: OrchestrationMessageRole,
   text: Schema.String,
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
+  fileMentions: Schema.optional(ExplicitFileMentions),
   turnId: Schema.NullOr(TurnId),
   streaming: Schema.Boolean,
   createdAt: IsoDateTime,

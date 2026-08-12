@@ -1,8 +1,10 @@
-import { ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   appendTerminalContextsToPrompt,
+  appendTerminalContextsToPromptWithFileMentions,
   buildTerminalContextPreviewTitle,
   buildTerminalContextBlock,
   countInlineTerminalContextPlaceholders,
@@ -92,6 +94,34 @@ describe("terminalContext", () => {
         "</terminal_context>",
       ].join("\n"),
     );
+  });
+
+  it("maps UTF-16 file mention offsets through inline terminal labels and trimming", () => {
+    const source = serializeComposerFileLink("/tmp/💾.txt");
+    const prompt = `  ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} 😀 ${source}  `;
+    const start = prompt.indexOf(source);
+    const result = appendTerminalContextsToPromptWithFileMentions(
+      prompt,
+      [makeContext()],
+      [
+        {
+          version: 1,
+          environmentId: EnvironmentId.make("environment-1"),
+          path: "/tmp/💾.txt",
+          kind: "file",
+          start,
+          end: start + source.length,
+        },
+      ],
+    );
+
+    expect(result.text.startsWith(`@terminal-1:12-13 😀 ${source}`)).toBe(true);
+    expect(result.fileMentions).toEqual([
+      expect.objectContaining({
+        start: `@terminal-1:12-13 😀 `.length,
+        end: `@terminal-1:12-13 😀 ${source}`.length,
+      }),
+    ]);
   });
 
   it("extracts terminal context blocks from message text", () => {

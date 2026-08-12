@@ -1,6 +1,7 @@
 import type {
   ApprovalRequestId,
   EnvironmentId,
+  ExplicitFileMention,
   ModelSelection,
   PreviewAnnotationPayload,
   ProviderApprovalDecision,
@@ -19,6 +20,10 @@ import {
 } from "@t3tools/contracts";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
+import {
+  reconcileFileMentionsAfterEdit,
+  replaceTextRangeInFileMentions,
+} from "@t3tools/shared/fileMentions";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import {
   memo,
@@ -43,6 +48,7 @@ import {
 } from "../../composer-logic";
 import { deriveComposerSendState, readFileAsDataUrl } from "../ChatView.logic";
 import {
+  type ComposerDraggedMention,
   dataTransferHasComposerMention,
   makeComposerMentionDragHandlers,
 } from "./composerMentionDrag";
@@ -479,6 +485,7 @@ export interface ChatComposerHandle {
   /** Get the current prompt/effort/model state for use in send. */
   getSendContext: () => {
     prompt: string;
+    fileMentions: ExplicitFileMention[];
     images: ComposerImageAttachment[];
     terminalContexts: TerminalContextDraft[];
     elementContexts: ElementContextDraft[];
@@ -681,6 +688,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   const composerDraft = useComposerThreadDraft(composerDraftTarget);
   const prompt = composerDraft.prompt;
+  const composerFileMentions = composerDraft.fileMentions;
   const composerImages = composerDraft.images;
   const composerTerminalContexts = composerDraft.terminalContexts;
   const composerElementContexts = composerDraft.elementContexts;
@@ -689,6 +697,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
 
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
+  const fileMentionsRef = useRef<ExplicitFileMention[]>(composerFileMentions);
+
+  const setPrompt = useCallback(
+    (nextPrompt: string, nextFileMentions?: ReadonlyArray<ExplicitFileMention>) => {
+      const mentions = nextFileMentions
+        ? [...nextFileMentions]
+        : reconcileFileMentionsAfterEdit(promptRef.current, nextPrompt, fileMentionsRef.current);
+      promptRef.current = nextPrompt;
+      fileMentionsRef.current = mentions;
+      setComposerDraftPrompt(composerDraftTarget, nextPrompt, mentions);
+    },
+    [composerDraftTarget, promptRef, setComposerDraftPrompt],
+  );
   const addComposerDraftImage = useComposerDraftStore((store) => store.addImage);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const removeComposerDraftImage = useComposerDraftStore((store) => store.removeImage);
@@ -1221,14 +1242,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         scheduleComposerFocus();
         return;
       }
-      promptRef.current = nextPrompt;
-      setComposerDraftPrompt(composerDraftTarget, nextPrompt);
+      setPrompt(nextPrompt);
       const nextCursor = collapseExpandedComposerCursor(nextPrompt, nextPrompt.length);
       setComposerCursor(nextCursor);
       setComposerTrigger(detectComposerTrigger(nextPrompt, nextPrompt.length));
       scheduleComposerFocus();
     },
-    [composerDraftTarget, promptRef, scheduleComposerFocus, setComposerDraftPrompt],
+    [promptRef, scheduleComposerFocus, setPrompt],
   );
 
   const providerTraitsMenuContent = renderProviderTraitsMenuContent({
@@ -1282,13 +1302,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Prompt helpers
   // ------------------------------------------------------------------
-  const setPrompt = useCallback(
-    (nextPrompt: string) => {
-      setComposerDraftPrompt(composerDraftTarget, nextPrompt);
-    },
-    [composerDraftTarget, setComposerDraftPrompt],
-  );
-
   const addComposerImage = useCallback(
     (image: ComposerImageAttachment) => {
       addComposerDraftImage(composerDraftTarget, image);
@@ -1317,7 +1330,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       );
       if (contextIndex < 0) return;
       const removal = removeInlineTerminalContextPlaceholder(promptRef.current, contextIndex);
-      promptRef.current = removal.prompt;
       setPrompt(removal.prompt);
       removeComposerDraftTerminalContext(composerDraftTarget, contextId);
       const nextCursor = collapseExpandedComposerCursor(removal.prompt, removal.cursor);
@@ -1338,8 +1350,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   useEffect(() => {
     promptRef.current = prompt;
+    fileMentionsRef.current = composerFileMentions;
     setComposerCursor((existing) => clampCollapsedComposerCursor(prompt, existing));
-  }, [prompt, promptRef]);
+  }, [composerFileMentions, prompt, promptRef]);
 
   useEffect(() => {
     composerImagesRef.current = composerImages;
@@ -1577,7 +1590,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         );
         return;
       }
-      promptRef.current = nextPrompt;
       setPrompt(nextPrompt);
       if (!terminalContextIdListsEqual(composerTerminalContexts, terminalContextIds)) {
         setComposerDraftTerminalContexts(
@@ -1610,7 +1622,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       rangeStart: number,
       rangeEnd: number,
       replacement: string,
-      options?: { expectedText?: string; focusEditorAfterReplace?: boolean },
+      options?: {
+        expectedText?: string;
+        focusEditorAfterReplace?: boolean;
+        fileMention?: Pick<ExplicitFileMention, "environmentId" | "path" | "kind">;
+        fileMentions?: ReadonlyArray<ComposerDraggedMention>;
+      },
     ): boolean => {
       const currentText = promptRef.current;
       const safeStart = Math.max(0, Math.min(currentText.length, rangeStart));
@@ -1622,9 +1639,39 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return false;
       }
       const next = replaceTextRange(promptRef.current, rangeStart, rangeEnd, replacement);
+      const nextFileMentions = replaceTextRangeInFileMentions(
+        fileMentionsRef.current,
+        safeStart,
+        safeEnd,
+        replacement.length,
+      );
+      if (options?.fileMention) {
+        const mentionSource = serializeComposerFileLink(options.fileMention.path);
+        nextFileMentions.push({
+          version: 1,
+          ...options.fileMention,
+          start: safeStart,
+          end: safeStart + mentionSource.length,
+        });
+      }
+      for (const mention of options?.fileMentions ?? []) {
+        if (
+          replacement.slice(mention.start, mention.end) !== serializeComposerFileLink(mention.path)
+        ) {
+          continue;
+        }
+        nextFileMentions.push({
+          version: 1,
+          environmentId,
+          path: mention.path,
+          kind: mention.kind,
+          start: safeStart + mention.start,
+          end: safeStart + mention.end,
+        });
+      }
+      nextFileMentions.sort((left, right) => left.start - right.start);
       const nextCursor = collapseExpandedComposerCursor(next.text, next.cursor);
       const nextExpandedCursor = expandCollapsedComposerCursor(next.text, nextCursor);
-      promptRef.current = next.text;
       const activePendingQuestion = activePendingProgress?.activeQuestion;
       if (activePendingQuestion && activePendingUserInput) {
         onChangeActivePendingUserInputCustomAnswer(
@@ -1635,7 +1682,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           false,
         );
       } else {
-        setPrompt(next.text);
+        setPrompt(next.text, nextFileMentions);
       }
       setComposerCursor(nextCursor);
       setComposerTrigger(detectComposerTrigger(next.text, nextExpandedCursor));
@@ -1704,7 +1751,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           trigger.rangeStart,
           replacementRangeEnd,
           replacement,
-          { expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd) },
+          {
+            expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd),
+            fileMention: {
+              environmentId,
+              path: item.path,
+              kind: item.pathKind,
+            },
+          },
         );
         if (applied) {
           setComposerHighlightedItemId(null);
@@ -1995,8 +2049,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             : entry.prompt;
       const promptChanged = nextPrompt !== currentPrompt;
       if (promptChanged) {
-        promptRef.current = nextPrompt;
-        setComposerDraftPrompt(composerDraftTarget, nextPrompt);
+        setPrompt(nextPrompt);
         setComposerCursor(collapseExpandedComposerCursor(nextPrompt, nextPrompt.length));
         setComposerTrigger(null);
       }
@@ -2452,7 +2505,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const insertComposerTextAtEnd = (
     text: string,
-    options?: { ensureLeadingBoundary?: boolean },
+    options?: {
+      ensureLeadingBoundary?: boolean;
+      fileMentions?: ReadonlyArray<ComposerDraggedMention>;
+    },
   ): boolean => {
     if (
       text.length === 0 ||
@@ -2466,10 +2522,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const prompt = promptRef.current;
     const needsLeadingSpace =
       (options?.ensureLeadingBoundary ?? false) && prompt.length > 0 && !/\s$/.test(prompt);
+    const leadingText = needsLeadingSpace ? " " : "";
+    const replacementOptions = options?.fileMentions
+      ? {
+          fileMentions: options.fileMentions.map((mention) => ({
+            ...mention,
+            start: mention.start + leadingText.length,
+            end: mention.end + leadingText.length,
+          })),
+        }
+      : undefined;
     return applyPromptReplacement(
       prompt.length,
       prompt.length,
-      needsLeadingSpace ? ` ${text}` : text,
+      `${leadingText}${text}`,
+      replacementOptions,
     );
   };
 
@@ -2477,7 +2544,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // editor never sees the drop; the load-bearing rules (native stop, "move"
   // effect, no eager focus) live in makeComposerMentionDragHandlers.
   const composerMentionDragHandlers = makeComposerMentionDragHandlers({
-    insertMentionAtEnd: (text) => insertComposerTextAtEnd(text, { ensureLeadingBoundary: true }),
+    insertMentionAtEnd: (text, fileMentions) =>
+      insertComposerTextAtEnd(text, { ensureLeadingBoundary: true, fileMentions }),
     setDragActive: setIsDragOverComposer,
     onInsertRejected: () => {
       toastManager.add({
@@ -2629,7 +2697,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           insertion.contextIndex,
         );
         if (!inserted) return;
-        promptRef.current = insertion.prompt;
+        setPrompt(insertion.prompt);
         setComposerCursor(nextCollapsedCursor);
         setComposerTrigger(detectComposerTrigger(insertion.prompt, insertion.cursor));
         window.requestAnimationFrame(() => {
@@ -2638,6 +2706,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       },
       getSendContext: () => ({
         prompt: promptRef.current,
+        fileMentions: [...fileMentionsRef.current],
         images: composerImagesRef.current,
         terminalContexts: composerTerminalContextsRef.current,
         elementContexts: composerElementContextsRef.current,
@@ -2658,6 +2727,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerCursor,
       composerTerminalContexts,
       insertComposerDraftTerminalContext,
+      setPrompt,
       promptRef,
       composerImagesRef,
       composerTerminalContextsRef,

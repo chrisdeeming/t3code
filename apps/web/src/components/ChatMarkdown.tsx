@@ -13,13 +13,13 @@ import {
   TriangleAlertIcon,
   WrapTextIcon,
 } from "lucide-react";
-import { decodeString } from "micromark-util-decode-string";
-import type { ScopedThreadRef, ServerProviderSkill } from "@t3tools/contracts";
+import type { ExplicitFileMention, ScopedThreadRef, ServerProviderSkill } from "@t3tools/contracts";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
+import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import React, {
@@ -77,7 +77,7 @@ import { remarkNormalizeListItemIndentation } from "../markdown-list-indentation
 import {
   normalizeMarkdownLinkDestination,
   preserveWindowsMarkdownFileHref,
-  resolveCanonicalMarkdownFileLinkMeta,
+  resolveExplicitFileMentionMeta,
   resolveInlineCodeFileLinkMeta,
   resolveMarkdownFileLinkMeta,
   rewriteMarkdownFileUriHref,
@@ -106,7 +106,7 @@ import {
 interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
-  canonicalFileLinks?: boolean;
+  fileMentions?: ReadonlyArray<ExplicitFileMention>;
   threadRef?: ScopedThreadRef | undefined;
   onTaskListChange?: ((input: { markerOffset: number; checked: boolean }) => void) | undefined;
   isStreaming?: boolean;
@@ -894,46 +894,14 @@ function extractInlineCodeSpans(text: string): string[] {
   return spans;
 }
 
-const WRAPPED_LABEL_DELIMITERS = ["***", "___", "**", "__", "*", "_", "`"];
-
-/** Unwraps a fully wrapped label (`*name*`) to the text the parser will render. */
-function markdownLabelInnerText(label: string): string {
-  let start = 0;
-  let end = label.length;
-  let matched = true;
-  while (matched) {
-    matched = false;
-    for (const delimiter of WRAPPED_LABEL_DELIMITERS) {
-      if (
-        end - start > delimiter.length * 2 &&
-        label.startsWith(delimiter, start) &&
-        label.endsWith(delimiter, end)
-      ) {
-        start += delimiter.length;
-        end -= delimiter.length;
-        matched = true;
-        break;
-      }
-    }
-  }
-  return label.slice(start, end);
-}
-
-function extractMarkdownLinks(text: string): Array<{ label: string; href: string }> {
-  const links: Array<{ label: string; href: string }> = [];
+function extractMarkdownLinkHrefs(text: string): string[] {
+  const hrefs: string[] = [];
   for (const match of text.matchAll(MARKDOWN_LINK_PATTERN)) {
     const href = match[2]?.trim();
     if (!href) continue;
-    links.push({
-      label: decodeString(match[1] ?? ""),
-      href,
-    });
+    hrefs.push(href);
   }
-  return links;
-}
-
-function canonicalMarkdownLinkKey(label: string, href: string): string {
-  return `${label}\0${href}`;
+  return hrefs;
 }
 
 function normalizeMarkdownLinkHrefKey(href: string): string {
@@ -982,30 +950,6 @@ function breakableExternalLinkText(text: string): ReactNode[] {
       <wbr />
     </React.Fragment>
   ));
-}
-
-/**
- * Link labels reach the renderer as parsed nodes, so `[*name*](path)` arrives as
- * an `em` wrapping the text. Reading through inline formatting keeps the lookup
- * key aligned with the label text indexed from the source.
- */
-function inlineHastText(node: unknown): string | null {
-  const pending = [node];
-  const parts: string[] = [];
-  while (pending.length > 0) {
-    const current = pending.pop();
-    if (!current || typeof current !== "object") return null;
-    if ("type" in current && current.type === "text") {
-      if (!("value" in current) || typeof current.value !== "string") return null;
-      parts.push(current.value);
-      continue;
-    }
-    if (!("children" in current) || !Array.isArray(current.children)) return null;
-    for (let index = current.children.length - 1; index >= 0; index -= 1) {
-      pending.push(current.children[index]);
-    }
-  }
-  return parts.join("");
 }
 
 function plainHastText(node: unknown): string | null {
@@ -1421,7 +1365,7 @@ function areMarkdownFileLinkPropsEqual(
 function ChatMarkdown({
   text,
   cwd,
-  canonicalFileLinks = false,
+  fileMentions,
   threadRef,
   onTaskListChange,
   isStreaming = false,
@@ -1449,7 +1393,8 @@ function ChatMarkdown({
       string,
       NonNullable<ReturnType<typeof resolveMarkdownFileLinkMeta>>
     >();
-    for (const { href } of extractMarkdownLinks(text)) {
+    if (fileMentions !== undefined) return metaByHref;
+    for (const href of extractMarkdownLinkHrefs(text)) {
       const normalizedHref = normalizeMarkdownLinkHrefKey(href);
       if (metaByHref.has(normalizedHref)) continue;
       const meta = resolveMarkdownFileLinkMeta(normalizedHref, cwd);
@@ -1458,25 +1403,18 @@ function ChatMarkdown({
       }
     }
     return metaByHref;
-  }, [cwd, text]);
-  const canonicalFileLinkMetaByKey = useMemo(() => {
-    const metaByKey = new Map<string, MarkdownFileLinkMeta>();
-    if (!canonicalFileLinks) return metaByKey;
-    for (const { label, href } of extractMarkdownLinks(text)) {
-      const normalizedHref = normalizeMarkdownLinkHrefKey(href);
-      // A formatted label such as `*name*` renders as its inner text, so index
-      // both forms and let whichever the renderer reports find the entry.
-      for (const candidate of new Set([label, markdownLabelInnerText(label)])) {
-        const key = canonicalMarkdownLinkKey(candidate, normalizedHref);
-        if (metaByKey.has(key)) continue;
-        const meta = resolveCanonicalMarkdownFileLinkMeta(candidate, normalizedHref, cwd);
-        if (meta) {
-          metaByKey.set(key, meta);
-        }
+  }, [cwd, fileMentions, text]);
+  const explicitFileLinkMetaByRange = useMemo(() => {
+    const metaByRange = new Map<string, MarkdownFileLinkMeta>();
+    for (const mention of fileMentions ?? []) {
+      if (text.slice(mention.start, mention.end) !== serializeComposerFileLink(mention.path)) {
+        continue;
       }
+      const meta = resolveExplicitFileMentionMeta(mention.path, cwd);
+      if (meta) metaByRange.set(`${mention.start}:${mention.end}`, meta);
     }
-    return metaByKey;
-  }, [canonicalFileLinks, cwd, text]);
+    return metaByRange;
+  }, [cwd, fileMentions, text]);
   const inlineCodeFileLinkMetaByText = useMemo(() => {
     const metaByText = new Map<string, MarkdownFileLinkMeta>();
     for (const span of extractInlineCodeSpans(text)) {
@@ -1491,11 +1429,11 @@ function ChatMarkdown({
   const fileLinkParentSuffixByPath = useMemo(() => {
     const filePaths = [
       ...[...markdownFileLinkMetaByHref.values()].map((meta) => meta.filePath),
-      ...[...canonicalFileLinkMetaByKey.values()].map((meta) => meta.filePath),
+      ...[...explicitFileLinkMetaByRange.values()].map((meta) => meta.filePath),
       ...[...inlineCodeFileLinkMetaByText.values()].map((meta) => meta.filePath),
     ];
     return buildFileLinkParentSuffixByPath(filePaths);
-  }, [canonicalFileLinkMetaByKey, inlineCodeFileLinkMetaByText, markdownFileLinkMetaByHref]);
+  }, [explicitFileLinkMetaByRange, inlineCodeFileLinkMetaByText, markdownFileLinkMetaByHref]);
   const markdownUrlTransform = useCallback((href: string) => {
     return (
       rewriteMarkdownFileUriHref(href) ??
@@ -1671,13 +1609,13 @@ function ChatMarkdown({
       },
       a({ node, href, children, ...props }) {
         const normalizedHref = href ? normalizeMarkdownLinkHrefKey(href) : "";
-        const linkLabel = inlineHastText(node);
+        const start = node?.position?.start.offset;
+        const end = node?.position?.end.offset;
         const fileLinkMeta = normalizedHref
-          ? ((linkLabel === null
-              ? null
-              : canonicalFileLinkMetaByKey.get(
-                  canonicalMarkdownLinkKey(linkLabel, normalizedHref),
-                )) ?? markdownFileLinkMetaByHref.get(normalizedHref))
+          ? ((typeof start === "number" && typeof end === "number"
+              ? explicitFileLinkMetaByRange.get(`${start}:${end}`)
+              : null) ??
+            (fileMentions === undefined ? markdownFileLinkMetaByHref.get(normalizedHref) : null))
           : null;
         if (!fileLinkMeta) {
           const faviconHost = resolveExternalWebLinkHost(href);
@@ -1814,7 +1752,8 @@ function ChatMarkdown({
       },
     };
   }, [
-    canonicalFileLinkMetaByKey,
+    explicitFileLinkMetaByRange,
+    fileMentions,
     cwd,
     diffThemeName,
     fileLinkParentSuffixByPath,

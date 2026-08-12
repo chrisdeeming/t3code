@@ -5,6 +5,15 @@ import remarkGfm from "remark-gfm";
 import { describe, expect, it } from "vite-plus/test";
 import ChatMarkdown from "./components/ChatMarkdown";
 
+const mention = (path: string, text: string) => ({
+  version: 1 as const,
+  environmentId: "test" as never,
+  path,
+  kind: "file" as const,
+  start: text.indexOf(serializeComposerFileLink(path)),
+  end: text.indexOf(serializeComposerFileLink(path)) + serializeComposerFileLink(path).length,
+});
+
 describe("composer file link markdown", () => {
   it("keeps markdown syntax in a filename as plain link text", () => {
     const markdown = serializeComposerFileLink("/custom/*draft* &amp;");
@@ -15,33 +24,62 @@ describe("composer file link markdown", () => {
     expect(markup).not.toContain("<em>");
   });
 
-  it("renders a chip when the label carries inline formatting", () => {
+  it("renders a chip only for an explicitly mentioned range", () => {
+    const text = serializeComposerFileLink("/custom/mount/data");
     const markup = renderToStaticMarkup(
-      <ChatMarkdown text="[*data*](/custom/mount/data)" cwd="/repo" canonicalFileLinks />,
+      <ChatMarkdown text={text} cwd="/repo" fileMentions={[mention("/custom/mount/data", text)]} />,
     );
 
     expect(markup).toContain("chat-markdown-file-link");
   });
 
-  it("matches canonical labels using rendered character references", () => {
-    const entityMarkup = renderToStaticMarkup(
-      <ChatMarkdown text="[a&amp;b](/tmp/a%26b)" cwd="/repo" canonicalFileLinks />,
-    );
-    const escapedEntityMarkup = renderToStaticMarkup(
+  it("does not promote an identical hand-authored link outside the mentioned range", () => {
+    const source = serializeComposerFileLink("/custom/mount/data");
+    const text = `${source} and ${source}`;
+    const secondStart = text.lastIndexOf(source);
+    const markup = renderToStaticMarkup(
       <ChatMarkdown
-        text={serializeComposerFileLink("/tmp/a&amp;b")}
+        text={text}
         cwd="/repo"
-        canonicalFileLinks
+        fileMentions={[
+          {
+            ...mention("/custom/mount/data", text),
+            start: secondStart,
+            end: secondStart + source.length,
+          },
+        ]}
       />,
     );
 
-    expect(entityMarkup).toContain("chat-markdown-file-link");
-    expect(escapedEntityMarkup).toContain("chat-markdown-file-link");
+    expect(markup.match(/chat-markdown-file-link/g)).toHaveLength(1);
   });
 
-  it("does not promote route-shaped links in composer messages", () => {
+  it("matches AST offsets in UTF-16 code units", () => {
+    const source = serializeComposerFileLink("/tmp/💾.txt");
+    const text = `😀 ${source}`;
     const markup = renderToStaticMarkup(
-      <ChatMarkdown text="[settings](/chat/settings)" cwd="/repo" canonicalFileLinks />,
+      <ChatMarkdown text={text} cwd="/repo" fileMentions={[mention("/tmp/💾.txt", text)]} />,
+    );
+
+    expect(markup).toContain("chat-markdown-file-link");
+  });
+
+  it("ignores provenance whose range does not exactly match its canonical source", () => {
+    const text = "before [data](/custom/mount/data)";
+    const markup = renderToStaticMarkup(
+      <ChatMarkdown
+        text={text}
+        cwd="/repo"
+        fileMentions={[{ ...mention("/custom/mount/data", text), start: 0, end: text.length }]}
+      />,
+    );
+
+    expect(markup).not.toContain("chat-markdown-file-link");
+  });
+
+  it("does not promote hand-authored route-shaped links", () => {
+    const markup = renderToStaticMarkup(
+      <ChatMarkdown text="[settings](/chat/settings)" cwd="/repo" fileMentions={[]} />,
     );
 
     expect(markup).not.toContain("chat-markdown-file-link");
