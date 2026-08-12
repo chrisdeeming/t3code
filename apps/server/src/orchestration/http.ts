@@ -16,9 +16,9 @@ import {
   failEnvironmentNotFound,
   requireEnvironmentScope,
 } from "../auth/http.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { OrchestrationEngineService } from "./Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./Services/ProjectionSnapshotQuery.ts";
-import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 
 export const orchestrationHttpApiLayer = HttpApiBuilder.group(
   EnvironmentHttpApi,
@@ -26,7 +26,7 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
   Effect.fnUntraced(function* (handlers) {
     const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
     const orchestrationEngine = yield* OrchestrationEngineService;
-    const serverEnvironment = yield* ServerEnvironment;
+    const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
 
     return handlers
       .handle(

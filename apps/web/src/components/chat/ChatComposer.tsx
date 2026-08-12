@@ -16,6 +16,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  PROVIDER_SEND_TURN_MAX_FILE_MENTIONS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
@@ -1403,7 +1404,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   useEffect(() => {
     const nextCustomAnswer = activePendingProgress?.customAnswer;
     if (typeof nextCustomAnswer !== "string") {
+      const wasPending = lastSyncedPendingInputRef.current !== null;
       lastSyncedPendingInputRef.current = null;
+      if (wasPending) {
+        promptRef.current = prompt;
+        fileMentionsRef.current = composerFileMentions;
+        const nextCursor = collapseExpandedComposerCursor(prompt, prompt.length);
+        setComposerCursor(nextCursor);
+        setComposerTrigger(
+          detectComposerTrigger(prompt, expandCollapsedComposerCursor(prompt, nextCursor)),
+        );
+        setComposerHighlightedItemId(null);
+      }
       return;
     }
 
@@ -1437,6 +1449,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activePendingProgress?.customAnswer,
     activePendingProgress?.activeQuestion?.id,
     activePendingUserInput?.requestId,
+    composerFileMentions,
+    prompt,
     promptRef,
   ]);
 
@@ -1696,6 +1710,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       activePendingProgress?.activeQuestion,
       activePendingUserInput,
+      environmentId,
       onChangeActivePendingUserInputCustomAnswer,
       promptRef,
       setPrompt,
@@ -1741,6 +1756,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       const { snapshot, trigger } = resolveActiveComposerTrigger();
       if (!trigger) return;
       if (item.type === "path") {
+        if (fileMentionsRef.current.length >= PROVIDER_SEND_TURN_MAX_FILE_MENTIONS) {
+          toastManager.add({
+            type: "error",
+            title: "Unable to add file tag",
+            description: `Messages can include up to ${PROVIDER_SEND_TURN_MAX_FILE_MENTIONS} file tags.`,
+          });
+          return;
+        }
         const replacement = `${serializeComposerFileLink(item.path)} `;
         const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
           snapshot.value,
@@ -2544,8 +2567,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // editor never sees the drop; the load-bearing rules (native stop, "move"
   // effect, no eager focus) live in makeComposerMentionDragHandlers.
   const composerMentionDragHandlers = makeComposerMentionDragHandlers({
-    insertMentionAtEnd: (text, fileMentions) =>
-      insertComposerTextAtEnd(text, { ensureLeadingBoundary: true, fileMentions }),
+    insertMentionAtEnd: (text, fileMentions) => {
+      if (
+        fileMentionsRef.current.length + fileMentions.length >
+        PROVIDER_SEND_TURN_MAX_FILE_MENTIONS
+      ) {
+        toastManager.add({
+          type: "error",
+          title: "Unable to add file tags",
+          description: `Messages can include up to ${PROVIDER_SEND_TURN_MAX_FILE_MENTIONS} file tags.`,
+        });
+        return true;
+      }
+      return insertComposerTextAtEnd(text, { ensureLeadingBoundary: true, fileMentions });
+    },
     setDragActive: setIsDragOverComposer,
     onInsertRejected: () => {
       toastManager.add({

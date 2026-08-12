@@ -220,15 +220,35 @@ export const make = Effect.gen(function* () {
       const showHidden = endsWithSeparator || prefix.startsWith(".");
       const lowerPrefix = prefix.toLowerCase();
       const requestedKinds = new Set(input.kinds ?? ["directory"]);
-      const entries: FilesystemBrowseEntry[] = [];
-      for (const dirent of dirents) {
-        const kind = dirent.isDirectory() ? "directory" : dirent.isFile() ? "file" : null;
-        if (
-          kind !== null &&
-          requestedKinds.has(kind) &&
+      const candidateDirents = dirents.filter(
+        (dirent) =>
           dirent.name.toLowerCase().startsWith(lowerPrefix) &&
-          (showHidden || !dirent.name.startsWith("."))
-        ) {
+          (showHidden || !dirent.name.startsWith(".")),
+      );
+      const symlinkKinds = yield* Effect.promise(async () => {
+        const resolved = await Promise.all(
+          candidateDirents
+            .filter((dirent) => dirent.isSymbolicLink())
+            .map(async (dirent) => {
+              try {
+                const stats = await NodeFSP.stat(path.join(parentPath, dirent.name));
+                const kind = stats.isDirectory() ? "directory" : stats.isFile() ? "file" : null;
+                return [dirent.name, kind] as const;
+              } catch {
+                return [dirent.name, null] as const;
+              }
+            }),
+        );
+        return new Map(resolved);
+      });
+      const entries: FilesystemBrowseEntry[] = [];
+      for (const dirent of candidateDirents) {
+        const kind = dirent.isDirectory()
+          ? "directory"
+          : dirent.isFile()
+            ? "file"
+            : (symlinkKinds.get(dirent.name) ?? null);
+        if (kind !== null && requestedKinds.has(kind)) {
           entries.push({
             name: dirent.name,
             fullPath: path.join(parentPath, dirent.name),
@@ -256,7 +276,9 @@ export const make = Effect.gen(function* () {
       // large enough set of directories, so each kind keeps a share of the limit.
       const limit = input.limit ?? directories.length + files.length;
       const fileCount = Math.min(files.length, Math.max(0, limit - directories.length));
-      const keptFiles = files.slice(0, Math.max(fileCount, Math.min(files.length, limit >> 1)));
+      const reservedFileCount =
+        files.length > 0 && limit > 0 ? Math.min(files.length, Math.max(1, limit >> 1)) : 0;
+      const keptFiles = files.slice(0, Math.max(fileCount, reservedFileCount));
       const keptDirectories = directories.slice(0, limit - keptFiles.length);
 
       return {

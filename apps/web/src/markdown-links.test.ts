@@ -35,11 +35,28 @@ describe("resolveExplicitFileMentionMeta", () => {
     });
   });
 
+  it("resolves home paths for projects under the root user's home", () => {
+    expect(resolveExplicitFileMentionMeta("~/project", "/root/workspace")).toMatchObject({
+      targetPath: "/root/project",
+      openTargetPath: "/root/project",
+    });
+  });
+
   it("does not interpret numeric filename suffixes as source positions", () => {
     const meta = resolveExplicitFileMentionMeta("/tmp/report:12");
     expect(meta).toMatchObject({
       filePath: "/tmp/report:12",
       openTargetPath: "/tmp/report:12",
+      basename: "report:12",
+    });
+    expect(meta?.line).toBeUndefined();
+  });
+
+  it("preserves numeric suffixes on relative filenames", () => {
+    const meta = resolveExplicitFileMentionMeta("report:12", "/repo");
+    expect(meta).toMatchObject({
+      filePath: "/repo/report:12",
+      openTargetPath: "/repo/report:12",
       basename: "report:12",
     });
     expect(meta?.line).toBeUndefined();

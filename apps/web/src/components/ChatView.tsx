@@ -46,7 +46,7 @@ import {
 import { CHAT_LIST_ANCHOR_OFFSET } from "@t3tools/shared/chatList";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
-import { shiftFileMentions, trimTextWithFileMentions } from "@t3tools/shared/fileMentions";
+import { shiftFileMentions } from "@t3tools/shared/fileMentions";
 import { nextTerminalId, resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabels";
 import { Debouncer } from "@tanstack/react-pacer";
 import { useAtomValue } from "@effect/atom-react";
@@ -4963,21 +4963,22 @@ function ChatViewContent(props: ChatViewProps) {
         composerReviewComments.length,
     });
     if (!directAnnotation && showPlanFollowUpPrompt && activeProposedPlan) {
+      const followUpPrompt = appendTerminalContextsToPromptWithFileMentions(
+        promptForSend,
+        [],
+        composerFileMentions,
+      );
       const followUp = resolvePlanFollowUpSubmission({
-        draftText: trimmed,
+        draftText: followUpPrompt.text,
         planMarkdown: activeProposedPlan.planMarkdown,
       });
-      const followUpFileMentions = trimTextWithFileMentions(
-        promptForSend,
-        composerFileMentions,
-      ).fileMentions;
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
       await onSubmitPlanFollowUp({
         text: followUp.text,
         interactionMode: followUp.interactionMode,
-        fileMentions: followUp.interactionMode === "plan" ? followUpFileMentions : [],
+        fileMentions: followUp.interactionMode === "plan" ? followUpPrompt.fileMentions : [],
       });
       return;
     }
@@ -5135,7 +5136,7 @@ function ChatViewContent(props: ChatViewProps) {
         role: "user",
         text: outgoingMessageText,
         ...(optimisticAttachments.length > 0 ? { attachments: optimisticAttachments } : {}),
-        ...(outgoingFileMentions.length > 0 ? { fileMentions: outgoingFileMentions } : {}),
+        fileMentions: outgoingFileMentions,
         turnId: null,
         createdAt: messageCreatedAt,
         updatedAt: messageCreatedAt,
@@ -5264,7 +5265,7 @@ function ChatViewContent(props: ChatViewProps) {
             role: "user",
             text: outgoingMessageText,
             attachments: turnAttachmentsResult.value,
-            ...(outgoingFileMentions.length > 0 ? { fileMentions: outgoingFileMentions } : {}),
+            fileMentions: outgoingFileMentions,
           },
           modelSelection: ctxSelectedModelSelection,
           titleSeed: title,
@@ -5559,10 +5560,9 @@ function ChatViewContent(props: ChatViewProps) {
         effort: ctxSelectedPromptEffort,
         text: trimmed,
       });
-      const outgoingFileMentions = shiftFileMentions(
-        fileMentions,
-        Math.max(0, outgoingMessageText.lastIndexOf(trimmed)),
-      );
+      const outgoingPromptOffset = outgoingMessageText.lastIndexOf(trimmed);
+      const outgoingFileMentions =
+        outgoingPromptOffset >= 0 ? shiftFileMentions(fileMentions, outgoingPromptOffset) : [];
 
       sendInFlightRef.current = true;
       beginLocalDispatch({ preparingWorktree: false });
@@ -5588,7 +5588,7 @@ function ChatViewContent(props: ChatViewProps) {
           id: messageIdForSend,
           role: "user",
           text: outgoingMessageText,
-          ...(outgoingFileMentions.length > 0 ? { fileMentions: outgoingFileMentions } : {}),
+          fileMentions: outgoingFileMentions,
           turnId: null,
           createdAt: messageCreatedAt,
           updatedAt: messageCreatedAt,
@@ -5626,7 +5626,7 @@ function ChatViewContent(props: ChatViewProps) {
               role: "user",
               text: outgoingMessageText,
               attachments: [],
-              ...(outgoingFileMentions.length > 0 ? { fileMentions: outgoingFileMentions } : {}),
+              fileMentions: outgoingFileMentions,
             },
             modelSelection: ctxSelectedModelSelection,
             titleSeed: activeThread.title,
@@ -5759,6 +5759,7 @@ function ChatViewContent(props: ChatViewProps) {
             role: "user",
             text: outgoingImplementationPrompt,
             attachments: [],
+            fileMentions: [],
           },
           modelSelection: ctxSelectedModelSelection,
           titleSeed: nextThreadTitle,

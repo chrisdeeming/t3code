@@ -677,6 +677,7 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceEntries", (it) => {
           kinds: ["file", "directory"],
           limit: 3,
         });
+        yield* writeTextFile(cwd, "beta/index.ts", "export {};\n");
         const filteredResult = yield* workspaceEntries.browse({
           partialPath: path.join(cwd, "bet"),
           kinds: ["file", "directory"],
@@ -694,6 +695,31 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceEntries", (it) => {
         expect(filteredResult.entries).toEqual([
           { name: "beta.txt", fullPath: path.join(cwd, "beta.txt"), kind: "file" },
         ]);
+      }),
+    );
+
+    it.effect("includes symlinks to files and directories with their target kinds", () =>
+      Effect.gen(function* () {
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-browse-symlinks-" });
+        yield* writeTextFile(cwd, "target.txt", "target");
+        yield* writeTextFile(cwd, "target-dir/index.ts", "export {};\n");
+        yield* fileSystem.symlink(path.join(cwd, "target.txt"), path.join(cwd, "linked.txt"));
+        yield* fileSystem.symlink(path.join(cwd, "target-dir"), path.join(cwd, "linked-dir"));
+
+        const result = yield* workspaceEntries.browse({
+          partialPath: yield* appendSeparator(cwd),
+          kinds: ["file", "directory"],
+        });
+
+        expect(result.entries).toEqual(
+          expect.arrayContaining([
+            { name: "linked-dir", fullPath: path.join(cwd, "linked-dir"), kind: "directory" },
+            { name: "linked.txt", fullPath: path.join(cwd, "linked.txt"), kind: "file" },
+          ]),
+        );
       }),
     );
 

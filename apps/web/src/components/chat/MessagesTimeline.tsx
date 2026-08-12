@@ -1036,7 +1036,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         ) : null}
         <CollapsibleUserMessageBody
           text={elementContextState.promptText}
-          fileMentions={(row.message.fileMentions ?? []).filter(
+          fileMentions={row.message.fileMentions?.filter(
             (mention) => mention.end <= elementContextState.promptText.length,
           )}
           terminalContexts={terminalContexts}
@@ -1607,7 +1607,7 @@ function shouldCollapseUserMessage(text: string): boolean {
 
 const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(props: {
   text: string;
-  fileMentions: ReadonlyArray<ExplicitFileMention>;
+  fileMentions: ReadonlyArray<ExplicitFileMention> | undefined;
   terminalContexts: ParsedTerminalContextEntry[];
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   markdownCwd: string | undefined;
@@ -1677,14 +1677,14 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
 
 const UserMessageBody = memo(function UserMessageBody(props: {
   text: string;
-  fileMentions: ReadonlyArray<ExplicitFileMention>;
+  fileMentions: ReadonlyArray<ExplicitFileMention> | undefined;
   terminalContexts: ParsedTerminalContextEntry[];
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   markdownCwd: string | undefined;
 }) {
   const ctx = use(TimelineRowCtx);
   const fileMentionsForRange = (start: number, end: number) =>
-    props.fileMentions.flatMap((mention) =>
+    props.fileMentions?.flatMap((mention) =>
       mention.start >= start && mention.end <= end
         ? [{ ...mention, start: mention.start - start, end: mention.end - start }]
         : [],

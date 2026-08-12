@@ -124,6 +124,31 @@ describe("terminalContext", () => {
     ]);
   });
 
+  it("maps file mention offsets when expired terminal placeholders are removed", () => {
+    const source = serializeComposerFileLink("/tmp/example.ts");
+    const prompt = `  ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} ${source}  `;
+    const start = prompt.indexOf(source);
+    const result = appendTerminalContextsToPromptWithFileMentions(
+      prompt,
+      [],
+      [
+        {
+          version: 1,
+          environmentId: EnvironmentId.make("environment-1"),
+          path: "/tmp/example.ts",
+          kind: "file",
+          start,
+          end: start + source.length,
+        },
+      ],
+    );
+
+    expect(result).toEqual({
+      text: source,
+      fileMentions: [expect.objectContaining({ start: 0, end: source.length })],
+    });
+  });
+
   it("extracts terminal context blocks from message text", () => {
     const prompt = appendTerminalContextsToPrompt("Investigate this", [makeContext()]);
     expect(extractTrailingTerminalContexts(prompt)).toEqual({

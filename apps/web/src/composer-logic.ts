@@ -222,6 +222,27 @@ export function isCollapsedCursorAdjacentToInlineToken(
 
 export const isCollapsedCursorAdjacentToMention = isCollapsedCursorAdjacentToInlineToken;
 
+function decodeActiveQuotedPathQuery(source: string): string | null {
+  const decoded: string[] = [];
+  let backslashRun = 0;
+  for (const char of source) {
+    if (char === "\\") {
+      decoded.push(char);
+      backslashRun += 1;
+      continue;
+    }
+    if (char === '"') {
+      if (backslashRun % 2 === 0) return null;
+      decoded.pop();
+      decoded.push(char);
+    } else {
+      decoded.push(char);
+    }
+    backslashRun = 0;
+  }
+  return decoded.join("");
+}
+
 export function detectComposerTrigger(text: string, cursorInput: number): ComposerTrigger | null {
   const cursor = clampCursor(text, cursorInput);
   const lineStart = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
@@ -245,8 +266,8 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
     quotedPathStart >= 0 &&
     (quotedPathStart === 0 || isWhitespace(linePrefix[quotedPathStart - 1] ?? ""))
   ) {
-    const query = linePrefix.slice(quotedPathStart + 2);
-    if (!query.includes('"')) {
+    const query = decodeActiveQuotedPathQuery(linePrefix.slice(quotedPathStart + 2));
+    if (query !== null) {
       return {
         kind: "path",
         query,

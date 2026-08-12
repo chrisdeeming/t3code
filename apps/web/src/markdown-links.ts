@@ -437,7 +437,7 @@ export function resolveExplicitFileMentionMeta(
 
   const resolvedPath = isExplicitRelativeProjectPath(authoredPath)
     ? resolveProjectPathForDispatch(authoredPath, cwd)
-    : resolvePathLinkTarget(authoredPath, cwd);
+    : resolvePathLinkTarget(authoredPath, cwd, { parsePosition: false });
   if (resolvedPath.startsWith("~/")) {
     return buildFileLinkMetaFromTarget(authoredPath, cwd, {
       displayPath: authoredPath,

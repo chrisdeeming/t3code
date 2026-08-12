@@ -56,6 +56,15 @@ export function reconcileFileMentionsAfterEdit(
   const prefixLimit = Math.min(previousText.length, nextText.length);
   while (start < prefixLimit && previousText[start] === nextText[start]) start += 1;
 
+  let commonSuffixLength = 0;
+  while (
+    commonSuffixLength < prefixLimit &&
+    previousText[previousText.length - commonSuffixLength - 1] ===
+      nextText[nextText.length - commonSuffixLength - 1]
+  ) {
+    commonSuffixLength += 1;
+  }
+
   let previousEnd = previousText.length;
   let nextEnd = nextText.length;
   while (
@@ -66,7 +75,15 @@ export function reconcileFileMentionsAfterEdit(
     previousEnd -= 1;
     nextEnd -= 1;
   }
-  return replaceTextRangeInFileMentions(mentions, start, previousEnd, nextEnd - start);
+  const reconciled = replaceTextRangeInFileMentions(mentions, start, previousEnd, nextEnd - start);
+  const ambiguousStart = nextText.length - commonSuffixLength;
+  const ambiguousEnd = start;
+  if (ambiguousStart >= ambiguousEnd) {
+    return reconciled;
+  }
+  return reconciled.filter(
+    (mention) => mention.end <= ambiguousStart || mention.start >= ambiguousEnd,
+  );
 }
 
 export function shiftFileMentions(

@@ -145,6 +145,7 @@ export type ProviderUserInputAnswers = typeof ProviderUserInputAnswers.Type;
 export const PROVIDER_SEND_TURN_MAX_INPUT_CHARS = 120_000;
 export const PROVIDER_SEND_TURN_MAX_ATTACHMENTS = 8;
 export const PROVIDER_SEND_TURN_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+export const PROVIDER_SEND_TURN_MAX_FILE_MENTIONS = 100;
 const PROVIDER_SEND_TURN_MAX_IMAGE_DATA_URL_CHARS = 14_000_000;
 const CHAT_ATTACHMENT_ID_MAX_CHARS = 128;
 // Correlation id is command id by design in this model.
@@ -198,7 +199,7 @@ export const ExplicitFileMention = Schema.Struct({
 export type ExplicitFileMention = typeof ExplicitFileMention.Type;
 
 export const ExplicitFileMentions = Schema.Array(ExplicitFileMention).check(
-  Schema.isMaxLength(100),
+  Schema.isMaxLength(PROVIDER_SEND_TURN_MAX_FILE_MENTIONS),
 );
 export type ExplicitFileMentions = typeof ExplicitFileMentions.Type;
 

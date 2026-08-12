@@ -11,7 +11,7 @@ To browse outside the current project, start the query with an explicit filesyst
 - On Windows, drive and UNC paths are also supported.
 
 Use the existing quoted mention form when a directory name contains spaces, for example
-`@"~/My Projects/`.
+`@"~/My Projects/"`.
 
 Browsing happens on the thread's environment, so a remote thread sees the remote filesystem rather
 than files on the device running the client. Only the current directory is listed; T3 Code does not

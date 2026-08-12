@@ -106,7 +106,7 @@ import {
 interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
-  fileMentions?: ReadonlyArray<ExplicitFileMention>;
+  fileMentions?: ReadonlyArray<ExplicitFileMention> | undefined;
   threadRef?: ScopedThreadRef | undefined;
   onTaskListChange?: ((input: { markerOffset: number; checked: boolean }) => void) | undefined;
   isStreaming?: boolean;
@@ -180,11 +180,6 @@ const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
   remarkPreserveCodeMeta,
   remarkTagInlineCode,
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
-
-const CHAT_MARKDOWN_REHYPE_PLUGINS = [
-  rehypeRaw,
-  [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
-] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 
 /** GitHub's own five alert kinds, in its colors: the glyph names the urgency, the title says it. */
 const GITHUB_ALERT_PRESENTATIONS: Record<
@@ -800,8 +795,6 @@ interface MarkdownFileLinkProps {
   className?: string | undefined;
 }
 
-const MARKDOWN_LINK_PATTERN = /\[((?:\\.|[^\]\\])*)]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
-const WHOLE_MARKDOWN_LINK_PATTERN = new RegExp(`^${MARKDOWN_LINK_PATTERN.source}$`);
 const MARKDOWN_FILE_LINK_CLASS_NAME = "chat-markdown-file-link transition-colors";
 
 /**
@@ -816,7 +809,7 @@ function authoredMarkdownLinkSource(
 ): string | null {
   if (typeof start !== "number" || typeof end !== "number" || end > text.length) return null;
   const slice = text.slice(start, end);
-  return WHOLE_MARKDOWN_LINK_PATTERN.test(slice) ? slice : null;
+  return slice.startsWith("[") && slice.endsWith(")") ? slice : null;
 }
 
 function pathParentSegments(path: string): string[] {
@@ -892,16 +885,6 @@ function extractInlineCodeSpans(text: string): string[] {
     }
   }
   return spans;
-}
-
-function extractMarkdownLinkHrefs(text: string): string[] {
-  const hrefs: string[] = [];
-  for (const match of text.matchAll(MARKDOWN_LINK_PATTERN)) {
-    const href = match[2]?.trim();
-    if (!href) continue;
-    hrefs.push(href);
-  }
-  return hrefs;
 }
 
 function normalizeMarkdownLinkHrefKey(href: string): string {
@@ -1388,22 +1371,6 @@ function ChatMarkdown({
     serverConfig?.availableEditors ?? [],
   );
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
-  const markdownFileLinkMetaByHref = useMemo(() => {
-    const metaByHref = new Map<
-      string,
-      NonNullable<ReturnType<typeof resolveMarkdownFileLinkMeta>>
-    >();
-    if (fileMentions !== undefined) return metaByHref;
-    for (const href of extractMarkdownLinkHrefs(text)) {
-      const normalizedHref = normalizeMarkdownLinkHrefKey(href);
-      if (metaByHref.has(normalizedHref)) continue;
-      const meta = resolveMarkdownFileLinkMeta(normalizedHref, cwd);
-      if (meta) {
-        metaByHref.set(normalizedHref, meta);
-      }
-    }
-    return metaByHref;
-  }, [cwd, fileMentions, text]);
   const explicitFileLinkMetaByRange = useMemo(() => {
     const metaByRange = new Map<string, MarkdownFileLinkMeta>();
     for (const mention of fileMentions ?? []) {
@@ -1426,14 +1393,64 @@ function ChatMarkdown({
     }
     return metaByText;
   }, [cwd, text]);
-  const fileLinkParentSuffixByPath = useMemo(() => {
-    const filePaths = [
-      ...[...markdownFileLinkMetaByHref.values()].map((meta) => meta.filePath),
-      ...[...explicitFileLinkMetaByRange.values()].map((meta) => meta.filePath),
-      ...[...inlineCodeFileLinkMetaByText.values()].map((meta) => meta.filePath),
-    ];
-    return buildFileLinkParentSuffixByPath(filePaths);
-  }, [explicitFileLinkMetaByRange, inlineCodeFileLinkMetaByText, markdownFileLinkMetaByHref]);
+  const markdownFileLinkAnalysis = useMemo(() => {
+    const metaByRange = new Map<string, MarkdownFileLinkMeta>();
+    const parentSuffixByPath = new Map<string, string>();
+    const rehypePlugin = () => (tree: unknown) => {
+      metaByRange.clear();
+      parentSuffixByPath.clear();
+      const filePaths = [...inlineCodeFileLinkMetaByText.values()].map((meta) => meta.filePath);
+      const pending: unknown[] = [tree];
+      while (pending.length > 0) {
+        const node = pending.pop();
+        if (!node || typeof node !== "object") continue;
+        const candidate = node as {
+          readonly tagName?: unknown;
+          readonly properties?: Readonly<Record<string, unknown>>;
+          readonly children?: ReadonlyArray<unknown>;
+          readonly position?: {
+            readonly start?: { readonly offset?: number };
+            readonly end?: { readonly offset?: number };
+          };
+        };
+        if (candidate.tagName === "a") {
+          const start = candidate.position?.start?.offset;
+          const end = candidate.position?.end?.offset;
+          if (typeof start === "number" && typeof end === "number") {
+            const rangeKey = `${start}:${end}`;
+            let meta = explicitFileLinkMetaByRange.get(rangeKey) ?? null;
+            if (
+              meta === null &&
+              fileMentions === undefined &&
+              authoredMarkdownLinkSource(text, start, end) !== null
+            ) {
+              const href = candidate.properties?.href;
+              if (typeof href === "string") {
+                meta = resolveMarkdownFileLinkMeta(normalizeMarkdownLinkHrefKey(href), cwd);
+              }
+            }
+            if (meta) {
+              metaByRange.set(rangeKey, meta);
+              filePaths.push(meta.filePath);
+            }
+          }
+        }
+        if (candidate.children) pending.push(...candidate.children);
+      }
+      for (const [path, suffix] of buildFileLinkParentSuffixByPath(filePaths)) {
+        parentSuffixByPath.set(path, suffix);
+      }
+    };
+    return { metaByRange, parentSuffixByPath, rehypePlugin };
+  }, [cwd, explicitFileLinkMetaByRange, fileMentions, inlineCodeFileLinkMetaByText, text]);
+  const markdownRehypePlugins = useMemo<NonNullable<ReactMarkdownOptions["rehypePlugins"]>>(
+    () => [
+      rehypeRaw,
+      markdownFileLinkAnalysis.rehypePlugin,
+      [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
+    ],
+    [markdownFileLinkAnalysis.rehypePlugin],
+  );
   const markdownUrlTransform = useCallback((href: string) => {
     return (
       rewriteMarkdownFileUriHref(href) ??
@@ -1505,7 +1522,7 @@ function ChatMarkdown({
       copyMarkdown: string,
       className?: string,
     ) => {
-      const parentSuffix = fileLinkParentSuffixByPath.get(fileLinkMeta.filePath);
+      const parentSuffix = markdownFileLinkAnalysis.parentSuffixByPath.get(fileLinkMeta.filePath);
       const labelParts = [fileLinkMeta.basename];
       if (typeof parentSuffix === "string" && parentSuffix.length > 0) {
         labelParts.push(parentSuffix);
@@ -1608,15 +1625,12 @@ function ChatMarkdown({
         );
       },
       a({ node, href, children, ...props }) {
-        const normalizedHref = href ? normalizeMarkdownLinkHrefKey(href) : "";
         const start = node?.position?.start.offset;
         const end = node?.position?.end.offset;
-        const fileLinkMeta = normalizedHref
-          ? ((typeof start === "number" && typeof end === "number"
-              ? explicitFileLinkMetaByRange.get(`${start}:${end}`)
-              : null) ??
-            (fileMentions === undefined ? markdownFileLinkMetaByHref.get(normalizedHref) : null))
-          : null;
+        const fileLinkMeta =
+          typeof start === "number" && typeof end === "number"
+            ? markdownFileLinkAnalysis.metaByRange.get(`${start}:${end}`)
+            : null;
         if (!fileLinkMeta) {
           const faviconHost = resolveExternalWebLinkHost(href);
           const isSameDocumentLink = href?.startsWith("#") ?? false;
@@ -1693,11 +1707,8 @@ function ChatMarkdown({
         }
 
         const copyMarkdown =
-          authoredMarkdownLinkSource(
-            text,
-            node?.position?.start.offset,
-            node?.position?.end.offset,
-          ) ?? `[${fileLinkMeta.basename}](${normalizedHref})`;
+          authoredMarkdownLinkSource(text, start, end) ??
+          `[${fileLinkMeta.basename}](${fileLinkMeta.targetPath})`;
         return fileLinkChip(fileLinkMeta, copyMarkdown, props.className);
       },
       code({ node, children, className, ...props }) {
@@ -1752,14 +1763,11 @@ function ChatMarkdown({
       },
     };
   }, [
-    explicitFileLinkMetaByRange,
-    fileMentions,
     cwd,
     diffThemeName,
-    fileLinkParentSuffixByPath,
     inlineCodeFileLinkMetaByText,
     isStreaming,
-    markdownFileLinkMetaByHref,
+    markdownFileLinkAnalysis,
     onTaskListChange,
     openInPreferredEditor,
     openExternalLinkInPreview,
@@ -1783,7 +1791,7 @@ function ChatMarkdown({
         remarkPlugins={
           lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS
         }
-        rehypePlugins={CHAT_MARKDOWN_REHYPE_PLUGINS}
+        rehypePlugins={markdownRehypePlugins}
         components={markdownComponents}
         urlTransform={markdownUrlTransform}
       >

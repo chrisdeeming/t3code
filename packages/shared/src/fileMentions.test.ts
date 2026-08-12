@@ -58,6 +58,15 @@ describe("explicit file mentions", () => {
     ).toEqual([]);
   });
 
+  it("drops provenance when repeated text makes the retained occurrence ambiguous", () => {
+    const source = serializeComposerFileLink("/tmp/a.txt");
+    const original = `${source} ${source}`;
+
+    expect(reconcileFileMentionsAfterEdit(original, source, [mention("/tmp/a.txt", 0)])).toEqual(
+      [],
+    );
+  });
+
   it("maps mentions through trimming without losing interior ranges", () => {
     const source = serializeComposerFileLink("/tmp/a.txt");
     const originalMention = mention("/tmp/a.txt", 2);
