@@ -73,6 +73,7 @@ function addPendingFavicon(
 
 export function resolveBrowserFaviconStorage(): StateStorage {
   const fallback = createMemoryStorage();
+  const shadowedNames = new Set<string>();
   let primary: Storage;
   try {
     if (typeof window === "undefined") return fallback;
@@ -82,6 +83,7 @@ export function resolveBrowserFaviconStorage(): StateStorage {
   }
   return {
     getItem: (name) => {
+      if (shadowedNames.has(name)) return fallback.getItem(name);
       try {
         return primary.getItem(name);
       } catch {
@@ -92,16 +94,18 @@ export function resolveBrowserFaviconStorage(): StateStorage {
       fallback.setItem(name, value);
       try {
         primary.setItem(name, value);
+        shadowedNames.delete(name);
       } catch {
-        // The in-memory copy remains available for this session.
+        shadowedNames.add(name);
       }
     },
     removeItem: (name) => {
       fallback.removeItem(name);
       try {
         primary.removeItem(name);
+        shadowedNames.delete(name);
       } catch {
-        // The in-memory copy has already been removed.
+        shadowedNames.add(name);
       }
     },
   };

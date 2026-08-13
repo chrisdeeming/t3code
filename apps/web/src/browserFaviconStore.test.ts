@@ -215,4 +215,24 @@ describe("browser favicon store", () => {
     storage.removeItem("key");
     expect(storage.getItem("key")).toBeNull();
   });
+
+  it("keeps the memory shadow authoritative after an asymmetric primary write failure", () => {
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: vi.fn(() => "stale"),
+        setItem: vi.fn(() => {
+          throw new Error("quota exceeded");
+        }),
+        removeItem: vi.fn(() => {
+          throw new Error("remove blocked");
+        }),
+      },
+    });
+    const storage = resolveBrowserFaviconStorage();
+
+    storage.setItem("key", "fresh");
+    expect(storage.getItem("key")).toBe("fresh");
+    storage.removeItem("key");
+    expect(storage.getItem("key")).toBeNull();
+  });
 });
