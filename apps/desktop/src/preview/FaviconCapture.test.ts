@@ -47,7 +47,11 @@ function sourceGif(
   return buffer;
 }
 
-function sourceJpeg(width: number, height: number, orientation?: number): Buffer {
+function sourceJpeg(
+  width: number,
+  height: number,
+  orientations: number | ReadonlyArray<number> = [],
+): Buffer {
   const frame = Buffer.from([
     0xff,
     0xd8,
@@ -61,23 +65,45 @@ function sourceJpeg(width: number, height: number, orientation?: number): Buffer
     width >>> 8,
     width & 0xff,
   ]);
-  if (orientation === undefined) return frame;
-  const exif = Buffer.alloc(32);
+  const app1Segments = (typeof orientations === "number" ? [orientations] : orientations).map(
+    (orientation) => sourceJpegExifSegment([orientation]),
+  );
+  return Buffer.concat([frame.subarray(0, 2), ...app1Segments, frame.subarray(2)]);
+}
+
+function sourceJpegExifSegment(orientations: ReadonlyArray<number>): Buffer {
+  const exif = Buffer.alloc(20 + orientations.length * 12);
   exif.write("Exif\0\0", 0, "binary");
   exif.write("II", 6, "ascii");
   exif.writeUInt16LE(42, 8);
   exif.writeUInt32LE(8, 10);
-  exif.writeUInt16LE(1, 14);
-  exif.writeUInt16LE(0x0112, 16);
-  exif.writeUInt16LE(3, 18);
-  exif.writeUInt32LE(1, 20);
-  exif.writeUInt16LE(orientation, 24);
+  exif.writeUInt16LE(orientations.length, 14);
+  orientations.forEach((orientation, index) => {
+    const entryOffset = 16 + index * 12;
+    exif.writeUInt16LE(0x0112, entryOffset);
+    exif.writeUInt16LE(3, entryOffset + 2);
+    exif.writeUInt32LE(1, entryOffset + 4);
+    exif.writeUInt16LE(orientation, entryOffset + 8);
+  });
   const app1 = Buffer.alloc(4 + exif.byteLength);
   app1[0] = 0xff;
   app1[1] = 0xe1;
   app1.writeUInt16BE(exif.byteLength + 2, 2);
   exif.copy(app1, 4);
-  return Buffer.concat([frame.subarray(0, 2), app1, frame.subarray(2)]);
+  return app1;
+}
+
+function sourceJpegWithOrientationEntries(
+  width: number,
+  height: number,
+  orientations: ReadonlyArray<number>,
+): Buffer {
+  const frame = sourceJpeg(width, height);
+  return Buffer.concat([
+    frame.subarray(0, 2),
+    sourceJpegExifSegment(orientations),
+    frame.subarray(2),
+  ]);
 }
 
 function sourceWebp(width: number, height: number): Buffer {
@@ -400,6 +426,66 @@ describe("captureFavicon", () => {
       ).toEqual({ kind: "captured", dataUrl: PNG });
     },
   );
+
+  it.each([
+    {
+      orientations: [6, 1],
+      resizeWidth: 16,
+      resizeHeight: 32,
+      draw: "context.drawImage(bitmap, 8, 0, 16, 32)",
+    },
+    {
+      orientations: [1, 6],
+      resizeWidth: 32,
+      resizeHeight: 16,
+      draw: "context.drawImage(bitmap, 0, 8, 32, 16)",
+    },
+  ])(
+    "uses the first of conflicting JPEG EXIF orientations $orientations",
+    async ({ orientations, resizeWidth, resizeHeight, draw }) => {
+      const { webContents } = makeWebContents({
+        rasterize: async (code) => {
+          expect(code).toContain(`resizeWidth: ${resizeWidth}`);
+          expect(code).toContain(`resizeHeight: ${resizeHeight}`);
+          expect(code).toContain(draw);
+          return PNG;
+        },
+      });
+
+      expect(
+        await captureFavicon({
+          webContents,
+          pageUrl: "https://example.com/page",
+          candidates: [
+            `data:image/jpeg;base64,${sourceJpeg(64, 32, orientations).toString("base64")}`,
+          ],
+          signal: new AbortController().signal,
+        }),
+      ).toEqual({ kind: "captured", dataUrl: PNG });
+    },
+  );
+
+  it("uses a later valid orientation after an invalid EXIF entry", async () => {
+    const { webContents } = makeWebContents({
+      rasterize: async (code) => {
+        expect(code).toContain("resizeWidth: 16");
+        expect(code).toContain("resizeHeight: 32");
+        expect(code).toContain("context.drawImage(bitmap, 8, 0, 16, 32)");
+        return PNG;
+      },
+    });
+
+    expect(
+      await captureFavicon({
+        webContents,
+        pageUrl: "https://example.com/page",
+        candidates: [
+          `data:image/jpeg;base64,${sourceJpegWithOrientationEntries(64, 32, [9, 6]).toString("base64")}`,
+        ],
+        signal: new AbortController().signal,
+      }),
+    ).toEqual({ kind: "captured", dataUrl: PNG });
+  });
 
   it("rejects JPEGs with multiple frame headers before rasterization", async () => {
     const buffer = Buffer.concat([sourceJpeg(4096, 4096), sourceJpeg(1, 1).subarray(2)]);

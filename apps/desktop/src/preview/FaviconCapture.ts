@@ -345,7 +345,7 @@ function jpegExifOrientation(segment: Buffer): number | null {
       continue;
     }
     const orientation = readUInt16(entryOffset + 8);
-    return orientation !== null && orientation >= 1 && orientation <= 8 ? orientation : null;
+    if (orientation !== null && orientation >= 1 && orientation <= 8) return orientation;
   }
   return null;
 }
@@ -357,7 +357,7 @@ function jpegDimensions(buffer: Buffer): ImageDimensions | null {
   ]);
   let offset = 2;
   let dimensions: ImageDimensions | null = null;
-  let orientation = 1;
+  let orientation: number | null = null;
   while (offset + 3 < buffer.byteLength) {
     if (buffer[offset] !== 0xff) {
       offset += 1;
@@ -371,9 +371,8 @@ function jpegDimensions(buffer: Buffer): ImageDimensions | null {
     if (offset + 1 >= buffer.byteLength) return null;
     const length = buffer.readUInt16BE(offset);
     if (length < 2 || offset + length > buffer.byteLength) return null;
-    if (marker === 0xe1) {
-      orientation =
-        jpegExifOrientation(buffer.subarray(offset + 2, offset + length)) ?? orientation;
+    if (marker === 0xe1 && orientation === null) {
+      orientation = jpegExifOrientation(buffer.subarray(offset + 2, offset + length));
     }
     if (startOfFrameMarkers.has(marker)) {
       if (length < 7) return null;
@@ -386,7 +385,7 @@ function jpegDimensions(buffer: Buffer): ImageDimensions | null {
     offset += length;
   }
   if (!dimensions) return null;
-  return orientation >= 5 && orientation <= 8
+  return orientation !== null && orientation >= 5 && orientation <= 8
     ? { width: dimensions.height, height: dimensions.width }
     : dimensions;
 }
