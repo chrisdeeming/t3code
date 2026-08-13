@@ -312,14 +312,24 @@ function gifDimensions(buffer: Buffer): ImageDimensions | null {
   return null;
 }
 
-function jpegExifOrientation(segment: Buffer): number | null {
-  if (segment.byteLength < 14 || segment.subarray(0, 6).toString("binary") !== "Exif\0\0") {
+interface JpegExifMetadata {
+  readonly complete: boolean;
+  readonly orientation: number | null;
+}
+
+function jpegExifMetadata(segment: Buffer): JpegExifMetadata | null {
+  if (segment.byteLength <= 6 || segment.subarray(0, 5).toString("binary") !== "Exif\0") {
     return null;
   }
+  const metadataWithoutOrientation = (): JpegExifMetadata => ({
+    complete: true,
+    orientation: null,
+  });
+  if (segment.byteLength < 14) return metadataWithoutOrientation();
   const tiffOffset = 6;
-  const byteOrder = segment.subarray(tiffOffset, tiffOffset + 2).toString("ascii");
-  if (byteOrder !== "II" && byteOrder !== "MM") return null;
-  const littleEndian = byteOrder === "II";
+  const littleEndian = segment[tiffOffset] === 0x49 && segment[tiffOffset + 1] === 0x49;
+  const bigEndian = segment[tiffOffset] === 0x4d && segment[tiffOffset + 1] === 0x4d;
+  if (!littleEndian && !bigEndian) return metadataWithoutOrientation();
   const readUInt16 = (offset: number): number | null => {
     if (offset < 0 || offset + 2 > segment.byteLength) return null;
     return littleEndian ? segment.readUInt16LE(offset) : segment.readUInt16BE(offset);
@@ -328,26 +338,53 @@ function jpegExifOrientation(segment: Buffer): number | null {
     if (offset < 0 || offset + 4 > segment.byteLength) return null;
     return littleEndian ? segment.readUInt32LE(offset) : segment.readUInt32BE(offset);
   };
-  if (readUInt16(tiffOffset + 2) !== 42) return null;
   const relativeIfdOffset = readUInt32(tiffOffset + 4);
-  if (relativeIfdOffset === null) return null;
-  const ifdOffset = tiffOffset + relativeIfdOffset;
-  const entryCount = readUInt16(ifdOffset);
-  if (entryCount === null) return null;
-  for (let index = 0; index < entryCount; index += 1) {
-    const entryOffset = ifdOffset + 2 + index * 12;
-    if (entryOffset + 12 > segment.byteLength) return null;
-    if (
-      readUInt16(entryOffset) !== 0x0112 ||
-      readUInt16(entryOffset + 2) !== 3 ||
-      readUInt32(entryOffset + 4) !== 1
-    ) {
-      continue;
+  if (relativeIfdOffset === null) return metadataWithoutOrientation();
+  // Keep untrusted metadata parsing linear even when IFD pointers overlap.
+  let remainingIfdEntryVisits = Math.ceil(segment.byteLength / 12);
+  const budgetExhausted = Symbol("ifd-entry-budget-exhausted");
+  type IfdOrientation = number | null | typeof budgetExhausted;
+  const subIfdOrientationByOffset = new Map<number, number | null>();
+  const readIfdOrientation = (ifdOffset: number, isRoot: boolean): IfdOrientation => {
+    if (!isRoot && subIfdOrientationByOffset.has(ifdOffset)) {
+      return subIfdOrientationByOffset.get(ifdOffset) ?? null;
     }
-    const orientation = readUInt16(entryOffset + 8);
-    if (orientation !== null && orientation >= 1 && orientation <= 8) return orientation;
-  }
-  return null;
+    const entryCount = readUInt16(ifdOffset);
+    if (entryCount === null) return null;
+    let result: IfdOrientation = null;
+    for (let index = 0; index < entryCount; index += 1) {
+      if (remainingIfdEntryVisits === 0) return budgetExhausted;
+      remainingIfdEntryVisits -= 1;
+      const entryOffset = ifdOffset + 2 + index * 12;
+      if (entryOffset + 12 > segment.byteLength) break;
+      const tag = readUInt16(entryOffset);
+      const type = readUInt16(entryOffset + 2);
+      const count = readUInt32(entryOffset + 4);
+      if (tag === 0x0112 && type === 3 && count === 1) {
+        const orientation = readUInt16(entryOffset + 8);
+        if (orientation !== null && orientation >= 1 && orientation <= 8) {
+          result = orientation;
+          break;
+        }
+      } else if (isRoot && tag === 0x8769 && type === 4 && count === 1) {
+        const relativeSubIfdOffset = readUInt32(entryOffset + 8);
+        if (relativeSubIfdOffset !== null) {
+          const orientation = readIfdOrientation(tiffOffset + relativeSubIfdOffset, false);
+          if (orientation === budgetExhausted) return budgetExhausted;
+          if (orientation !== null) {
+            result = orientation;
+            break;
+          }
+        }
+      }
+    }
+    if (!isRoot) subIfdOrientationByOffset.set(ifdOffset, result);
+    return result;
+  };
+  const orientation = readIfdOrientation(tiffOffset + relativeIfdOffset, true);
+  return orientation === budgetExhausted
+    ? { complete: false, orientation: null }
+    : { complete: true, orientation };
 }
 
 function jpegDimensions(buffer: Buffer): ImageDimensions | null {
@@ -357,7 +394,7 @@ function jpegDimensions(buffer: Buffer): ImageDimensions | null {
   ]);
   let offset = 2;
   let dimensions: ImageDimensions | null = null;
-  let orientation: number | null = null;
+  let exifMetadata: JpegExifMetadata | null = null;
   while (offset + 3 < buffer.byteLength) {
     if (buffer[offset] !== 0xff) {
       offset += 1;
@@ -371,8 +408,8 @@ function jpegDimensions(buffer: Buffer): ImageDimensions | null {
     if (offset + 1 >= buffer.byteLength) return null;
     const length = buffer.readUInt16BE(offset);
     if (length < 2 || offset + length > buffer.byteLength) return null;
-    if (marker === 0xe1 && orientation === null) {
-      orientation = jpegExifOrientation(buffer.subarray(offset + 2, offset + length));
+    if (marker === 0xe1 && exifMetadata === null) {
+      exifMetadata = jpegExifMetadata(buffer.subarray(offset + 2, offset + length));
     }
     if (startOfFrameMarkers.has(marker)) {
       if (length < 7) return null;
@@ -385,7 +422,9 @@ function jpegDimensions(buffer: Buffer): ImageDimensions | null {
     offset += length;
   }
   if (!dimensions) return null;
-  return orientation !== null && orientation >= 5 && orientation <= 8
+  if (exifMetadata?.complete === false) return null;
+  const orientation = exifMetadata?.orientation;
+  return orientation !== undefined && orientation !== null && orientation >= 5 && orientation <= 8
     ? { width: dimensions.height, height: dimensions.width }
     : dimensions;
 }
