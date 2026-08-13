@@ -9,14 +9,17 @@ import { useMemo } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { normalizeHostname } from "~/browser/browserTargetResolver";
 import { useThreadShell } from "~/state/entities";
 import { usePreparedConnection } from "~/state/session";
 
 import {
+  BROWSER_FAVICON_MAX_ALIASES_PER_ENTRY,
   type BrowserFaviconEntry,
   canCanonicalizeFaviconWithoutEnvironment,
   evictExcessFavicons,
   faviconKey,
+  faviconStorageLocation,
   isStorableFaviconDataUrl,
   isValidFaviconCapturedAt,
   migratePersistedBrowserFaviconState,
@@ -37,7 +40,12 @@ export interface BrowserFaviconStoreState {
   pendingByThreadKey: Record<string, PendingFaviconsByOrigin>;
   /** Non-persisted fallback for draft/background threads without a hydrated shell. */
   projectRefByThreadKey: Record<string, ScopedProjectRef>;
-  recordFavicon: (key: string, dataUrl: string, capturedAt: number) => void;
+  recordFavicon: (
+    key: string,
+    dataUrl: string,
+    capturedAt: number,
+    aliases?: ReadonlyArray<string>,
+  ) => void;
 }
 
 function pendingOriginKey(pageUrl: string): string | null {
@@ -117,16 +125,31 @@ export const useBrowserFaviconStore = create<BrowserFaviconStoreState>()(
       byKey: {},
       pendingByThreadKey: {},
       projectRefByThreadKey: {},
-      recordFavicon: (key, dataUrl, capturedAt) =>
+      recordFavicon: (key, dataUrl, capturedAt, aliases = []) =>
         set((state) => {
           if (!isStorableFaviconDataUrl(dataUrl)) return state;
           if (!isValidFaviconCapturedAt(capturedAt)) return state;
           const existing = state.byKey[key];
-          if (existing && capturedAt <= existing.capturedAt) return state;
+          const aliasCandidates =
+            capturedAt > (existing?.capturedAt ?? -1)
+              ? [...aliases, ...(existing?.aliases ?? [])]
+              : [...(existing?.aliases ?? []), ...aliases];
+          const nextAliases = [...new Set(aliasCandidates)].slice(
+            0,
+            BROWSER_FAVICON_MAX_ALIASES_PER_ENTRY,
+          );
+          const aliasesUnchanged =
+            nextAliases.length === (existing?.aliases?.length ?? 0) &&
+            nextAliases.every((alias, index) => alias === existing?.aliases?.[index]);
+          if (existing && capturedAt <= existing.capturedAt && aliasesUnchanged) return state;
           return {
             byKey: evictExcessFavicons({
               ...state.byKey,
-              [key]: { dataUrl, capturedAt },
+              [key]: {
+                dataUrl: capturedAt > (existing?.capturedAt ?? -1) ? dataUrl : existing!.dataUrl,
+                capturedAt: Math.max(capturedAt, existing?.capturedAt ?? -1),
+                ...(nextAliases.length > 0 ? { aliases: nextAliases } : {}),
+              },
             }),
           };
         }),
@@ -196,11 +219,21 @@ export function recordFaviconForProject(
   if (!isStorableFaviconDataUrl(favicon.dataUrl) || !isValidFaviconCapturedAt(favicon.capturedAt)) {
     return false;
   }
-  const key = faviconKey(scopedProjectKey(projectRef), favicon.pageUrl, environmentHostname);
-  if (!key) return false;
+  const location = faviconStorageLocation(
+    scopedProjectKey(projectRef),
+    favicon.pageUrl,
+    environmentHostname,
+  );
+  if (!location) return false;
   const state = useBrowserFaviconStore.getState();
-  if (state.byKey[key] && state.byKey[key]!.capturedAt >= favicon.capturedAt) return true;
-  state.recordFavicon(key, favicon.dataUrl, favicon.capturedAt);
+  const existing = state.byKey[location.key];
+  if (
+    existing &&
+    existing.capturedAt >= favicon.capturedAt &&
+    location.aliases.every((alias) => existing.aliases?.includes(alias))
+  )
+    return true;
+  state.recordFavicon(location.key, favicon.dataUrl, favicon.capturedAt, location.aliases);
   return true;
 }
 
@@ -286,7 +319,17 @@ export function lookupFavicon(
   const key = projectRef
     ? faviconKey(scopedProjectKey(projectRef), url, environmentHostname)
     : null;
-  return key ? (byKey[key]?.dataUrl ?? null) : null;
+  if (!key) return null;
+  const direct = byKey[key];
+  if (direct) return direct.dataUrl;
+  try {
+    const requestedHost = normalizeHostname(new URL(url).hostname);
+    const localKey = faviconKey(scopedProjectKey(projectRef!), url, requestedHost);
+    const localEntry = localKey ? byKey[localKey] : null;
+    return localEntry?.aliases?.includes(requestedHost) ? localEntry.dataUrl : null;
+  } catch {
+    return null;
+  }
 }
 
 export function resetBrowserFaviconsForTests(): void {

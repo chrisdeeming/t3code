@@ -74,15 +74,22 @@ export async function captureFavicon(input: {
 }): Promise<FaviconCaptureResult> {
   const pageOrigin = safeHttpOrigin(input.pageUrl);
   if (!pageOrigin) return { kind: "none" };
+  const captureTimeout = AbortSignal.timeout(FAVICON_CAPTURE_TIMEOUT_MS);
+  const captureSignal = AbortSignal.any([input.signal, captureTimeout]);
 
   for (const candidate of selectFaviconCandidates(input.candidates)) {
-    if (input.signal.aborted) return { kind: "none" };
+    if (captureSignal.aborted) {
+      return input.signal.aborted ? { kind: "none" } : { kind: "timed-out" };
+    }
     const captured = await captureCandidate({
       webContents: input.webContents,
       pageOrigin,
       candidate,
-      signal: input.signal,
+      signal: captureSignal,
     });
+    if (captureSignal.aborted) {
+      return input.signal.aborted ? { kind: "none" } : { kind: "timed-out" };
+    }
     if (captured.kind === "captured" || captured.kind === "timed-out") return captured;
   }
 
@@ -111,13 +118,13 @@ async function captureCandidate(input: {
     const response = await input.webContents.session.fetch(input.candidate, {
       credentials: candidateOrigin === input.pageOrigin ? "include" : "omit",
       redirect: "error",
-      signal: AbortSignal.any([input.signal, AbortSignal.timeout(FAVICON_CAPTURE_TIMEOUT_MS)]),
+      signal: input.signal,
     });
     if (!response.ok) {
       await response.body?.cancel();
       return { kind: "none" };
     }
-    const buffer = await readFaviconResponse(response);
+    const buffer = await readFaviconResponse(response, input.signal);
     if (!buffer || input.signal.aborted) return { kind: "none" };
     const mime = response.headers.get("content-type")?.split(";", 1)[0] ?? null;
     return await normalizeFaviconBuffer(input.webContents, mime, buffer, input.signal);
@@ -126,7 +133,10 @@ async function captureCandidate(input: {
   }
 }
 
-async function readFaviconResponse(response: Response): Promise<Buffer | null> {
+async function readFaviconResponse(
+  response: Response,
+  signal: AbortSignal,
+): Promise<Buffer | null> {
   const contentLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(contentLength) && contentLength > MAX_FAVICON_RESPONSE_BYTES) {
     await response.body?.cancel();
@@ -138,6 +148,11 @@ async function readFaviconResponse(response: Response): Promise<Buffer | null> {
   }
 
   const reader = response.body.getReader();
+  const cancelForAbort = () => {
+    void reader.cancel(signal.reason).catch(() => undefined);
+  };
+  signal.addEventListener("abort", cancelForAbort, { once: true });
+  if (signal.aborted) cancelForAbort();
   const chunks: Buffer[] = [];
   let byteLength = 0;
   try {
@@ -152,6 +167,7 @@ async function readFaviconResponse(response: Response): Promise<Buffer | null> {
       chunks.push(Buffer.from(next.value));
     }
   } finally {
+    signal.removeEventListener("abort", cancelForAbort);
     reader.releaseLock();
   }
 }
@@ -623,20 +639,31 @@ async function rasterizeFavicon(
     // Electron cannot cancel isolated-world execution. This timeout ends only
     // the logical attempt; renderer work may finish after a newer attempt starts.
     const timeout = AbortSignal.timeout(FAVICON_RASTER_TIMEOUT_MS);
+    let settled = false;
+    const finish = (complete: () => void) => {
+      if (settled) return;
+      settled = true;
+      timeout.removeEventListener("abort", onTimeout);
+      signal.removeEventListener("abort", onAbort);
+      complete();
+    };
     const onTimeout = () => {
-      resolve({ kind: "timed-out" });
+      finish(() => resolve({ kind: "timed-out" }));
+    };
+    const onAbort = () => {
+      finish(() => resolve({ kind: "completed", value: null }));
     };
     timeout.addEventListener("abort", onTimeout, { once: true });
+    signal.addEventListener("abort", onAbort, { once: true });
     void execution.then(
       (value) => {
-        timeout.removeEventListener("abort", onTimeout);
-        resolve({ kind: "completed", value });
+        finish(() => resolve({ kind: "completed", value }));
       },
       (cause: unknown) => {
-        timeout.removeEventListener("abort", onTimeout);
-        reject(cause);
+        finish(() => reject(cause));
       },
     );
+    if (signal.aborted) onAbort();
   });
   // The logical timeout does not cancel Electron's renderer work. Keep the
   // gate closed until that physical execution actually settles.

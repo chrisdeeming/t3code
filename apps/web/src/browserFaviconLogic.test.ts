@@ -5,6 +5,7 @@ import {
   type BrowserFaviconEntry,
   evictExcessFavicons,
   faviconKey,
+  faviconStorageLocation,
   isStorableFaviconDataUrl,
   migratePersistedBrowserFaviconState,
 } from "./browserFaviconLogic";
@@ -37,6 +38,32 @@ describe("browser favicon logic", () => {
     expect(faviconKey("env:a", "not a url", null)).toBeNull();
     expect(faviconKey("env:a", "ftp://example.com/", null)).toBeNull();
     expect(faviconKey("", "http://localhost/", null)).toBeNull();
+    expect(faviconKey("env:a", "http://local:3000/", null)).not.toBe(
+      faviconKey("env:a", "http://localhost:3000/", null),
+    );
+  });
+
+  it("retains an exact environment-host alias for offline lookup", () => {
+    const expected = {
+      aliases: ["192.168.64.2"],
+      key: "env:project http://localhost:3000",
+    };
+    expect(
+      faviconStorageLocation("env:project", "http://localhost:3000/app", "192.168.64.2"),
+    ).toEqual(expected);
+    expect(
+      faviconStorageLocation("env:project", "http://192.168.64.2:3000/app", "192.168.64.2"),
+    ).toEqual(expected);
+    expect(
+      faviconStorageLocation("env:project", "https://example.com/app", "192.168.64.2"),
+    ).toEqual({ aliases: [], key: "env:project https://example.com:443" });
+    expect(faviconStorageLocation("env:project", "http://localhost:3000/app", "fd00::1")).toEqual({
+      aliases: ["fd00::1"],
+      key: "env:project http://localhost:3000",
+    });
+    expect(faviconKey("env:project", "http://[2001:4860:4860::8888]/", null)).toBe(
+      "env:project http://[2001:4860:4860::8888]:80",
+    );
   });
 
   it("accepts only bounded base64 PNG data", () => {
@@ -61,14 +88,37 @@ describe("browser favicon logic", () => {
     expect(
       migratePersistedBrowserFaviconState({
         byKey: {
-          "env:project http://local:3000": entry(5),
-          "env:project http://local:3001": {
+          "env:project http://local:3000": entry(4),
+          "env:project http://localhost:3000": entry(5),
+          "env:project http://localhost:3003": {
+            ...entry(6),
+            aliases: [
+              "192.168.64.2",
+              "192.168.64.2",
+              "192.168.64.3",
+              "192.168.64.4",
+              "192.168.64.5",
+              "192.168.64.6",
+              "Not Normalized",
+              "not a host/",
+              "x".repeat(5_000),
+            ],
+          },
+          "env:project http://localhost:3001": {
             dataUrl: "https://example.com/icon.png",
             capturedAt: 6,
           },
-          "env:project http://local:3002": { dataUrl: PNG, capturedAt: Number.NaN },
+          "env:project http://localhost:3002": { dataUrl: PNG, capturedAt: Number.NaN },
         },
       }),
-    ).toEqual({ byKey: { "env:project http://local:3000": entry(5) } });
+    ).toEqual({
+      byKey: {
+        "env:project http://localhost:3000": entry(5),
+        "env:project http://localhost:3003": {
+          ...entry(6),
+          aliases: ["192.168.64.2", "192.168.64.3", "192.168.64.4", "192.168.64.5"],
+        },
+      },
+    });
   });
 });

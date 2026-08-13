@@ -489,6 +489,102 @@ describe("captureFavicon", () => {
     expect(await capture).toEqual({ kind: "none" });
   });
 
+  it("ends candidate fallback when the overall capture deadline expires", async () => {
+    const timeoutController = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutController.signal);
+    const { webContents, fetch } = makeWebContents({
+      fetch: (url, init) => {
+        if (url.endsWith("first.png")) return Promise.resolve(new Response(null, { status: 404 }));
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+            once: true,
+          });
+        });
+      },
+    });
+    try {
+      const capture = captureFavicon({
+        webContents,
+        pageUrl: "https://example.com/page",
+        candidates: [
+          "https://example.com/first.png",
+          "https://example.com/second.png",
+          "https://example.com/third.png",
+        ],
+        signal: new AbortController().signal,
+      });
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+      timeoutController.abort(new DOMException("capture timed out", "TimeoutError"));
+
+      expect(await capture).toEqual({ kind: "timed-out" });
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(timeout).toHaveBeenCalledOnce();
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
+  it("does not publish a rasterization that completes after the capture deadline", async () => {
+    const captureTimeoutController = new AbortController();
+    const rasterTimeoutController = new AbortController();
+    const timeout = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation((milliseconds) =>
+        milliseconds === 5_000 ? captureTimeoutController.signal : rasterTimeoutController.signal,
+      );
+    let resolveRasterization!: (value: unknown) => void;
+    const { webContents, executeJavaScriptInIsolatedWorld } = makeWebContents({
+      rasterize: () =>
+        new Promise((resolve) => {
+          resolveRasterization = resolve;
+        }),
+    });
+    try {
+      const capture = captureFavicon({
+        webContents,
+        pageUrl: "https://example.com/page",
+        candidates: [SOURCE_PNG_URL],
+        signal: new AbortController().signal,
+      });
+      await vi.waitFor(() => expect(executeJavaScriptInIsolatedWorld).toHaveBeenCalledOnce());
+      captureTimeoutController.abort(new DOMException("capture timed out", "TimeoutError"));
+
+      expect(await capture).toEqual({ kind: "timed-out" });
+      resolveRasterization(PNG);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
+  it("cancels a stalled response body when the capture deadline expires", async () => {
+    const timeoutController = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutController.signal);
+    const cancel = vi.fn();
+    const { webContents } = makeWebContents({
+      fetch: async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            cancel,
+          }),
+          { headers: { "content-type": "image/png" } },
+        ),
+    });
+    try {
+      const capture = captureFavicon({
+        webContents,
+        pageUrl: "https://example.com/page",
+        candidates: ["https://example.com/favicon.png"],
+        signal: new AbortController().signal,
+      });
+      timeoutController.abort(new DOMException("capture timed out", "TimeoutError"));
+
+      expect(await capture).toEqual({ kind: "timed-out" });
+      expect(cancel).toHaveBeenCalledOnce();
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
   it("rejects and cancels an oversized streamed response", async () => {
     const cancel = vi.fn();
     const body = new ReadableStream<Uint8Array>({
