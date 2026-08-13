@@ -90,6 +90,13 @@ function makeUnsafePng(): Buffer {
   return buffer;
 }
 
+function sourcePng(width: number, height: number): Buffer {
+  const buffer = Buffer.from(SOURCE_PNG);
+  buffer.writeUInt32BE(width, 16);
+  buffer.writeUInt32BE(height, 20);
+  return buffer;
+}
+
 function makeUnsafeDib(): Buffer {
   const buffer = Buffer.alloc(40);
   buffer.writeUInt32LE(40, 0);
@@ -316,12 +323,28 @@ describe("captureFavicon", () => {
     expect(executeJavaScriptInIsolatedWorld).toHaveBeenCalledTimes(4);
   });
 
-  it("requests a 32x32 bitmap decode before drawing the normalized icon", async () => {
+  it.each([
+    {
+      label: "landscape",
+      source: sourcePng(64, 32),
+      resizeWidth: 32,
+      resizeHeight: 16,
+      draw: "context.drawImage(bitmap, 0, 8, 32, 16)",
+    },
+    {
+      label: "portrait",
+      source: sourcePng(32, 64),
+      resizeWidth: 16,
+      resizeHeight: 32,
+      draw: "context.drawImage(bitmap, 8, 0, 16, 32)",
+    },
+  ])("preserves $label aspect ratio within the 32x32 output", async (testCase) => {
     const { webContents } = makeWebContents({
       rasterize: async (code) => {
-        expect(code).toContain("resizeWidth: 32");
-        expect(code).toContain("resizeHeight: 32");
+        expect(code).toContain(`resizeWidth: ${testCase.resizeWidth}`);
+        expect(code).toContain(`resizeHeight: ${testCase.resizeHeight}`);
         expect(code).toContain('resizeQuality: "high"');
+        expect(code).toContain(testCase.draw);
         return PNG;
       },
     });
@@ -330,7 +353,7 @@ describe("captureFavicon", () => {
       await captureFavicon({
         webContents,
         pageUrl: "https://example.com/page",
-        candidates: [SOURCE_PNG_URL],
+        candidates: [`data:image/png;base64,${testCase.source.toString("base64")}`],
         signal: new AbortController().signal,
       }),
     ).toEqual({ kind: "captured", dataUrl: PNG });

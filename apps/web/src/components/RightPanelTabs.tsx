@@ -18,6 +18,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useState,
 } from "react";
 
 import { isElectron } from "~/env";

@@ -230,7 +230,7 @@ interface ImageDimensions {
   readonly height: number;
 }
 
-function safeDimensions(dimensions: ImageDimensions | null): boolean {
+function safeDimensions(dimensions: ImageDimensions | null): dimensions is ImageDimensions {
   return (
     dimensions !== null &&
     Number.isSafeInteger(dimensions.width) &&
@@ -442,16 +442,23 @@ async function normalizeFaviconBuffer(
       : declaredMime === "application/octet-stream" || declaredMime === "binary/octet-stream"
         ? null
         : declaredMime;
+  const dimensions = sourceDimensions(buffer);
   if (
     (normalizedMime !== null && !/^image\/[a-z0-9.+-]+$/i.test(normalizedMime)) ||
     normalizedMime === "image/svg+xml" ||
     buffer.byteLength > MAX_FAVICON_RESPONSE_BYTES ||
-    !safeDimensions(sourceDimensions(buffer))
+    !safeDimensions(dimensions)
   ) {
     return { kind: "none" };
   }
 
-  const rasterized = await rasterizeFavicon(webContents, normalizedMime, buffer, signal);
+  const rasterized = await rasterizeFavicon(
+    webContents,
+    normalizedMime,
+    buffer,
+    dimensions,
+    signal,
+  );
   if (rasterized.kind === "timed-out") return rasterized;
   return typeof rasterized.value === "string" &&
     rasterized.value.startsWith("data:image/png;base64,") &&
@@ -464,6 +471,7 @@ async function rasterizeFavicon(
   webContents: Electron.WebContents,
   mime: string | null,
   buffer: Buffer,
+  dimensions: ImageDimensions,
   signal: AbortSignal,
 ): Promise<RasterizationResult> {
   const gate = rasterizationGates.get(webContents) ?? { generation: 0 };
@@ -479,14 +487,19 @@ async function rasterizeFavicon(
 
   const payload = buffer.toString("base64");
   const blobType = mime ?? "";
+  const scale = Math.min(32 / dimensions.width, 32 / dimensions.height);
+  const decodeWidth = Math.max(1, Math.round(dimensions.width * scale));
+  const decodeHeight = Math.max(1, Math.round(dimensions.height * scale));
+  const drawX = (32 - decodeWidth) / 2;
+  const drawY = (32 - decodeHeight) / 2;
   const code = `
     (() => {
       const rasterize = async () => {
         try {
           const source = Uint8Array.from(atob("${payload}"), (char) => char.charCodeAt(0));
           const bitmap = await createImageBitmap(new Blob([source], { type: "${blobType}" }), {
-            resizeWidth: 32,
-            resizeHeight: 32,
+            resizeWidth: ${decodeWidth},
+            resizeHeight: ${decodeHeight},
             resizeQuality: "high",
           });
           try {
@@ -496,7 +509,7 @@ async function rasterizeFavicon(
             const canvas = new OffscreenCanvas(32, 32);
             const context = canvas.getContext("2d");
             if (!context) return null;
-            context.drawImage(bitmap, 0, 0, 32, 32);
+            context.drawImage(bitmap, ${drawX}, ${drawY}, ${decodeWidth}, ${decodeHeight});
             const blob = await canvas.convertToBlob({ type: "image/png" });
             const output = new Uint8Array(await blob.arrayBuffer());
             let binary = "";
