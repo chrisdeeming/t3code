@@ -449,6 +449,14 @@ function PreviewFavicon({ capturedUrl, url }: { capturedUrl: string | null; url:
   );
 }
 
+function sameOrigin(left: string, right: string): boolean {
+  try {
+    return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
+}
+
 function SurfaceIcon({
   surface,
   sessions,
@@ -466,9 +474,9 @@ function SurfaceIcon({
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       const url = !snapshot || snapshot.navStatus._tag === "Idle" ? null : snapshot.navStatus.url;
-      const capturedUrl = snapshot
-        ? (desktopByTabId[snapshot.tabId]?.favicon?.dataUrl ?? null)
-        : null;
+      const favicon = snapshot ? (desktopByTabId[snapshot.tabId]?.favicon ?? null) : null;
+      const capturedUrl =
+        favicon && url && sameOrigin(favicon.pageUrl, url) ? favicon.dataUrl : null;
       return <PreviewFavicon capturedUrl={capturedUrl} url={url} />;
     }
     case "diff":

@@ -107,4 +107,9 @@ describe("RightPanelTabs preview favicon", () => {
     expect(html).toContain("data:image/png;base64,AAAA");
     expect(html).toContain("data:image/png;base64,BBBB");
   });
+
+  it("hides a capture while the server session still describes another origin", () => {
+    const html = renderTabs(favicon("data:image/png;base64,AAAA", "https://example.com/"));
+    expect(html).not.toContain("data:image/png;base64,AAAA");
+  });
 });

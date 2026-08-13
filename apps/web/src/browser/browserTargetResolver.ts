@@ -131,7 +131,10 @@ export const isPublicFaviconHost = (host: string): boolean => {
   if (!normalized.includes(":")) return true;
   const ipv6 = parseIpv6Address(normalized);
   if (!ipv6) return false;
-  if (ipv6PrefixMatches(ipv6, [0x0064, 0xff9b, 0, 0, 0, 0, 0, 0], 96)) return true;
+  if (ipv6PrefixMatches(ipv6, [0x0064, 0xff9b, 0, 0, 0, 0, 0, 0], 96)) {
+    const embeddedIpv4 = [ipv6[6]! >>> 8, ipv6[6]! & 0xff, ipv6[7]! >>> 8, ipv6[7]! & 0xff];
+    return !isSpecialPurposeIpv4Address(embeddedIpv4);
+  }
   const first = ipv6[0]!;
   if ((first & 0xe000) !== 0x2000) return false;
   if (ipv6PrefixMatches(ipv6, [0x2001, 0, 0, 0, 0, 0, 0, 0], 23)) {
