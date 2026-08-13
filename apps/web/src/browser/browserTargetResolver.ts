@@ -11,7 +11,7 @@ export const normalizeHostname = (host: string): string =>
   host
     .toLowerCase()
     .replace(/^\[|\]$/g, "")
-    .replace(/\.$/u, "");
+    .replace(/\.+$/u, "");
 
 const parseIpv4Address = (host: string): readonly number[] | null => {
   const parts = normalizeHostname(host).split(".").map(Number);
@@ -117,6 +117,9 @@ export const isPrivateNetworkHost = (host: string): boolean => {
 
 /** Whether a hostname is eligible to be disclosed to a public favicon provider. */
 export const isPublicFaviconHost = (host: string): boolean => {
+  // A single trailing dot is a valid absolute DNS name. Repeated trailing
+  // dots are malformed and can conceal legacy numeric forms such as 127.1.
+  if (host.endsWith("..")) return false;
   const normalized = normalizeHostname(host);
   if (isPrivateNetworkHost(normalized)) return false;
   if (

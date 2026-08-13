@@ -205,10 +205,15 @@ describe("browser target resolver", () => {
       "febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
       "::ffff:192.168.1.1",
       "localhost.",
+      "localhost..",
       "devbox.",
+      "devbox..",
       "printer.local.",
+      "printer.local..",
       "printer.home.arpa.",
+      "printer.home.arpa..",
       "devbox.example.ts.net.",
+      "devbox.example.ts.net..",
     ];
     const publicHosts = [
       "1.0.0.0",
@@ -269,6 +274,15 @@ describe("browser target resolver", () => {
       "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
       "::ffff:192.0.2.1",
       "app.test",
+      "app.test..",
+      "printer.local..",
+      "printer.home.arpa..",
+      "devbox.example.ts.net..",
+      "127.0.0.1..",
+      "127.1..",
+      "10.1..",
+      "172.16.1..",
+      "192.168.1..",
       "service.internal",
       "hidden.onion",
     ];
@@ -292,6 +306,7 @@ describe("browser target resolver", () => {
       "2001:30::1",
       "::ffff:8.8.8.8",
       "example.com",
+      "example.com.",
     ];
     expect(nonPublic.filter(isPublicFaviconHost)).toEqual([]);
     expect(publicHosts.filter((host) => !isPublicFaviconHost(host))).toEqual([]);

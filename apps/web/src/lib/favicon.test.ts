@@ -23,6 +23,15 @@ describe("faviconUrlForOrigin", () => {
       "http://240.0.0.1/",
       "http://[2001:db8::1]/",
       "http://[ff02::1]/",
+      "http://app.test../",
+      "https://24x.xf.local../",
+      "http://printer.home.arpa../",
+      "https://devbox.example.ts.net../",
+      "http://127.0.0.1../",
+      "http://127.1../",
+      "http://10.1../",
+      "http://172.16.1../",
+      "http://192.168.1../",
     ]) {
       expect(faviconUrlForOrigin(url)).toBeNull();
     }
