@@ -3,10 +3,10 @@ import { Platform, Switch, type SwitchProps } from "react-native";
 import { useThemeColor } from "../lib/useThemeColor";
 
 export function ThemedSwitch(props: SwitchProps) {
-  const activeTrack = String(useThemeColor("--color-switch-active"));
-  const inactiveTrack = String(useThemeColor("--color-secondary-border"));
-  const activeThumb = String(useThemeColor("--color-primary-foreground"));
-  const inactiveThumb = String(useThemeColor("--color-foreground-muted"));
+  const activeTrack = String(useThemeColor("--color-switch-active-track"));
+  const inactiveTrack = String(useThemeColor("--color-switch-inactive-track"));
+  const activeThumb = String(useThemeColor("--color-switch-active-thumb"));
+  const inactiveThumb = String(useThemeColor("--color-switch-inactive-thumb"));
 
   return (
     <Switch

@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
+import { BUILT_IN_THEMES, getThemeColorsForAppearance } from "@t3tools/shared/themePalettes";
+
+import { themeColorToNativeColor } from "../../lib/mobileTheme";
 
 import {
   buildGhosttyThemeConfig,
@@ -40,6 +43,16 @@ describe("getMobileTerminalTheme", () => {
     expect(ocean.background).not.toBe(standard.background);
     expect(ocean.cursorForeground).not.toBe(standard.cursorForeground);
     expect(ocean.palette).toEqual(standard.palette);
+  });
+
+  it("uses the canonical desktop terminal roles for built-in themes", () => {
+    const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === "ocean")!;
+    const colors = getThemeColorsForAppearance(theme, "dark")!;
+    const terminal = getMobileTerminalTheme("ocean", "dark");
+
+    expect(terminal.background).toBe(themeColorToNativeColor(colors.terminalBackground));
+    expect(terminal.foreground).toBe(themeColorToNativeColor(colors.terminalForeground));
+    expect(terminal.cursorForeground).toBe(themeColorToNativeColor(colors.terminalCursor));
   });
 });
 

@@ -119,17 +119,17 @@ function ThemeCard(props: {
   return (
     <Pressable
       accessibilityLabel={`${props.label} theme`}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: props.disabled, selected: props.selected }}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: props.selected, disabled: props.disabled }}
       className={
         props.selected
-          ? "min-w-36 flex-1 basis-[47%] gap-3 rounded-[24px] border-2 border-primary bg-subtle p-4"
-          : "min-w-36 flex-1 basis-[47%] gap-3 rounded-[24px] border border-border bg-card p-4"
+          ? "min-w-36 flex-1 basis-[47%] gap-3 rounded-[24px] border-2 border-primary bg-subtle px-2 py-4"
+          : "min-w-36 flex-1 basis-[47%] gap-3 rounded-[24px] border border-border bg-card px-2 py-4"
       }
       disabled={props.disabled}
       onPress={props.onPress}
     >
-      <View className="flex-row items-center justify-center gap-3 py-1">
+      <View className="flex-row items-center justify-center gap-2 py-1">
         <PreviewOrb appearance="light" themeId={props.themeId} />
         <PreviewOrb appearance="dark" themeId={props.themeId} />
       </View>
@@ -263,12 +263,12 @@ function ModeCard(props: {
   return (
     <Pressable
       accessibilityLabel={`${props.label} appearance`}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: props.disabled, selected: props.selected }}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: props.selected, disabled: props.disabled }}
       className={
         props.selected
-          ? "min-w-24 flex-1 gap-2 rounded-[24px] border-2 border-primary bg-subtle p-2"
-          : "min-w-24 flex-1 gap-2 rounded-[24px] border border-border bg-card p-2"
+          ? "min-w-0 flex-1 gap-2 rounded-[24px] border-2 border-primary bg-subtle p-2"
+          : "min-w-0 flex-1 gap-2 rounded-[24px] border border-border bg-card p-2"
       }
       disabled={props.disabled}
       onPress={props.onPress}

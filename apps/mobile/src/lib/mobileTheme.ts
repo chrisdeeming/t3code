@@ -87,6 +87,69 @@ function withAlpha(color: string, alpha: number): string {
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
+function rgbChannels(color: string): readonly [number, number, number] | null {
+  const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(color);
+  return match
+    ? [Number.parseInt(match[1], 16), Number.parseInt(match[2], 16), Number.parseInt(match[3], 16)]
+    : null;
+}
+
+function relativeLuminance(channels: readonly [number, number, number]): number {
+  const [red, green, blue] = channels.map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red! + 0.7152 * green! + 0.0722 * blue!;
+}
+
+function contrastRatio(
+  first: readonly [number, number, number],
+  second: readonly [number, number, number],
+): number {
+  const firstLuminance = relativeLuminance(first);
+  const secondLuminance = relativeLuminance(second);
+  return (
+    (Math.max(firstLuminance, secondLuminance) + 0.05) /
+    (Math.min(firstLuminance, secondLuminance) + 0.05)
+  );
+}
+
+/** Preserve the theme's action hue while making it readable as skill text on a message bubble. */
+function readableMessageAccent(accent: string, surface: string): string {
+  const accentChannels = rgbChannels(accent);
+  const surfaceChannels = rgbChannels(surface);
+  if (
+    !accentChannels ||
+    !surfaceChannels ||
+    contrastRatio(accentChannels, surfaceChannels) >= 4.5
+  ) {
+    return accent;
+  }
+
+  const black = [0, 0, 0] as const;
+  const white = [255, 255, 255] as const;
+  const target =
+    contrastRatio(black, surfaceChannels) >= contrastRatio(white, surfaceChannels) ? black : white;
+  let readable: readonly [number, number, number] = target;
+  let lowerAmount = 0;
+  let upperAmount = 1;
+  for (let index = 0; index < 12; index += 1) {
+    const amount = (lowerAmount + upperAmount) / 2;
+    const candidate: readonly [number, number, number] = [
+      Math.round(accentChannels[0] + (target[0] - accentChannels[0]) * amount),
+      Math.round(accentChannels[1] + (target[1] - accentChannels[1]) * amount),
+      Math.round(accentChannels[2] + (target[2] - accentChannels[2]) * amount),
+    ];
+    if (contrastRatio(candidate, surfaceChannels) >= 4.5) {
+      readable = candidate;
+      upperAmount = amount;
+    } else {
+      lowerAmount = amount;
+    }
+  }
+  return `#${readable.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
 export function themeColorWithAlpha(color: string, alpha: number): string {
   const hex = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(color);
   if (hex) {
@@ -96,11 +159,15 @@ export function themeColorWithAlpha(color: string, alpha: number): string {
   return rgb ? `rgba(${rgb[1]}, ${rgb[2]}, ${rgb[3]}, ${alpha})` : color;
 }
 
-export function createMobileThemeVariables(colors: ThemeColors): MobileThemeVariables {
+export function createMobileThemeVariables(
+  colors: ThemeColors,
+  appearance: MobileThemeAppearance,
+): MobileThemeVariables {
   const c = nativeColors(colors);
   return {
     "--color-screen": c.canvas,
     "--color-sheet": withAlpha(c.chrome, 0.98),
+    "--color-sheet-solid": c.chrome,
     "--color-card": c.surfaceRaised,
     "--color-card-alt": c.surface,
     "--color-card-translucent": withAlpha(c.surfaceRaised, 0.8),
@@ -118,16 +185,19 @@ export function createMobileThemeVariables(colors: ThemeColors): MobileThemeVari
     "--color-inline-skill-foreground": c.accentSurfaceForeground,
     "--color-primary": c.accent,
     "--color-primary-foreground": c.accentForeground,
-    "--color-primary-shadow": withAlpha(c.text, 0.2),
+    "--color-primary-shadow": "#000000",
     "--color-secondary": c.secondary,
     "--color-secondary-foreground": c.secondaryForeground,
     "--color-secondary-border": c.border,
-    "--color-switch-active": c.accent,
+    "--color-switch-active-track": c.accent,
+    "--color-switch-active-thumb": c.accentForeground,
+    "--color-switch-inactive-track": c.secondary,
+    "--color-switch-inactive-thumb": c.mutedForeground,
     "--color-danger": c.errorSurface,
     "--color-danger-border": withAlpha(c.error, 0.32),
     "--color-danger-foreground": c.errorForeground,
-    "--color-input": c.input,
-    "--color-input-border": c.border,
+    "--color-input": c.surfaceRaised,
+    "--color-input-border": c.input,
     "--color-sidebar-search": c.sidebarControlSurface,
     "--color-placeholder": c.placeholder,
     "--color-icon": c.text,
@@ -147,16 +217,19 @@ export function createMobileThemeVariables(colors: ThemeColors): MobileThemeVari
     "--color-md-code-text": c.codeForeground,
     "--color-md-user-code-bg": withAlpha(c.messageForeground, 0.18),
     "--color-md-user-code-text": c.messageForeground,
-    "--color-md-user-fence-bg": withAlpha(c.codeBackground, 0.72),
+    "--color-md-user-fence-bg": withAlpha("#000000", appearance === "dark" ? 0.28 : 0.16),
     "--color-md-user-fence-text": c.messageForeground,
     "--color-md-hr": c.border,
     "--color-user-bubble": c.messageSurface,
     "--color-user-bubble-foreground": c.messageForeground,
     "--color-user-bubble-foreground-muted": withAlpha(c.messageForeground, 0.78),
-    "--color-user-bubble-skill-foreground": c.accentSurfaceForeground,
-    "--color-backdrop": withAlpha(c.text, 0.32),
+    "--color-user-bubble-skill-foreground": readableMessageAccent(
+      c.messageAction,
+      c.messageSurface,
+    ),
+    "--color-backdrop": withAlpha("#000000", appearance === "dark" ? 0.48 : 0.22),
     "--color-drawer": withAlpha(c.sidebar, 0.99),
-    "--color-drawer-shadow": withAlpha(c.text, 0.2),
+    "--color-drawer-shadow": withAlpha("#000000", appearance === "dark" ? 0.32 : 0.12),
     "--color-dot-separator": withAlpha(c.textMuted, 0.35),
     "--color-wordmark": c.text,
     "--color-chevron": withAlpha(c.textMuted, 0.42),
@@ -166,11 +239,18 @@ export function createMobileThemeVariables(colors: ThemeColors): MobileThemeVari
 export function getMobileThemeVariables(
   themeId: MobileThemeId,
   appearance: MobileThemeAppearance,
+  overrides: Partial<MobileThemeVariables> | null = null,
 ): MobileThemeVariables {
-  if (themeId === DEFAULT_MOBILE_THEME_ID) return DEFAULT_MOBILE_THEME_VARIABLES[appearance];
-  const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === themeId) ?? BUILT_IN_THEMES[0];
-  const colors = getThemeColorsForAppearance(theme, appearance) ?? theme.colors;
-  return createMobileThemeVariables(colors);
+  const baseVariables = (() => {
+    if (themeId === DEFAULT_MOBILE_THEME_ID) return DEFAULT_MOBILE_THEME_VARIABLES[appearance];
+    const theme =
+      BUILT_IN_THEMES.find((candidate) => candidate.id === themeId) ?? BUILT_IN_THEMES[0];
+    const colors = getThemeColorsForAppearance(theme, appearance) ?? theme.colors;
+    return createMobileThemeVariables(colors, appearance);
+  })();
+
+  // The complete base record guarantees that optional overrides cannot leave a token undefined.
+  return overrides ? ({ ...baseVariables, ...overrides } as MobileThemeVariables) : baseVariables;
 }
 
 export function getMobileThemePreviewColors(

@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import type { NativeSyntheticEvent } from "react-native";
 
-import { type NativeReviewDiffHighlightScheme } from "../diffs/nativeReviewDiffHighlighter";
 import { createNativeReviewDiffTheme, type NativeReviewDiffData } from "./nativeReviewDiffAdapter";
 import { useAppearanceCodeSurface } from "../settings/appearance/useAppearanceCodeSurface";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
@@ -15,7 +14,6 @@ export function useNativeReviewDiffBridge(input: {
   readonly sectionId: string | null;
   readonly diff: string | null | undefined;
   readonly data: NativeReviewDiffData;
-  readonly scheme: NativeReviewDiffHighlightScheme;
   readonly collapsedFileIds: ReadonlyArray<string>;
   readonly viewedFileIds: ReadonlyArray<string>;
   readonly selectedRowIds: ReadonlyArray<string>;
@@ -26,14 +24,13 @@ export function useNativeReviewDiffBridge(input: {
     collapsedFileIds,
     data,
     diff,
-    scheme,
     sectionId,
     selectedRowIds,
     threadKey,
     viewedFileIds,
   } = input;
   const { nativeReviewDiffStyle } = useAppearanceCodeSurface();
-  const { themeId } = useAppearancePreferences();
+  const { themeAppearance: scheme, themeId } = useAppearancePreferences();
   const [collapsedCommentIds, setCollapsedCommentIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );

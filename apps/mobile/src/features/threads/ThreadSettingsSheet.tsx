@@ -1125,7 +1125,7 @@ function ThreadSettingsChoiceScreen() {
 }
 
 function ThreadSettingsPickerNavigator(props: ThreadSettingsPickerPresentation) {
-  const sheetBackground = String(useThemeColor("--color-sheet"));
+  const solidSheetBackground = String(useThemeColor("--color-sheet-solid"));
   const foreground = String(useThemeColor("--color-foreground"));
   const presentation = useMemo(
     () => ({
@@ -1140,13 +1140,13 @@ function ThreadSettingsPickerNavigator(props: ThreadSettingsPickerPresentation) 
         initialRouteName="ThreadSettingsModels"
         screenOptions={{
           animation: "slide_from_right",
-          contentStyle: { backgroundColor: sheetBackground },
+          contentStyle: { backgroundColor: solidSheetBackground },
           gestureEnabled: true,
           headerBackButtonDisplayMode: "minimal",
           headerBackTitle: "",
           headerShadowVisible: false,
           headerStyle: {
-            backgroundColor: NATIVE_LIQUID_GLASS_SUPPORTED ? "transparent" : sheetBackground,
+            backgroundColor: NATIVE_LIQUID_GLASS_SUPPORTED ? "transparent" : solidSheetBackground,
           },
           headerTransparent: NATIVE_LIQUID_GLASS_SUPPORTED,
           headerTintColor: foreground,

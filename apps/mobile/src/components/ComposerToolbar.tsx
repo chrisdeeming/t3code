@@ -3,7 +3,6 @@ import { useCallback, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
-  useColorScheme,
   View,
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -13,6 +12,7 @@ import {
 } from "react-native";
 
 import { useThemeColor } from "../lib/useThemeColor";
+import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { themeColorWithAlpha } from "../lib/mobileTheme";
 import { cn } from "../lib/cn";
 import { AppText as Text } from "./AppText";
@@ -214,7 +214,8 @@ export function ComposerToolbarButton(props: {
   readonly className?: string;
   readonly style?: StyleProp<ViewStyle>;
 }) {
-  const isDarkMode = useColorScheme() === "dark";
+  const { themeAppearance } = useAppearancePreferences();
+  const isDarkMode = themeAppearance === "dark";
   const iconColor = useThemeColor("--color-icon");
   const iconSubtle = useThemeColor("--color-icon-subtle");
   const primaryFg = useThemeColor("--color-primary-foreground");

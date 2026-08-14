@@ -1,4 +1,10 @@
-import { getMobileThemeVariables, type MobileThemeId } from "../../lib/mobileTheme";
+import { BUILT_IN_THEMES, getThemeColorsForAppearance } from "@t3tools/shared/themePalettes";
+
+import {
+  getMobileThemeVariables,
+  themeColorToNativeColor,
+  type MobileThemeId,
+} from "../../lib/mobileTheme";
 
 export type TerminalAppearanceScheme = "light" | "dark";
 
@@ -79,15 +85,18 @@ export function getMobileTerminalTheme(
   const base = getPierreTerminalTheme(scheme);
   if (themeId === "t3-code") return base;
 
+  const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === themeId) ?? BUILT_IN_THEMES[0];
+  const palette = getThemeColorsForAppearance(theme, scheme) ?? theme.colors;
   const colors = getMobileThemeVariables(themeId, scheme);
+  const background = themeColorToNativeColor(palette.terminalBackground);
   return {
     ...base,
-    background: colors["--color-screen"],
-    foreground: colors["--color-foreground-secondary"],
+    background,
+    foreground: themeColorToNativeColor(palette.terminalForeground),
     mutedForeground: colors["--color-foreground-muted"],
     border: colors["--color-border"],
-    cursorForeground: colors["--color-primary"],
-    cursorBackground: colors["--color-screen"],
+    cursorForeground: themeColorToNativeColor(palette.terminalCursor),
+    cursorBackground: background,
   };
 }
 

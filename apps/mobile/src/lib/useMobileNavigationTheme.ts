@@ -7,7 +7,7 @@ import { useThemeColor } from "./useThemeColor";
 export function useMobileNavigationTheme(appearance: MobileThemeAppearance): Theme {
   const primary = String(useThemeColor("--color-primary"));
   const background = String(useThemeColor("--color-screen"));
-  const card = String(useThemeColor("--color-sheet"));
+  const card = String(useThemeColor("--color-sheet-solid"));
   const text = String(useThemeColor("--color-foreground"));
   const border = String(useThemeColor("--color-header-border"));
   const notification = String(useThemeColor("--color-danger-foreground"));

@@ -7,8 +7,9 @@ import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state
 import type { MenuAction } from "@react-native-menu/menu";
 import { SymbolView } from "../../components/AppSymbol";
 import { memo, useCallback, useMemo, type ComponentProps } from "react";
-import { Pressable, useColorScheme, useWindowDimensions, View } from "react-native";
+import { Pressable, useWindowDimensions, View } from "react-native";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import Svg, { Circle, Path } from "react-native-svg";
 
 import { AppText as Text } from "../../components/AppText";
@@ -39,10 +40,7 @@ export type ThreadListVariant = "compact" | "sidebar";
 export const THREAD_LIST_COMPACT_INSET = HOME_HORIZONTAL_INSET;
 const SIDEBAR_ROW_RADIUS = 12;
 
-function pullRequestTintColor(
-  state: ThreadPr["state"],
-  colorScheme: ReturnType<typeof useColorScheme>,
-) {
+function pullRequestTintColor(state: ThreadPr["state"], colorScheme: "light" | "dark") {
   const dark = colorScheme === "dark";
   switch (state) {
     case "open":
@@ -441,7 +439,7 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
   >["simultaneousWithExternalGesture"];
 }) {
   const { width: windowWidth } = useWindowDimensions();
-  const colorScheme = useColorScheme();
+  const { themeAppearance: colorScheme } = useAppearancePreferences();
   const compact = props.variant === "compact";
   const selected = props.selected === true;
   // Recycling-safe: resets when the list container is reused for another

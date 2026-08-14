@@ -50,17 +50,21 @@ const AppearancePreferencesContext = createContext<AppearancePreferencesContextV
 function applyAppearanceVariables(baseFontSize: number, themeId: MobileThemeId) {
   const textVariables = resolveTextScaleVariables(baseFontSize);
   const currentTheme = Uniwind.currentTheme;
+  const activeAppearance =
+    currentTheme === "light" || currentTheme === "dark" ? currentTheme : null;
 
   for (const theme of ["light", "dark"] as const) {
     const variables = { ...getMobileThemeVariables(themeId, theme), ...textVariables };
-    if (theme !== currentTheme) {
+    if (theme !== activeAppearance) {
       Uniwind.updateCSSVariables(theme, variables);
     }
   }
-  Uniwind.updateCSSVariables(currentTheme, {
-    ...getMobileThemeVariables(themeId, currentTheme as MobileThemeAppearance),
-    ...textVariables,
-  });
+  if (activeAppearance !== null) {
+    Uniwind.updateCSSVariables(activeAppearance, {
+      ...getMobileThemeVariables(themeId, activeAppearance),
+      ...textVariables,
+    });
+  }
 }
 
 export function AppearancePreferencesProvider(props: { readonly children: ReactNode }) {

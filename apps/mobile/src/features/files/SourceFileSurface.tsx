@@ -2,14 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/unstable/reactivity";
 import type { ComponentType } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  FlatList,
-  ScrollView,
-  Text as NativeText,
-  useColorScheme,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { FlatList, ScrollView, Text as NativeText, useWindowDimensions, View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
 import { LoadingStrip } from "../../components/LoadingStrip";
@@ -116,8 +109,7 @@ const HighlightedSourceLine = memo(function HighlightedSourceLine(props: {
 });
 
 function useSourceFileModel(props: SourceFileSurfaceProps) {
-  const colorScheme = useColorScheme();
-  const theme: "dark" | "light" = colorScheme === "dark" ? "dark" : "light";
+  const { themeAppearance: theme } = useAppearancePreferences();
   const document = useMemo(() => prepareSourceFileDocument(props.contents), [props.contents]);
   const { contents: normalizedContents, lines, rowsJson } = document;
   const targetIndex =
