@@ -17,6 +17,7 @@ export const MOBILE_THEME_IDS = [DEFAULT_MOBILE_THEME_ID, ...BUILT_IN_THEME_IDS]
 export type MobileThemeId = typeof DEFAULT_MOBILE_THEME_ID | BuiltInThemeId;
 export type MobileThemeAppearance = ThemeAppearance;
 export type MobileThemeMode = MobileThemeAppearance | "system";
+export type MobileThemeIds = Readonly<Record<MobileThemeAppearance, MobileThemeId>>;
 
 export const MOBILE_THEME_OPTIONS: ReadonlyArray<{
   readonly id: MobileThemeId;
@@ -37,6 +38,50 @@ export function normalizeMobileThemeId(value: unknown): MobileThemeId {
 
 export function normalizeMobileThemeMode(value: unknown): MobileThemeMode {
   return value === "light" || value === "dark" || value === "system" ? value : "system";
+}
+
+export function resolveMobileThemeIds(preferences: {
+  readonly themeId?: unknown;
+  readonly lightThemeId?: unknown;
+  readonly darkThemeId?: unknown;
+}): MobileThemeIds {
+  const legacyThemeId = normalizeMobileThemeId(preferences.themeId);
+  return {
+    light:
+      preferences.lightThemeId === undefined
+        ? legacyThemeId
+        : normalizeMobileThemeId(preferences.lightThemeId),
+    dark:
+      preferences.darkThemeId === undefined
+        ? legacyThemeId
+        : normalizeMobileThemeId(preferences.darkThemeId),
+  };
+}
+
+export function createMobileThemeSelectionPatch(
+  themeIds: MobileThemeIds,
+  activeAppearance: MobileThemeAppearance,
+  selectedAppearance: MobileThemeAppearance,
+  value: MobileThemeId,
+) {
+  const nextThemeIds: MobileThemeIds = {
+    light: selectedAppearance === "light" ? value : themeIds.light,
+    dark: selectedAppearance === "dark" ? value : themeIds.dark,
+  };
+  return {
+    lightThemeId: nextThemeIds.light,
+    darkThemeId: nextThemeIds.dark,
+    // Keep older OTA bundles on the theme for the appearance currently in use.
+    themeId: nextThemeIds[activeAppearance],
+  };
+}
+
+export function createMobileThemePairPatch(value: MobileThemeId) {
+  return {
+    lightThemeId: value,
+    darkThemeId: value,
+    themeId: value,
+  };
 }
 
 const OKLCH_PATTERN = /^oklch\(\s*([\d.]+)\s+([\d.]+)\s+(-?[\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)$/;

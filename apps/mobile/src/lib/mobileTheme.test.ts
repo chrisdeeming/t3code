@@ -5,6 +5,8 @@ import { BUILT_IN_THEME_IDS, BUILT_IN_THEMES } from "@t3tools/shared/themePalett
 import { DEFAULT_MOBILE_THEME_VARIABLES } from "./mobileDefaultTheme";
 
 import {
+  createMobileThemePairPatch,
+  createMobileThemeSelectionPatch,
   createMobileThemeVariables,
   DEFAULT_MOBILE_THEME_ID,
   getMobileThemePreviewColors,
@@ -12,6 +14,7 @@ import {
   MOBILE_THEME_IDS,
   normalizeMobileThemeId,
   normalizeMobileThemeMode,
+  resolveMobileThemeIds,
   themeColorWithAlpha,
   themeColorToNativeColor,
 } from "./mobileTheme";
@@ -109,6 +112,42 @@ describe("mobile themes", () => {
     expect(normalizeMobileThemeId("missing-theme")).toBe(DEFAULT_MOBILE_THEME_ID);
     expect(normalizeMobileThemeMode("dark")).toBe("dark");
     expect(normalizeMobileThemeMode("sepia")).toBe("system");
+  });
+
+  it("migrates one theme choice to both appearances and preserves independent choices", () => {
+    expect(resolveMobileThemeIds({ themeId: "grove" })).toEqual({
+      light: "grove",
+      dark: "grove",
+    });
+    expect(
+      resolveMobileThemeIds({ themeId: "grove", lightThemeId: "iris", darkThemeId: "ocean" }),
+    ).toEqual({ light: "iris", dark: "ocean" });
+    expect(resolveMobileThemeIds({ themeId: "grove", lightThemeId: "missing" })).toEqual({
+      light: DEFAULT_MOBILE_THEME_ID,
+      dark: "grove",
+    });
+  });
+
+  it("changes either theme without switching the active appearance", () => {
+    const themeIds = { light: "t3-chat", dark: "grove" } as const;
+    expect(createMobileThemeSelectionPatch(themeIds, "light", "dark", "ocean")).toEqual({
+      lightThemeId: "t3-chat",
+      darkThemeId: "ocean",
+      themeId: "t3-chat",
+    });
+    expect(createMobileThemeSelectionPatch(themeIds, "light", "light", "iris")).toEqual({
+      lightThemeId: "iris",
+      darkThemeId: "grove",
+      themeId: "iris",
+    });
+  });
+
+  it("changes both appearance themes from the card action", () => {
+    expect(createMobileThemePairPatch("ember")).toEqual({
+      lightThemeId: "ember",
+      darkThemeId: "ember",
+      themeId: "ember",
+    });
   });
 
   it("converts OKLCH colors to React Native sRGB ColorValues", () => {

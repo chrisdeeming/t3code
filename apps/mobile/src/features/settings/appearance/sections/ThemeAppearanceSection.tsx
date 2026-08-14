@@ -12,6 +12,7 @@ import {
   MOBILE_THEME_OPTIONS,
   type MobileThemeAppearance,
   type MobileThemeId,
+  type MobileThemeIds,
   type MobileThemeMode,
   type MobileThemeVariables,
 } from "../../../../lib/mobileTheme";
@@ -29,6 +30,7 @@ const APPEARANCE_MODES: ReadonlyArray<{
 
 const PreviewOrb = memo(function PreviewOrb(props: {
   readonly appearance: MobileThemeAppearance;
+  readonly compact?: boolean;
   readonly themeId: MobileThemeId;
 }) {
   const idPrefix = useId().replaceAll(":", "");
@@ -49,7 +51,7 @@ const PreviewOrb = memo(function PreviewOrb(props: {
 
   return (
     <View
-      className="size-16 overflow-hidden rounded-full border"
+      className={`${props.compact ? "size-14" : "size-16"} overflow-hidden rounded-full border`}
       style={{
         borderColor:
           props.appearance === "dark" ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.1)",
@@ -109,47 +111,68 @@ const PreviewOrb = memo(function PreviewOrb(props: {
 
 function ThemeCard(props: {
   readonly disabled: boolean;
+  readonly darkSelected: boolean;
   readonly label: string;
-  readonly onPress: () => void;
-  readonly selected: boolean;
+  readonly lightSelected: boolean;
+  readonly onSelectBoth: () => void;
+  readonly onSelect: (appearance: MobileThemeAppearance) => void;
   readonly themeId: MobileThemeId;
 }) {
-  const checkColor = useThemeColor("--color-primary-foreground");
+  const badgeBackground = useThemeColor("--color-card");
+  const badgeIcon = useThemeColor("--color-icon");
 
-  return (
+  const choice = (appearance: MobileThemeAppearance, selected: boolean) => (
     <Pressable
-      accessibilityLabel={`${props.label} theme`}
+      accessibilityLabel={`${props.label} ${appearance} theme`}
       accessibilityRole="radio"
-      accessibilityState={{ checked: props.selected, disabled: props.disabled }}
+      accessibilityState={{ checked: selected, disabled: props.disabled }}
       className={
-        props.selected
-          ? "min-w-36 flex-1 basis-[47%] gap-3 rounded-[24px] border-2 border-primary bg-subtle px-2 py-4"
-          : "min-w-36 flex-1 basis-[47%] gap-3 rounded-[24px] border border-border bg-card px-2 py-4"
+        selected
+          ? "size-[66px] items-center justify-center rounded-full border-[3px] border-primary"
+          : "size-[66px] items-center justify-center rounded-full border-[3px] border-transparent"
       }
       disabled={props.disabled}
-      onPress={props.onPress}
+      onPress={() => props.onSelect(appearance)}
     >
-      <View className="flex-row items-center justify-center gap-2 py-1">
-        <PreviewOrb appearance="light" themeId={props.themeId} />
-        <PreviewOrb appearance="dark" themeId={props.themeId} />
+      <PreviewOrb appearance={appearance} compact themeId={props.themeId} />
+      {selected ? (
+        <View
+          className="absolute -bottom-0.5 -right-0.5 size-5 items-center justify-center rounded-full border border-border"
+          style={{ backgroundColor: badgeBackground }}
+        >
+          <SymbolView
+            name={appearance === "light" ? "sun.max" : "moon"}
+            size={12}
+            tintColor={badgeIcon}
+            type="monochrome"
+            weight="medium"
+          />
+        </View>
+      ) : null}
+    </Pressable>
+  );
+
+  return (
+    <View className="min-w-36 flex-1 basis-[47%] gap-3 rounded-[24px] border border-border bg-card px-2 py-4">
+      <Pressable
+        accessibilityHint="Sets both light and dark appearances"
+        accessibilityLabel={`${props.label} theme`}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: props.disabled }}
+        className="absolute inset-0 rounded-[24px] active:bg-subtle"
+        disabled={props.disabled}
+        onPress={props.onSelectBoth}
+      />
+      <View className="flex-row items-center justify-center gap-2 py-1" pointerEvents="box-none">
+        {choice("light", props.lightSelected)}
+        {choice("dark", props.darkSelected)}
       </View>
-      <View className="min-h-8 flex-row items-center gap-2">
+      <View className="min-h-8 flex-row items-center" pointerEvents="none">
         <Text className="min-w-0 flex-1 text-lg font-t3-medium" numberOfLines={1}>
           {props.label}
         </Text>
-        {props.selected ? (
-          <View className="size-7 items-center justify-center rounded-full bg-primary">
-            <SymbolView
-              name="checkmark"
-              size={15}
-              tintColor={checkColor}
-              type="monochrome"
-              weight="bold"
-            />
-          </View>
-        ) : null}
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -204,9 +227,9 @@ function PreviewPane(props: { readonly colors: MobileThemeVariables; readonly co
   );
 }
 
-function ModePreview(props: { readonly mode: MobileThemeMode; readonly themeId: MobileThemeId }) {
-  const light = getMobileThemeVariables(props.themeId, "light");
-  const dark = getMobileThemeVariables(props.themeId, "dark");
+function ModePreview(props: { readonly mode: MobileThemeMode; readonly themeIds: MobileThemeIds }) {
+  const light = getMobileThemeVariables(props.themeIds.light, "light");
+  const dark = getMobileThemeVariables(props.themeIds.dark, "dark");
   const currentBorder = useThemeColor("--color-border");
   const currentFrame = useThemeColor("--color-drawer");
   const currentIndicator = useThemeColor("--color-foreground-muted");
@@ -258,7 +281,7 @@ function ModeCard(props: {
   readonly mode: MobileThemeMode;
   readonly onPress: () => void;
   readonly selected: boolean;
-  readonly themeId: MobileThemeId;
+  readonly themeIds: MobileThemeIds;
 }) {
   return (
     <Pressable
@@ -273,7 +296,7 @@ function ModeCard(props: {
       disabled={props.disabled}
       onPress={props.onPress}
     >
-      <ModePreview mode={props.mode} themeId={props.themeId} />
+      <ModePreview mode={props.mode} themeIds={props.themeIds} />
       <Text
         className={
           props.selected
@@ -292,7 +315,14 @@ function SectionLabel({ children }: { readonly children: string }) {
 }
 
 export function ThemeAppearanceSection() {
-  const { isReady, setThemeId, setThemeMode, themeId, themeMode } = useAppearancePreferences();
+  const {
+    isReady,
+    setThemeIdForAppearance,
+    setThemeIdForBothAppearances,
+    setThemeMode,
+    themeIds,
+    themeMode,
+  } = useAppearancePreferences();
 
   return (
     <View className="gap-6">
@@ -307,7 +337,7 @@ export function ThemeAppearanceSection() {
               mode={mode.id}
               onPress={() => setThemeMode(mode.id)}
               selected={mode.id === themeMode}
-              themeId={themeId}
+              themeIds={themeIds}
             />
           ))}
         </View>
@@ -315,14 +345,16 @@ export function ThemeAppearanceSection() {
 
       <View className="gap-3">
         <SectionLabel>Themes</SectionLabel>
-        <View accessibilityRole="radiogroup" className="flex-row flex-wrap gap-3">
+        <View className="flex-row flex-wrap gap-3">
           {MOBILE_THEME_OPTIONS.map((theme) => (
             <ThemeCard
               disabled={!isReady}
               key={theme.id}
               label={theme.label}
-              onPress={() => setThemeId(theme.id)}
-              selected={theme.id === themeId}
+              darkSelected={theme.id === themeIds.dark}
+              lightSelected={theme.id === themeIds.light}
+              onSelect={(appearance) => setThemeIdForAppearance(appearance, theme.id)}
+              onSelectBoth={() => setThemeIdForBothAppearances(theme.id)}
               themeId={theme.id}
             />
           ))}
