@@ -17,6 +17,7 @@ import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { cn } from "../../lib/cn";
 import { HOME_HORIZONTAL_INSET } from "../../lib/layoutMetrics";
 import { relativeTime } from "../../lib/time";
+import { themeColorWithAlpha } from "../../lib/mobileTheme";
 import { useThemeColor } from "../../lib/useThemeColor";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useThreadPr, type ThreadPr } from "../../state/use-thread-pr";
@@ -453,6 +454,7 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
   const drawerColor = useThemeColor("--color-drawer");
   const pressedBackgroundColor = useThemeColor("--color-subtle");
   const selectedBackgroundColor = useThemeColor("--color-user-bubble");
+  const selectedForegroundColor = useThemeColor("--color-user-bubble-foreground");
 
   const { thread, onSelectThread, onArchiveThread, onDeleteThread, onRegenerateThreadTitle } =
     props;
@@ -467,10 +469,16 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
   );
 
   const backgroundColor = compact ? screenColor : drawerColor;
-  const effectivePressedBackground = selected ? "rgba(255,255,255,0.16)" : pressedBackgroundColor;
+  const effectivePressedBackground = selected
+    ? themeColorWithAlpha(String(selectedForegroundColor), 0.16)
+    : pressedBackgroundColor;
   const effectiveStatus =
     selected && status
-      ? { ...status, pillClassName: "bg-white/20", textClassName: "text-white" }
+      ? {
+          ...status,
+          pillClassName: "bg-user-bubble-foreground/20",
+          textClassName: "text-user-bubble-foreground",
+        }
       : status;
 
   const handleDelete = useCallback(() => onDeleteThread(thread), [onDeleteThread, thread]);
@@ -538,11 +546,15 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
           <View className="flex-row items-center gap-0.5">
             <PullRequestIcon
               size={compact ? 13 : 11}
-              color={selected ? "#ffffff" : pullRequestTintColor(pr.state, colorScheme)}
+              color={
+                selected
+                  ? String(selectedForegroundColor)
+                  : pullRequestTintColor(pr.state, colorScheme)
+              }
             />
             <Text
               className={`${compact ? "text-sm" : "text-xs"} font-t3-medium ${
-                selected ? "text-white" : pr.textClassName
+                selected ? "text-user-bubble-foreground" : pr.textClassName
               }`}
             >
               {pr.label}

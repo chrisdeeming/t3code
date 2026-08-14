@@ -14,6 +14,7 @@ import {
 } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeColor } from "../../lib/useThemeColor";
+import { themeColorWithAlpha } from "../../lib/mobileTheme";
 import { useFontFamily } from "../../lib/useFontFamily";
 
 import {
@@ -290,11 +291,12 @@ export function NewTaskDraftScreen(props: {
   }, [props.pendingTaskId, cancelEditingPendingTask]);
 
   const foregroundColor = useThemeColor("--color-foreground");
+  const sheetColor = String(useThemeColor("--color-sheet"));
   const projectUnderlineColor = useThemeColor("--color-foreground-muted");
   const regularFontFamily = useFontFamily("regular");
   const bodyText = useScaledTextRole("body");
-  const sheetFadeOpaque = colorScheme === "dark" ? "rgba(14,14,14,0.98)" : "rgba(242,242,247,0.98)";
-  const sheetFadeTransparent = colorScheme === "dark" ? "rgba(14,14,14,0)" : "rgba(242,242,247,0)";
+  const sheetFadeOpaque = sheetColor;
+  const sheetFadeTransparent = themeColorWithAlpha(sheetColor, 0);
 
   // A new navigation to this mounted screen delivers a fresh initialProjectRef
   // reference — treat it as a new request and let it apply again.

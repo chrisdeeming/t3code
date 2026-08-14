@@ -1,4 +1,5 @@
-import { createContext, use, useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { createContext, use, useCallback, useLayoutEffect, useMemo, type ReactNode } from "react";
+import { useColorScheme } from "react-native";
 
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/unstable/reactivity";
@@ -9,16 +10,29 @@ import {
   resolveAppearance,
   resolveAppearancePreferences,
   resolveTextScaleVariables,
-  type AppearancePreferences,
   type ResolvedAppearance,
 } from "../../../lib/appearancePreferences";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../../state/preferences";
+import type { Preferences } from "../../../persistence/mobile-preferences";
+import {
+  getMobileThemeVariables,
+  normalizeMobileThemeId,
+  normalizeMobileThemeMode,
+  type MobileThemeAppearance,
+  type MobileThemeId,
+  type MobileThemeMode,
+} from "../../../lib/mobileTheme";
 import { cacheTerminalFontSize } from "../../terminal/terminalUiState";
 
 interface AppearancePreferencesContextValue {
   /** Effective values with base-size derivation applied. Use this for rendering. */
   readonly appearance: ResolvedAppearance;
+  readonly themeId: MobileThemeId;
+  readonly themeMode: MobileThemeMode;
+  readonly themeAppearance: MobileThemeAppearance;
   readonly isReady: boolean;
+  readonly setThemeId: (value: MobileThemeId) => void;
+  readonly setThemeMode: (value: MobileThemeMode) => void;
   readonly setBaseFontSize: (value: number) => void;
   /** Pass null to clear the override and follow the base font size. */
   readonly setTerminalFontSize: (value: number | null) => void;
@@ -30,44 +44,66 @@ interface AppearancePreferencesContextValue {
 const AppearancePreferencesContext = createContext<AppearancePreferencesContextValue | null>(null);
 
 /**
- * Injects the scaled `--text-*` variables into Uniwind so every
- * className-based text size (`text-sm`, `text-base`, ...) re-resolves live.
- * Updates the current theme last so the active stylesheet settles correctly.
+ * Injects palette and text-scale variables into both adaptive stylesheets.
+ * Updating the active sheet last lets the visible app settle in one pass.
  */
-function applyTextScaleVariables(baseFontSize: number) {
-  const variables = resolveTextScaleVariables(baseFontSize);
+function applyAppearanceVariables(baseFontSize: number, themeId: MobileThemeId) {
+  const textVariables = resolveTextScaleVariables(baseFontSize);
   const currentTheme = Uniwind.currentTheme;
 
   for (const theme of ["light", "dark"] as const) {
+    const variables = { ...getMobileThemeVariables(themeId, theme), ...textVariables };
     if (theme !== currentTheme) {
       Uniwind.updateCSSVariables(theme, variables);
     }
   }
-  Uniwind.updateCSSVariables(currentTheme, variables);
+  Uniwind.updateCSSVariables(currentTheme, {
+    ...getMobileThemeVariables(themeId, currentTheme as MobileThemeAppearance),
+    ...textVariables,
+  });
 }
 
 export function AppearancePreferencesProvider(props: { readonly children: ReactNode }) {
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const systemColorScheme = useColorScheme() === "dark" ? "dark" : "light";
+  const storedPreferences = AsyncResult.isSuccess(preferencesResult)
+    ? preferencesResult.value
+    : null;
   const preferences = useMemo(
-    () =>
-      resolveAppearancePreferences(
-        AsyncResult.isSuccess(preferencesResult) ? preferencesResult.value : null,
-      ),
-    [preferencesResult],
+    () => resolveAppearancePreferences(storedPreferences),
+    [storedPreferences],
   );
+  const themeId = normalizeMobileThemeId(storedPreferences?.themeId);
+  const themeMode = normalizeMobileThemeMode(storedPreferences?.themeMode);
+  const themeAppearance = themeMode === "system" ? systemColorScheme : themeMode;
   const isReady = AsyncResult.isSuccess(preferencesResult) && !preferencesResult.waiting;
 
-  useEffect(() => {
-    applyTextScaleVariables(preferences.baseFontSize);
+  useLayoutEffect(() => {
+    applyAppearanceVariables(preferences.baseFontSize, themeId);
+    Uniwind.setTheme(themeMode);
     cacheTerminalFontSize(resolveAppearance(preferences).terminalFontSize);
-  }, [preferences]);
+  }, [preferences, themeId, themeMode]);
 
   const updatePreferences = useCallback(
-    (patch: Partial<AppearancePreferences>) => {
+    (patch: Partial<Preferences>) => {
       savePreferences(patch);
     },
     [savePreferences],
+  );
+
+  const setThemeId = useCallback(
+    (value: MobileThemeId) => {
+      updatePreferences({ themeId: value });
+    },
+    [updatePreferences],
+  );
+
+  const setThemeMode = useCallback(
+    (value: MobileThemeMode) => {
+      updatePreferences({ themeMode: value });
+    },
+    [updatePreferences],
   );
 
   const setBaseFontSize = useCallback(
@@ -101,13 +137,30 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
   const value = useMemo(
     (): AppearancePreferencesContextValue => ({
       appearance: resolveAppearance(preferences),
+      themeId,
+      themeMode,
+      themeAppearance,
       isReady,
+      setThemeId,
+      setThemeMode,
       setBaseFontSize,
       setTerminalFontSize,
       setCodeFontSize,
       setCodeWordBreak,
     }),
-    [preferences, isReady, setBaseFontSize, setTerminalFontSize, setCodeFontSize, setCodeWordBreak],
+    [
+      preferences,
+      themeId,
+      themeMode,
+      themeAppearance,
+      isReady,
+      setThemeId,
+      setThemeMode,
+      setBaseFontSize,
+      setTerminalFontSize,
+      setCodeFontSize,
+      setCodeWordBreak,
+    ],
   );
 
   return (

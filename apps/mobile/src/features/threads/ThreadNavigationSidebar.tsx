@@ -102,6 +102,8 @@ function SidebarHeaderButtonGroup(props: {
   readonly children: ReactNode;
   readonly colorScheme: "light" | "dark";
 }) {
+  const fallbackBackground = useThemeColor("--color-glass-surface");
+  const fallbackBorder = useThemeColor("--color-header-border");
   if (isLiquidGlassSupported) {
     return (
       <LiquidGlassView
@@ -119,9 +121,7 @@ function SidebarHeaderButtonGroup(props: {
     <View
       style={[
         styles.headerButtonGroup,
-        props.colorScheme === "dark"
-          ? { backgroundColor: "rgba(118,118,128,0.24)", borderColor: "rgba(255,255,255,0.08)" }
-          : { backgroundColor: "rgba(255,255,255,0.72)", borderColor: "rgba(0,0,0,0.08)" },
+        { backgroundColor: fallbackBackground, borderColor: fallbackBorder },
         { borderWidth: StyleSheet.hairlineWidth },
       ]}
     >

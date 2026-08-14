@@ -4,6 +4,7 @@ import type { NativeSyntheticEvent } from "react-native";
 import { type NativeReviewDiffHighlightScheme } from "../diffs/nativeReviewDiffHighlighter";
 import { createNativeReviewDiffTheme, type NativeReviewDiffData } from "./nativeReviewDiffAdapter";
 import { useAppearanceCodeSurface } from "../settings/appearance/useAppearanceCodeSurface";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useNativeReviewDiffHighlighting } from "./useNativeReviewDiffHighlighting";
 import { buildNativeReviewTokensResetKey } from "./reviewDiffBridgeKeys";
 
@@ -32,11 +33,12 @@ export function useNativeReviewDiffBridge(input: {
     viewedFileIds,
   } = input;
   const { nativeReviewDiffStyle } = useAppearanceCodeSurface();
+  const { themeId } = useAppearancePreferences();
   const [collapsedCommentIds, setCollapsedCommentIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
 
-  const theme = useMemo(() => createNativeReviewDiffTheme(scheme), [scheme]);
+  const theme = useMemo(() => createNativeReviewDiffTheme(scheme, themeId), [scheme, themeId]);
   const rowsJson = useMemo(() => JSON.stringify(data.rows), [data.rows]);
   const collapsedFileIdsJson = useMemo(() => JSON.stringify(collapsedFileIds), [collapsedFileIds]);
   const viewedFileIdsJson = useMemo(() => JSON.stringify(viewedFileIds), [viewedFileIds]);

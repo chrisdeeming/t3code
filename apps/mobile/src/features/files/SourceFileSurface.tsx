@@ -23,6 +23,7 @@ import type { ReviewHighlightedToken } from "../review/shikiReviewHighlighter";
 import { cn } from "../../lib/cn";
 import type { ResolvedMobileCodeSurface } from "../../lib/appearancePreferences";
 import { useAppearanceCodeSurface } from "../settings/appearance/useAppearanceCodeSurface";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import {
   buildNativeSourceTokens,
   NATIVE_SOURCE_CONTENT_WIDTH,
@@ -159,8 +160,9 @@ function NativeSourceFileSurface(
 ) {
   const { NativeView, onRefresh } = props;
   const { codeSurface, codeWordBreak, nativeSourceStyle } = useAppearanceCodeSurface();
+  const { themeAppearance, themeId } = useAppearancePreferences();
   const { width: viewportWidth } = useWindowDimensions();
-  const { rowsJson, status, targetIndex, theme, tokens } = useSourceFileModel(props);
+  const { rowsJson, status, targetIndex, tokens } = useSourceFileModel(props);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const handlePullToRefresh = useCallback(async () => {
     if (!onRefresh) {
@@ -178,7 +180,10 @@ function NativeSourceFileSurface(
     () => JSON.stringify(targetIndex === null ? [] : [nativeSourceRowId(targetIndex)]),
     [targetIndex],
   );
-  const themeJson = useMemo(() => JSON.stringify(createNativeReviewDiffTheme(theme)), [theme]);
+  const themeJson = useMemo(
+    () => JSON.stringify(createNativeReviewDiffTheme(themeAppearance, themeId)),
+    [themeAppearance, themeId],
+  );
   const styleJson = useMemo(() => JSON.stringify(nativeSourceStyle), [nativeSourceStyle]);
   const contentWidth = codeWordBreak
     ? Math.max(240, viewportWidth - codeSurface.gutterWidth - 24)
@@ -191,7 +196,7 @@ function NativeSourceFileSurface(
         collapsable={false}
         testID="source-native-code-view"
         style={{ flex: 1 }}
-        appearanceScheme={theme}
+        appearanceScheme={themeAppearance}
         contentResetKey={props.path}
         contentWidth={contentWidth}
         initialRowIndex={targetIndex ?? -1}

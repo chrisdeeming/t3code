@@ -3,8 +3,8 @@ import { useCallback, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
-  View,
   useColorScheme,
+  View,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -13,6 +13,7 @@ import {
 } from "react-native";
 
 import { useThemeColor } from "../lib/useThemeColor";
+import { themeColorWithAlpha } from "../lib/mobileTheme";
 import { cn } from "../lib/cn";
 import { AppText as Text } from "./AppText";
 import { SymbolView } from "./AppSymbol";
@@ -220,14 +221,14 @@ export function ComposerToolbarButton(props: {
   const dangerFg = useThemeColor("--color-danger-foreground");
   const variant = props.variant ?? "default";
   const isCircle = !props.label && props.showChevron === false;
-  const defaultBorderColor = isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
-  const activeBorderColor = isDarkMode ? "rgba(255,255,255,0.13)" : "rgba(0,0,0,0.1)";
+  const defaultBorderColor = useThemeColor("--color-border-subtle");
+  const activeBorderColor = useThemeColor("--color-border");
   const filledBorderColor =
     variant === "danger"
-      ? "rgba(255,255,255,0.14)"
+      ? themeColorWithAlpha(String(dangerFg), 0.14)
       : props.disabled
         ? defaultBorderColor
-        : "rgba(255,255,255,0.18)";
+        : themeColorWithAlpha(String(primaryFg), 0.18);
   const iconTintColor =
     variant === "primary"
       ? props.disabled

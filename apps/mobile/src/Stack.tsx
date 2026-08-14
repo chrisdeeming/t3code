@@ -71,11 +71,7 @@ import {
 } from "./features/sharing/incoming-share-presentation";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "./native/native-glass";
 import { nativeHeaderScrollEdgeEffects } from "./native/StackHeader";
-import {
-  FORM_SHEET_PRESENTATION_OPTIONS,
-  NATIVE_SHEET_SURFACE_COLOR,
-  NATIVE_SHEET_SURFACE_CONTENT_STYLE,
-} from "./native/sheet-surface";
+import { FORM_SHEET_PRESENTATION_OPTIONS } from "./native/sheet-surface";
 import { useThreadOutboxDrain } from "./state/use-thread-outbox-drain";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
@@ -96,11 +92,7 @@ const GLASS_HEADER_OPTIONS: AppScreenOptions = {
   headerLargeTitle: false,
   headerShadowVisible: false,
   headerShown: true,
-  headerStyle: NATIVE_LIQUID_GLASS_SUPPORTED
-    ? { backgroundColor: "transparent" }
-    : NATIVE_SHEET_SURFACE_COLOR !== undefined
-      ? { backgroundColor: NATIVE_SHEET_SURFACE_COLOR as unknown as string }
-      : undefined,
+  headerStyle: NATIVE_LIQUID_GLASS_SUPPORTED ? { backgroundColor: "transparent" } : undefined,
   headerTitleStyle: { fontSize: 18, fontWeight: "800" },
   headerTransparent: NATIVE_LIQUID_GLASS_SUPPORTED,
   scrollEdgeEffects: NATIVE_LIQUID_GLASS_SUPPORTED ? HEADER_SCROLL_EDGE_EFFECTS : undefined,
@@ -115,12 +107,6 @@ const SOLID_HEADER_OPTIONS: AppScreenOptions = {
   headerLargeTitle: false,
   headerShadowVisible: false,
   headerShown: true,
-  headerStyle:
-    NATIVE_SHEET_SURFACE_COLOR !== undefined
-      ? // native-stack types this as `string`, but the native side accepts any
-        // ColorValue including DynamicColorIOS.
-        { backgroundColor: NATIVE_SHEET_SURFACE_COLOR as unknown as string }
-      : undefined,
   headerTitleStyle: { fontSize: 18, fontWeight: "800" },
   headerTransparent: false,
   unstable_navigationItemStyle: Platform.OS === "ios" ? "editor" : undefined,
@@ -507,7 +493,6 @@ export const RootStack = createNativeStackNavigator({
       linking: `${THREAD_LINKING_PREFIX}/files`,
       options: {
         ...GLASS_HEADER_OPTIONS,
-        contentStyle: NATIVE_SHEET_SURFACE_CONTENT_STYLE,
         title: "Files",
       },
     }),
