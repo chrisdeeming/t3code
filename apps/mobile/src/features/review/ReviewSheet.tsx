@@ -73,7 +73,7 @@ import { resolveReviewAvailability } from "./reviewAvailability";
 import { resolveSelectedReviewFileId } from "./reviewPaneSelection";
 import { buildReviewSectionMenu } from "./review-section-menu";
 import type { ReviewSectionItem } from "./reviewModel";
-import { markNativeShowcaseReady } from "../showcase/nativeShowcaseScene";
+import { reportShowcaseSceneRendered } from "../showcase/showcaseRenderSignal";
 
 const REVIEW_HEADER_SPACING = 0;
 const SHOWCASE_ENABLED = process.env.EXPO_PUBLIC_SHOWCASE === "1";
@@ -443,7 +443,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
   });
   const showcaseReviewKey =
     SHOWCASE_ENABLED && parsedDiff.kind === "files" && selectedSection
-      ? `${reviewCache.threadKey}:${selectedSection.id}:${nativeBridge.tokensResetKey}`
+      ? `${reviewCache.threadKey}:${selectedSection.id}:${nativeBridge.tokensResetKey}:${nativeBridge.themeId}`
       : null;
   const handleNativeDebug = useCallback(
     (event: NativeSyntheticEvent<Record<string, unknown>>) => {
@@ -456,9 +456,9 @@ export function ReviewSheet(props: ReviewSheetProps) {
         return;
       }
       showcasedReviewDrawRef.current = showcaseReviewKey;
-      markNativeShowcaseReady("review");
+      reportShowcaseSceneRendered({ scene: "review", themeId: nativeBridge.themeId });
     },
-    [nativeBridge.onDebug, showcaseReviewKey],
+    [nativeBridge.onDebug, nativeBridge.themeId, showcaseReviewKey],
   );
 
   const handleSelectFile = useCallback(

@@ -105,6 +105,7 @@ export function useNativeReviewDiffBridge(input: {
   );
 
   return {
+    themeId,
     theme,
     rowsJson,
     collapsedFileIdsJson,

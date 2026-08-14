@@ -1,8 +1,9 @@
 import {
-  BUILT_IN_THEME_IDS,
   BUILT_IN_THEMES,
   getThemeColorsForAppearance,
-  type BuiltInThemeId,
+  MOBILE_DEFAULT_THEME_ID,
+  MOBILE_THEME_IDS as SHARED_MOBILE_THEME_IDS,
+  type MobileThemeId as SharedMobileThemeId,
   type ThemeAppearance,
   type ThemeColors,
 } from "@t3tools/shared/themePalettes";
@@ -12,9 +13,9 @@ import {
 } from "@t3tools/shared/themePreview";
 import { DEFAULT_MOBILE_THEME_VARIABLES } from "./mobileDefaultTheme";
 
-export const DEFAULT_MOBILE_THEME_ID = "t3-code" as const;
-export const MOBILE_THEME_IDS = [DEFAULT_MOBILE_THEME_ID, ...BUILT_IN_THEME_IDS] as const;
-export type MobileThemeId = typeof DEFAULT_MOBILE_THEME_ID | BuiltInThemeId;
+export const DEFAULT_MOBILE_THEME_ID = MOBILE_DEFAULT_THEME_ID;
+export const MOBILE_THEME_IDS = SHARED_MOBILE_THEME_IDS;
+export type MobileThemeId = SharedMobileThemeId;
 export type MobileThemeAppearance = ThemeAppearance;
 export type MobileThemeMode = MobileThemeAppearance | "system";
 export type MobileThemeIds = Readonly<Record<MobileThemeAppearance, MobileThemeId>>;
@@ -24,7 +25,7 @@ export const MOBILE_THEME_OPTIONS: ReadonlyArray<{
   readonly label: string;
 }> = [
   { id: DEFAULT_MOBILE_THEME_ID, label: "T3 Code" },
-  ...BUILT_IN_THEMES.map((theme) => ({ id: theme.id as BuiltInThemeId, label: theme.label })),
+  ...BUILT_IN_THEMES.map((theme) => ({ id: theme.id as MobileThemeId, label: theme.label })),
 ];
 
 type MobileThemeVariable = `--color-${string}`;
