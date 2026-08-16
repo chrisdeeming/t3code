@@ -2520,9 +2520,22 @@ html[data-theme-id] .composer-tiptap .tiptap pre {
   animation: ultrathink-rainbow 10s linear infinite;
 }
 
-/* Composer chips are non-editable decorators, so the browser skips them when
-   painting text selection; this overlay stands in for the native highlight. */
-.composer-inline-chip[data-composer-chip-selected]::after {
+/* Tiptap's React NodeView adds its own inline wrapper around the chip. Left
+   alone it is a bare inline box on the text baseline, so the browser measures
+   the caret against it rather than against the chip and paints the caret below
+   the pill. Make the wrapper adopt the chip's own box. */
+.composer-tiptap .tiptap .react-renderer:has(> .composer-inline-chip) {
+  display: inline-flex;
+  vertical-align: -0.125em;
+  line-height: 0;
+}
+
+/* Composer chips are non-editable atoms, so the browser skips them when
+   painting text selection; these overlays stand in for the native highlight —
+   one for a range that spans the chip, one for clicking the chip itself. */
+.composer-inline-chip[data-composer-chip-selected]::after,
+.composer-tiptap .tiptap .ProseMirror-selectednode .composer-inline-chip::after,
+.composer-tiptap .tiptap .composer-inline-chip:has(.ProseMirror-selectednode)::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -2530,4 +2543,12 @@ html[data-theme-id] .composer-tiptap .tiptap pre {
   background-color: Highlight;
   opacity: 0.3;
   pointer-events: none;
+}
+
+/* A clicked chip is a NodeSelection: typing replaces it, so it has to look
+   selected rather than merely focused. */
+.composer-tiptap .tiptap .ProseMirror-selectednode {
+  border-radius: 6px;
+  outline: 2px solid color-mix(in srgb, var(--ring) 70%, transparent);
+  outline-offset: 1px;
 }
