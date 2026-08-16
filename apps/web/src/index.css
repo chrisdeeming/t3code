@@ -2536,24 +2536,16 @@ html[data-theme-id] .composer-tiptap .tiptap pre {
   margin-inline: 0.2em;
 }
 
-/* A block ending in a chip gets ProseMirror's separator <img> and trailing
-   <br>, which together keep the position after the atom reachable. The chip is
-   taller than the line box, so that pair is pushed onto a second line and opens
-   an empty row under the chip — the caret then looks like it sits on a new line
-   when it is really just after the chip.
-   Take them out of flow so they contribute no height. They stay in the DOM and
-   keep doing their job; only their line box is removed. */
-.composer-tiptap
-  .tiptap
-  p:has(> .react-renderer > .composer-inline-chip:last-child)
-  > img.ProseMirror-separator,
-.composer-tiptap
-  .tiptap
-  p:has(> .react-renderer > .composer-inline-chip:last-child)
-  > br.ProseMirror-trailingBreak {
-  position: absolute;
-  width: 0;
-  height: 0;
+/* ProseMirror marks the position after a trailing inline node with a zero-size
+   separator image, and ships `display: inline !important` for it — but the
+   composer sets `injectCSS: false`, so that rule never loads and the Tailwind
+   preflight's block-level `img` wins. As a block it takes its own line, which
+   opened an empty row under a chip that ends a block and left the caret
+   rendering there instead of beside the chip. Restore the upstream rule. */
+.composer-tiptap .tiptap img.ProseMirror-separator {
+  display: inline;
+  border: none;
+  margin: 0;
 }
 
 /* Composer chips are non-editable atoms, so the browser skips them when

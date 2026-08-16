@@ -7,6 +7,7 @@ import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
 import {
   composerTerminalContextIds,
   deleteAdjacentComposerToken,
+  stepOverComposerToken,
   getTiptapComposerMarkdown,
   stampComposerTerminalContextIds,
   tiptapComposerExtensions,
@@ -46,15 +47,29 @@ describe("Tiptap composer tokens", () => {
   });
 
   /**
-   * With `selectable: true`, ArrowRight into a chip made a NodeSelection rather
-   * than moving past it: the caret disappeared and the next keystroke replaced
-   * the chip. A caret walking a sentence should step over it.
+   * An arrow key must cross the chip in one press. Landing on the atom turns
+   * the cursor into a NodeSelection, so the caret disappears and the next
+   * keystroke replaces the chip.
    */
-  it("does not let the cursor land on a token as a node selection", () => {
+  it("steps the cursor over a token rather than onto it", () => {
     const editor = createComposerEditor("See [config.json](src/config.json) now");
     const [tokenPosition] = tokenPositions(editor);
+    const token = editor.state.doc.nodeAt(tokenPosition!)!;
 
-    expect(editor.state.doc.nodeAt(tokenPosition!)?.type.spec.selectable).toBe(false);
+    editor.commands.setTextSelection(tokenPosition!);
+    expect(stepOverComposerToken(editor, "after")).toBe(true);
+    expect(editor.state.selection.from).toBe(tokenPosition! + token.nodeSize);
+
+    expect(stepOverComposerToken(editor, "before")).toBe(true);
+    expect(editor.state.selection.from).toBe(tokenPosition!);
+  });
+
+  it("leaves arrow movement alone when no token is adjacent", () => {
+    const editor = createComposerEditor("plain text here");
+    editor.commands.setTextSelection(5);
+
+    expect(stepOverComposerToken(editor, "before")).toBe(false);
+    expect(stepOverComposerToken(editor, "after")).toBe(false);
   });
 
   it("selects a whole token as one unit rather than splitting it", () => {
