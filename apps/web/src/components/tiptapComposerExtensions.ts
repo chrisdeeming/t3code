@@ -111,6 +111,10 @@ export function composerTerminalContextIds(doc: ProseMirrorNode): string[] {
  * The Markdown placeholder is identity-free, so a freshly parsed document has
  * to be matched up with the pending drafts once; after that the id rides along
  * with the node through edits. Returns true when the document changed.
+ *
+ * Must stay idempotent. This runs from `onUpdate`, and the transaction it
+ * dispatches re-enters `onUpdate`; the second pass finding nothing to stamp is
+ * the only thing that ends the cycle.
  */
 export function stampComposerTerminalContextIds(
   editor: Editor,
@@ -135,8 +139,10 @@ export function stampComposerTerminalContextIds(
   });
 
   if (transaction.steps.length === 0) return false;
-  // Identity bookkeeping is not an edit the user should be able to undo.
-  transaction.setMeta("addToHistory", false);
+  // Deliberately part of the history. Keeping it out meant undoing a chip
+  // deletion restored the placeholder with no id: its draft had already been
+  // released, so nothing was left to re-stamp it from, and the orphan shifted
+  // the ordinal mapping the send path uses onto the wrong context.
   editor.view.dispatch(transaction);
   return true;
 }

@@ -19,8 +19,9 @@ export const composerCodeBlockHighlightKey = new PluginKey<DecorationSet>(
 const MAX_CACHED_BLOCKS = 64;
 /**
  * Bounded so a long session cannot grow the set without limit, but far above
- * the number of fences any composer prompt realistically holds: the loop this
- * set prevents only returns if a single document has more blocks than this.
+ * the number of fences any composer prompt realistically holds. This set alone
+ * only raises the threshold at which repeated eviction would keep work looking
+ * pending; the unconditional loop breaker is the `scannedDoc` check below.
  */
 const MAX_ATTEMPTED_SIGNATURES = 2048;
 
