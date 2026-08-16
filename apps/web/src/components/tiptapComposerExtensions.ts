@@ -64,7 +64,11 @@ function serializedToken(node: JSONContent): string {
 }
 
 function firstComposerTokenOffset(source: string): number {
-  const inlineToken = collectComposerInlineTokens(source)[0];
+  // Matches the virtual newline the tokenizer uses, so a token ending the line
+  // is still offered to it rather than skipped before it is ever considered.
+  const inlineToken = collectComposerInlineTokens(`${source}\n`).find(
+    (candidate) => candidate.end <= source.length,
+  );
   const terminalContextOffset = source.indexOf(INLINE_TERMINAL_CONTEXT_PLACEHOLDER);
   if (!inlineToken) return terminalContextOffset;
   if (terminalContextOffset < 0) return inlineToken.start;
@@ -230,8 +234,14 @@ export const TiptapComposerToken = Node.create<ComposerTokenOptions>({
         };
       }
 
-      const token = collectComposerInlineTokens(source)[0];
-      if (!token || token.start !== 0) return undefined;
+      // The token grammar needs whitespace after the match, which a token
+      // sitting at the end of a line does not have. A virtual newline lets it
+      // parse, the same way the paste handler does it; the match is still
+      // required to end within the real source.
+      const token = collectComposerInlineTokens(`${source}\n`).find(
+        (candidate) => candidate.start === 0 && candidate.end <= source.length,
+      );
+      if (!token) return undefined;
       return {
         type: "composerToken",
         raw: token.source,

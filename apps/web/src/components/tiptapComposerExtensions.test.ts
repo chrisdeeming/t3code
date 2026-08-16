@@ -70,6 +70,33 @@ describe("Tiptap composer Markdown", () => {
     expect(getTiptapComposerMarkdown(editor)).toBe(markdown);
   });
 
+  /**
+   * The token grammar requires whitespace after a match, which a token at the
+   * end of a line does not have, so a file link closing a list item stayed raw
+   * Markdown instead of becoming a chip.
+   */
+  it("recognises a file link that ends its line", () => {
+    const markdown = "- Brief: [notes.md](/tmp/notes.md)";
+    const editor = createComposerEditor(markdown);
+    let mentions = 0;
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "composerToken") mentions += 1;
+    });
+
+    expect(mentions).toBe(1);
+    expect(getTiptapComposerMarkdown(editor)).toBe(markdown);
+  });
+
+  it("recognises a file link that ends the document", () => {
+    const editor = createComposerEditor("See [notes.md](/tmp/notes.md)");
+    let mentions = 0;
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "composerToken") mentions += 1;
+    });
+
+    expect(mentions).toBe(1);
+  });
+
   it("leaves ordinary Markdown links and scoped packages alone", () => {
     const markdown = "Read [Tiptap](https://tiptap.dev) then run npm install @scope/pkg now";
     const editor = createComposerEditor(markdown);
