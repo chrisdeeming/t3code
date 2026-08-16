@@ -2168,17 +2168,34 @@ label:has(> select#reasoning-effort) select {
   font-size: 0.75rem;
 }
 
+/* Chat wraps its fences in `.chat-markdown-codeblock`, which carries the
+   surface as Tailwind classes on the default theme and swaps to the code
+   tokens under `html[data-theme-id]`. The composer has no wrapper element, so
+   the `pre` plays that role and has to reproduce both halves — hence the
+   literal values here, matched to `border-border/70` + `bg-secondary` and their
+   dark variants, with the themed override below. */
 .composer-tiptap .tiptap pre {
   position: relative;
   max-width: 100%;
   overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  background: var(--code-background, var(--muted));
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: var(--radius);
+  background: var(--secondary);
   padding: 0.8rem 0.9rem;
-  color: var(--code-foreground, var(--foreground));
+  color: var(--foreground);
   scrollbar-color: color-mix(in srgb, var(--border) 78%, transparent) transparent;
   scrollbar-width: thin;
+}
+
+.dark .composer-tiptap .tiptap pre {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--input) 32%, transparent);
+}
+
+html[data-theme-id] .composer-tiptap .tiptap pre {
+  border-color: var(--border);
+  background: var(--code-background);
+  color: var(--code-foreground);
 }
 
 /* Name the language the fence declared, so the block reads like the chat one. */
@@ -2186,7 +2203,7 @@ label:has(> select#reasoning-effort) select {
   position: absolute;
   top: 0.35rem;
   right: 0.6rem;
-  color: color-mix(in srgb, var(--code-foreground, var(--foreground)) 72%, transparent);
+  color: color-mix(in srgb, currentcolor 72%, transparent);
   content: attr(data-language);
   font-family: var(--font-mono);
   font-size: 0.625rem;
@@ -2206,6 +2223,9 @@ label:has(> select#reasoning-effort) select {
   padding: 0;
   color: inherit;
   font-family: var(--font-mono);
+  /* Matches chat's highlighted output, which takes the appearance hook. Chat's
+     plain `pre code` is pinned at 0.75rem, but that path only renders an
+     unhighlighted fence — the composer always highlights. */
   font-size: var(--font-size-code, inherit);
 }
 
