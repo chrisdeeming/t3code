@@ -15,6 +15,8 @@ import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineToken
 
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
 
+import { TiptapComposerPaste } from "./tiptapComposerPaste";
+
 export type ComposerTokenKind = "mention" | "skill" | "terminal-context";
 
 type ComposerTokenAttributes = {
@@ -191,6 +193,7 @@ export function tiptapComposerExtensions(options: TiptapComposerExtensionOptions
       trailingNode: false,
     }),
     TiptapComposerToken.configure({ nodeView: options.tokenNodeView ?? null }),
+    TiptapComposerPaste,
     Placeholder.configure({
       placeholder: ({ node }) =>
         node.type.name === "paragraph" ? (options.placeholder ?? "") : "",
