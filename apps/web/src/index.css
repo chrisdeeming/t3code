@@ -2155,6 +2155,7 @@ label:has(> select#reasoning-effort) select {
 }
 
 .composer-tiptap .tiptap pre {
+  position: relative;
   max-width: 100%;
   overflow-x: auto;
   border: 1px solid var(--border);
@@ -2163,6 +2164,25 @@ label:has(> select#reasoning-effort) select {
   padding: 0.8rem 0.9rem;
   scrollbar-color: color-mix(in srgb, var(--border) 78%, transparent) transparent;
   scrollbar-width: thin;
+}
+
+/* Name the language the fence declared, so the block reads like the chat one. */
+.composer-tiptap .tiptap pre[data-language]::before {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.6rem;
+  color: var(--muted-foreground);
+  content: attr(data-language);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.composer-tiptap .tiptap pre[data-language] {
+  padding-top: 1.35rem;
 }
 
 .composer-tiptap .tiptap pre code {
