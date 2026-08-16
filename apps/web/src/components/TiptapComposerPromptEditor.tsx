@@ -19,7 +19,11 @@ import {
 import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { cn } from "~/lib/utils";
 
-import type { ComposerPromptEditorHandle, ComposerPromptEditorProps } from "./ComposerPromptEditor";
+import type {
+  ComposerEditorDebugSnapshot,
+  ComposerPromptEditorHandle,
+  ComposerPromptEditorProps,
+} from "./ComposerPromptEditor";
 import {
   composerTerminalContextIds,
   getTiptapComposerMarkdown,
@@ -151,6 +155,9 @@ function snapshotEquals(left: ComposerSnapshot, right: ComposerSnapshot): boolea
 /** Tiptap implementation of the existing composer editor contract. */
 export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
   const emitChange = useEffectEvent(props.onChange);
+  const emitDebugSnapshot = useEffectEvent((snapshot: ComposerEditorDebugSnapshot) => {
+    props.onDebugSnapshotChange?.(snapshot);
+  });
   const commandKeyDown = useEffectEvent(
     (key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab", event: KeyboardEvent) =>
       props.onCommandKeyDown?.(key, event) ?? false,
@@ -168,6 +175,14 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
     () => ({ terminalContexts: props.terminalContexts, skills: props.skills }),
     [props.skills, props.terminalContexts],
   );
+  const refreshDebugSnapshot = useCallback((editor: Editor) => {
+    if (!props.onDebugSnapshotChange) return;
+    emitDebugSnapshot({
+      dom: editor.view.dom.outerHTML,
+      json: JSON.stringify(editor.getJSON(), null, 2),
+      markdown: getTiptapComposerMarkdown(editor),
+    });
+  }, []);
 
   const publishSnapshot = useCallback((editor: Editor) => {
     const snapshot = snapshotAtSelection(editor);
@@ -250,14 +265,17 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
     },
     onCreate({ editor: createdEditor }) {
       stampComposerTerminalContextIds(createdEditor, terminalContextsRef.current);
+      refreshDebugSnapshot(createdEditor);
     },
     onUpdate({ editor: updatedEditor }) {
       // A paste or autocomplete can introduce a placeholder mid-edit.
       stampComposerTerminalContextIds(updatedEditor, terminalContextsRef.current);
       publishSnapshot(updatedEditor);
+      refreshDebugSnapshot(updatedEditor);
     },
     onSelectionUpdate({ editor: updatedEditor }) {
       publishSnapshot(updatedEditor);
+      refreshDebugSnapshot(updatedEditor);
     },
   });
 
@@ -292,7 +310,8 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
       );
     }
     snapshotRef.current = snapshotAtSelection(editor);
-  }, [editor, props.cursor, props.terminalContexts, props.value]);
+    refreshDebugSnapshot(editor);
+  }, [editor, props.cursor, props.terminalContexts, props.value, refreshDebugSnapshot]);
 
   const focusAt = useCallback(
     (cursor: number) => {
