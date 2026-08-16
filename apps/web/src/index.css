@@ -2521,13 +2521,37 @@ html[data-theme-id] .composer-tiptap .tiptap pre {
 }
 
 /* Tiptap's React NodeView adds its own inline wrapper around the chip. Left
-   alone it is a bare inline box on the text baseline, so the browser measures
-   the caret against it rather than against the chip and paints the caret below
-   the pill. Make the wrapper adopt the chip's own box. */
+   alone it is a bare inline box on the text baseline — a different box from the
+   chip — so the browser measures the caret against the wrapper and paints it
+   below the pill. Give the wrapper the chip's box so the two coincide. */
 .composer-tiptap .tiptap .react-renderer:has(> .composer-inline-chip) {
-  display: inline-flex;
+  display: inline-block;
   vertical-align: -0.125em;
-  line-height: 0;
+  line-height: 1;
+  /* The chip's border sits flush against the preceding space, so `Brief: ` and
+     the pill read as one run. A hair of margin restores the word gap without
+     touching the shared chip class, which chat renders with too. */
+  margin-inline: 0.15em;
+}
+
+/* A block ending in a chip gets ProseMirror's separator <img> and trailing
+   <br>, which together keep the position after the atom reachable. The chip is
+   taller than the line box, so that pair is pushed onto a second line and opens
+   an empty row under the chip — the caret then looks like it sits on a new line
+   when it is really just after the chip.
+   Take them out of flow so they contribute no height. They stay in the DOM and
+   keep doing their job; only their line box is removed. */
+.composer-tiptap
+  .tiptap
+  p:has(> .react-renderer > .composer-inline-chip:last-child)
+  > img.ProseMirror-separator,
+.composer-tiptap
+  .tiptap
+  p:has(> .react-renderer > .composer-inline-chip:last-child)
+  > br.ProseMirror-trailingBreak {
+  position: absolute;
+  width: 0;
+  height: 0;
 }
 
 /* Composer chips are non-editable atoms, so the browser skips them when
