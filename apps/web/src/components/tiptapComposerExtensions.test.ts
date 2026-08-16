@@ -81,17 +81,44 @@ describe("Tiptap composer Markdown", () => {
   it.each([
     "first line\nsecond line",
     "one\n\n\n\nthree",
-    "Keep \\*these\\* characters literal",
     "npm install @scope/pkg && echo '$PATH'",
     "A <tag> should remain literal",
   ])("preserves coding-composer edge case %j", (markdown) => {
     expect(getTiptapComposerMarkdown(createComposerEditor(markdown))).toBe(markdown);
   });
 
-  it("makes incomplete Markdown literal when serializing it", () => {
+  /**
+   * Markdown backslash escapes are consumed while parsing, before the editor
+   * sees the text, so they cannot be reproduced on the way out. The escaped
+   * character itself survives, which is what the prompt is about.
+   */
+  it("drops backslash escapes from Markdown loaded into the editor", () => {
+    const editor = createComposerEditor("Keep \\*these\\* characters literal");
+
+    expect(getTiptapComposerMarkdown(editor)).toBe("Keep *these* characters literal");
+  });
+
+  it("keeps a backslash the user types rather than doubling it", () => {
+    const editor = createComposerEditor("windows");
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    editor.view.dispatch(editor.state.tr.insertText(" C:\\Users\\me"));
+
+    expect(getTiptapComposerMarkdown(editor)).toBe("windows C:\\Users\\me");
+  });
+
+  it("emits incomplete Markdown exactly as the user typed it", () => {
     const editor = createComposerEditor("**unfinished emphasis");
 
-    expect(getTiptapComposerMarkdown(editor)).toBe("\\*\\*unfinished emphasis");
+    expect(getTiptapComposerMarkdown(editor)).toBe("**unfinished emphasis");
+  });
+
+  it.each([
+    "path/to_file_name.ts",
+    "array[0] and list[1]",
+    "call foo(a, b) then bar_baz()",
+    "grep -n 'x' | wc -l",
+  ])("sends coding prompt text through unescaped: %j", (markdown) => {
+    expect(getTiptapComposerMarkdown(createComposerEditor(markdown))).toBe(markdown);
   });
 
   it("maps ProseMirror positions through Markdown delimiters", () => {

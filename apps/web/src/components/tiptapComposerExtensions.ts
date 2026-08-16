@@ -16,6 +16,7 @@ import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineToken
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
 
 import { TiptapComposerPaste } from "./tiptapComposerPaste";
+import { TiptapComposerSurround } from "./tiptapComposerSurround";
 
 export type ComposerTokenKind = "mention" | "skill" | "terminal-context";
 
@@ -173,6 +174,34 @@ export const TiptapComposerToken = Node.create<ComposerTokenOptions>({
   },
 });
 
+/** Serializer internals we deliberately override; not part of the public type. */
+type MarkdownEscaper = { escapeMarkdownSyntax: (text: string) => string };
+
+/**
+ * The composer's value is a coding prompt, not a document, so the characters
+ * the user typed have to reach the agent unchanged. `@tiptap/markdown`
+ * backslash-escapes ``\ ` * _ [ ] ~`` in every non-code text node, which turns
+ * `path/to_file.ts` into `path/to\_file.ts` and `array[0]` into `array\[0\]`.
+ *
+ * There is no supported hook for this — `renderNodeToMarkdown` handles text
+ * nodes before consulting the extension registry — so the escaper is replaced
+ * on the manager instance. Mutating the instance rather than the prototype
+ * keeps the change scoped to this editor and covers both serialization paths,
+ * since `getMarkdown` and `editor.markdown.serialize` share the object.
+ *
+ * The trade this makes: literal text that looks like inline markup, such as
+ * `[label](target)`, re-parses as markup on the next controlled update. That
+ * round-trip was already partial — the escape set covers no block syntax, so
+ * `# not a heading` never survived either — and exact prompt text matters more.
+ */
+const ComposerMarkdown = Markdown.extend({
+  onBeforeCreate(props) {
+    this.parent?.(props);
+    const manager = this.editor.markdown as unknown as MarkdownEscaper | undefined;
+    if (manager) manager.escapeMarkdownSyntax = (text: string) => text;
+  },
+});
+
 export interface TiptapComposerExtensionOptions {
   placeholder?: string;
   /**
@@ -194,11 +223,12 @@ export function tiptapComposerExtensions(options: TiptapComposerExtensionOptions
     }),
     TiptapComposerToken.configure({ nodeView: options.tokenNodeView ?? null }),
     TiptapComposerPaste,
+    TiptapComposerSurround,
     Placeholder.configure({
       placeholder: ({ node }) =>
         node.type.name === "paragraph" ? (options.placeholder ?? "") : "",
     }),
-    Markdown.configure({
+    ComposerMarkdown.configure({
       markedOptions: {
         breaks: false,
         gfm: true,
