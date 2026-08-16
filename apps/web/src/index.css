@@ -2097,9 +2097,15 @@ label:has(> select#reasoning-effort) select {
   font-size: 0.875rem;
 }
 
-.composer-tiptap .tiptap h6,
-.composer-tiptap .tiptap blockquote {
+.composer-tiptap .tiptap h6 {
   color: var(--muted-foreground);
+}
+
+/* Unlike rendered chat Markdown, a quote here is text the user is still
+   writing; muting it reads as "this is disabled" in an input. The border
+   carries the quote signal instead. */
+.composer-tiptap .tiptap blockquote {
+  color: var(--foreground);
 }
 
 .composer-tiptap .tiptap ul,
@@ -2145,13 +2151,16 @@ label:has(> select#reasoning-effort) select {
   padding-left: 0.8rem;
 }
 
+/* Code surfaces follow the same theme tokens and font hooks as rendered chat
+   Markdown, so the block a user is editing matches the block they will see
+   once it is sent — in every theme, not just the default one. */
 .composer-tiptap .tiptap :not(pre) > code {
   border: 1px solid var(--border);
   border-radius: 0.375rem;
-  background: var(--muted);
+  background: var(--code-background, var(--muted));
   padding: 0.1rem 0.35rem;
-  color: var(--foreground);
-  font-size: 0.75rem;
+  color: var(--code-foreground, var(--foreground));
+  font-size: var(--font-size-code, inherit);
 }
 
 .composer-tiptap .tiptap pre {
@@ -2160,8 +2169,9 @@ label:has(> select#reasoning-effort) select {
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: 0.75rem;
-  background: var(--muted);
+  background: var(--code-background, var(--muted));
   padding: 0.8rem 0.9rem;
+  color: var(--code-foreground, var(--foreground));
   scrollbar-color: color-mix(in srgb, var(--border) 78%, transparent) transparent;
   scrollbar-width: thin;
 }
@@ -2171,7 +2181,7 @@ label:has(> select#reasoning-effort) select {
   position: absolute;
   top: 0.35rem;
   right: 0.6rem;
-  color: var(--muted-foreground);
+  color: color-mix(in srgb, var(--code-foreground, var(--foreground)) 72%, transparent);
   content: attr(data-language);
   font-family: var(--font-mono);
   font-size: 0.625rem;
@@ -2189,8 +2199,9 @@ label:has(> select#reasoning-effort) select {
   border: none;
   background: transparent;
   padding: 0;
+  color: inherit;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--font-size-code, inherit);
 }
 
 .composer-tiptap .tiptap p.is-editor-empty:first-child::before {
