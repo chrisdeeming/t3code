@@ -247,6 +247,7 @@ import {
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import type { ComposerEditorDebugSnapshot } from "./ComposerPromptEditor";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
@@ -353,6 +354,8 @@ const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
+const TIPTAP_COMPOSER_DEBUG = 1;
+type ComposerDebugTab = keyof ComposerEditorDebugSnapshot;
 function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
   const transitionGroupRef = useRef<HTMLDivElement | null>(null);
   const composerAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -1337,6 +1340,12 @@ function ChatViewContent(props: ChatViewProps) {
   const localComposerRef = useRef<ChatComposerHandle | null>(null);
   const composerRef = useComposerHandleContext() ?? localComposerRef;
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [composerDebugTab, setComposerDebugTab] = useState<ComposerDebugTab>("json");
+  const [composerDebugSnapshot, setComposerDebugSnapshot] = useState<ComposerEditorDebugSnapshot>({
+    dom: "",
+    json: "",
+    markdown: "",
+  });
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
   const optimisticUserMessagesRef = useRef(optimisticUserMessages);
@@ -6392,6 +6401,9 @@ function ChatViewContent(props: ChatViewProps) {
                             composerImagesRef={composerImagesRef}
                             composerTerminalContextsRef={composerTerminalContextsRef}
                             composerElementContextsRef={composerElementContextsRef}
+                            {...(TIPTAP_COMPOSER_DEBUG
+                              ? { onDebugSnapshotChange: setComposerDebugSnapshot }
+                              : {})}
                             onSend={onSend}
                             onInterrupt={onInterrupt}
                             onImplementPlanInNewThread={onImplementPlanInNewThread}
@@ -6456,6 +6468,30 @@ function ChatViewContent(props: ChatViewProps) {
                         </div>
                       </div>
                     </div>
+                    {TIPTAP_COMPOSER_DEBUG ? (
+                      <div className="mx-auto mt-3 w-full max-w-3xl overflow-hidden rounded-lg border border-border bg-background text-xs">
+                        <div className="flex border-b border-border bg-muted/40" role="tablist">
+                          {(["json", "markdown", "dom"] as const).map((tab) => (
+                            <button
+                              key={tab}
+                              aria-selected={composerDebugTab === tab}
+                              className={cn(
+                                "px-3 py-1.5 font-medium capitalize text-muted-foreground hover:text-foreground",
+                                composerDebugTab === tab && "bg-background text-foreground",
+                              )}
+                              role="tab"
+                              type="button"
+                              onClick={() => setComposerDebugTab(tab)}
+                            >
+                              {tab === "dom" ? "Editor DOM" : tab}
+                            </button>
+                          ))}
+                        </div>
+                        <pre className="max-h-64 overflow-auto whitespace-pre-wrap p-3 font-mono text-[11px] leading-relaxed wrap-break-word">
+                          {composerDebugSnapshot[composerDebugTab]}
+                        </pre>
+                      </div>
+                    ) : null}
                     <div
                       aria-hidden
                       className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"

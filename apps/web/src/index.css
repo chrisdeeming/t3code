@@ -2050,6 +2050,137 @@ label:has(> select#reasoning-effort) select {
   background: color-mix(in srgb, var(--border) 78%, transparent);
 }
 
+/* Keep the composer WYSIWYG treatment aligned with rendered chat Markdown. */
+.composer-tiptap .tiptap > :first-child {
+  margin-top: 0;
+}
+
+.composer-tiptap .tiptap > :last-child {
+  margin-bottom: 0;
+}
+
+.composer-tiptap .tiptap p,
+.composer-tiptap .tiptap ul,
+.composer-tiptap .tiptap ol,
+.composer-tiptap .tiptap blockquote,
+.composer-tiptap .tiptap pre {
+  margin: 0.65rem 0;
+}
+
+.composer-tiptap .tiptap h1,
+.composer-tiptap .tiptap h2,
+.composer-tiptap .tiptap h3,
+.composer-tiptap .tiptap h4,
+.composer-tiptap .tiptap h5,
+.composer-tiptap .tiptap h6 {
+  margin: 1.25rem 0 0.5rem;
+  color: var(--foreground);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.composer-tiptap .tiptap h1 {
+  font-size: 1.25rem;
+}
+
+.composer-tiptap .tiptap h2 {
+  font-size: 1.125rem;
+}
+
+.composer-tiptap .tiptap h3 {
+  font-size: 1rem;
+}
+
+.composer-tiptap .tiptap h4,
+.composer-tiptap .tiptap h5,
+.composer-tiptap .tiptap h6 {
+  font-size: 0.875rem;
+}
+
+.composer-tiptap .tiptap h6,
+.composer-tiptap .tiptap blockquote {
+  color: var(--muted-foreground);
+}
+
+.composer-tiptap .tiptap ul,
+.composer-tiptap .tiptap ol {
+  padding-left: 1.25rem;
+}
+
+.composer-tiptap .tiptap ul {
+  list-style-type: disc;
+}
+
+.composer-tiptap .tiptap ol {
+  list-style-type: decimal;
+}
+
+.composer-tiptap .tiptap ul ul {
+  list-style-type: circle;
+}
+
+.composer-tiptap .tiptap ul ul ul {
+  list-style-type: square;
+}
+
+.composer-tiptap .tiptap ol ol {
+  list-style-type: lower-alpha;
+}
+
+.composer-tiptap .tiptap ol ol ol {
+  list-style-type: lower-roman;
+}
+
+.composer-tiptap .tiptap li + li {
+  margin-top: 0.25rem;
+}
+
+.composer-tiptap .tiptap a {
+  color: var(--info-foreground);
+  text-decoration: none;
+}
+
+.composer-tiptap .tiptap blockquote {
+  border-left: 2px solid var(--border);
+  padding-left: 0.8rem;
+}
+
+.composer-tiptap .tiptap :not(pre) > code {
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--muted);
+  padding: 0.1rem 0.35rem;
+  color: var(--foreground);
+  font-size: 0.75rem;
+}
+
+.composer-tiptap .tiptap pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--muted);
+  padding: 0.8rem 0.9rem;
+  scrollbar-color: color-mix(in srgb, var(--border) 78%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.composer-tiptap .tiptap pre code {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.composer-tiptap .tiptap p.is-editor-empty:first-child::before {
+  float: left;
+  height: 0;
+  color: var(--placeholder);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
 .markdown-file-link-tooltip-scroll {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--border) 78%, transparent) transparent;

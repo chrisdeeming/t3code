@@ -1,0 +1,227 @@
+import { Editor } from "@tiptap/core";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+
+import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
+
+import {
+  convertTiptapCodeFenceOnEnter,
+  serializeTiptapComposerWithCursor,
+  tiptapComposerPositionForExpandedCursor,
+} from "./TiptapComposerPromptEditor";
+import { getTiptapComposerMarkdown, tiptapComposerExtensions } from "./tiptapComposerExtensions";
+
+const editors: Editor[] = [];
+
+function createComposerEditor(markdown: string): Editor {
+  const editor = new Editor({
+    extensions: tiptapComposerExtensions(),
+    content: markdown,
+    contentType: "markdown",
+  });
+  editors.push(editor);
+  return editor;
+}
+
+describe("Tiptap composer Markdown", () => {
+  afterEach(() => {
+    for (const editor of editors.splice(0)) editor.destroy();
+  });
+
+  it("does not register StarterKit's automatic trailing node", () => {
+    const editor = createComposerEditor("```ts\ntest\n```");
+
+    expect(
+      editor.extensionManager.extensions.some((extension) => extension.name === "trailingNode"),
+    ).toBe(false);
+  });
+
+  it("round-trips the Markdown features intended for the composer", () => {
+    const markdown = [
+      "Use **bold**, *italic*, `inline code`, and [a link](https://example.com).",
+      "",
+      "> Then explain:",
+      "",
+      "- one",
+      "- two",
+      "",
+      "```ts",
+      "const answer = 42",
+      "```",
+    ].join("\n");
+
+    expect(getTiptapComposerMarkdown(createComposerEditor(markdown))).toBe(markdown);
+  });
+
+  it("parses and serializes T3 inline tokens as atomic nodes", () => {
+    const markdown = `Inspect [config.json](src/config.json) with $review ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} please`;
+    const editor = createComposerEditor(markdown);
+    const tokens = editor
+      .getJSON()
+      .content?.[0]?.content?.filter((node) => node.type === "composerToken");
+
+    expect(tokens).toEqual([
+      {
+        type: "composerToken",
+        attrs: { kind: "mention", value: "src/config.json", contextId: null, label: null },
+      },
+      {
+        type: "composerToken",
+        attrs: { kind: "skill", value: "review", contextId: null, label: null },
+      },
+      {
+        type: "composerToken",
+        attrs: { kind: "terminal-context", value: "", contextId: null, label: null },
+      },
+    ]);
+    expect(getTiptapComposerMarkdown(editor)).toBe(markdown);
+  });
+
+  it("leaves ordinary Markdown links and scoped packages alone", () => {
+    const markdown = "Read [Tiptap](https://tiptap.dev) then run npm install @scope/pkg now";
+    const editor = createComposerEditor(markdown);
+    const tokens = editor
+      .getJSON()
+      .content?.[0]?.content?.filter((node) => node.type === "composerToken");
+
+    expect(tokens).toEqual([]);
+    expect(getTiptapComposerMarkdown(editor)).toBe(markdown);
+  });
+
+  it.each([
+    "first line\nsecond line",
+    "one\n\n\n\nthree",
+    "Keep \\*these\\* characters literal",
+    "npm install @scope/pkg && echo '$PATH'",
+    "A <tag> should remain literal",
+  ])("preserves coding-composer edge case %j", (markdown) => {
+    expect(getTiptapComposerMarkdown(createComposerEditor(markdown))).toBe(markdown);
+  });
+
+  it("makes incomplete Markdown literal when serializing it", () => {
+    const editor = createComposerEditor("**unfinished emphasis");
+
+    expect(getTiptapComposerMarkdown(editor)).toBe("\\*\\*unfinished emphasis");
+  });
+
+  it("maps ProseMirror positions through Markdown delimiters", () => {
+    const editor = createComposerEditor("Use **bold** now");
+
+    expect(serializeTiptapComposerWithCursor(editor, 7)).toEqual({
+      value: "Use **bold** now",
+      expandedCursor: 8,
+    });
+    expect(tiptapComposerPositionForExpandedCursor(editor, 8)).toBe(7);
+  });
+
+  it("maps positions around serialized composer atoms", () => {
+    const editor = createComposerEditor("See [config.json](src/config.json) now");
+
+    expect(serializeTiptapComposerWithCursor(editor, 5).expandedCursor).toBe(4);
+    expect(serializeTiptapComposerWithCursor(editor, 6).expandedCursor).toBe(34);
+    expect(tiptapComposerPositionForExpandedCursor(editor, 34)).toBe(6);
+  });
+
+  it("maps whole-document selection boundaries without creating paragraphs", () => {
+    const editor = createComposerEditor("first\n\nsecond");
+
+    expect(serializeTiptapComposerWithCursor(editor, 0)).toEqual({
+      value: "first\n\nsecond",
+      expandedCursor: 0,
+    });
+    expect(serializeTiptapComposerWithCursor(editor, editor.state.doc.content.size)).toEqual({
+      value: "first\n\nsecond",
+      expandedCursor: 13,
+    });
+  });
+
+  it("does not change Markdown while mapping positions in trailing empty paragraphs", () => {
+    const editor = new Editor({
+      extensions: tiptapComposerExtensions(),
+      content: {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "test" }] },
+          { type: "paragraph" },
+          { type: "paragraph" },
+        ],
+      },
+    });
+    editors.push(editor);
+    const value = getTiptapComposerMarkdown(editor);
+    const document = editor.getJSON();
+
+    for (let position = 1; position < editor.state.doc.content.size; position += 1) {
+      expect(serializeTiptapComposerWithCursor(editor, position).value).toBe(value);
+      expect(editor.getJSON()).toEqual(document);
+    }
+  });
+
+  it("loads list and fenced-code nodes from Markdown", () => {
+    const editor = createComposerEditor("- one\n- two\n\n```ts\nconst answer = 42\n```");
+
+    expect(editor.getJSON().content?.map((node) => node.type)).toEqual(["bulletList", "codeBlock"]);
+  });
+
+  it.each([
+    ["```", null],
+    ["```ts", "ts"],
+    ["```objective-c", "objective-c"],
+    ["```c++", "c++"],
+  ])("turns %s into an empty code block on Enter", (fence, language) => {
+    const editor = new Editor({
+      extensions: tiptapComposerExtensions(),
+      content: {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: fence }] }],
+      },
+    });
+    editors.push(editor);
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+
+    expect(
+      convertTiptapCodeFenceOnEnter(editor.state, (transaction) =>
+        editor.view.dispatch(transaction),
+      ),
+    ).toBe(true);
+    expect(editor.getJSON().content).toEqual([{ type: "codeBlock", attrs: { language } }]);
+  });
+
+  it("keeps a trailing code-block escape paragraph out of Markdown", () => {
+    const editor = createComposerEditor("```ts\nconst answer = 42\n```");
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+
+    expect(editor.commands.exitCode()).toBe(true);
+    expect(editor.getJSON().content?.map((node) => node.type)).toEqual(["codeBlock", "paragraph"]);
+    expect(getTiptapComposerMarkdown(editor)).toBe("```ts\nconst answer = 42\n```");
+    expect(
+      serializeTiptapComposerWithCursor(editor, editor.state.selection.anchor).expandedCursor,
+    ).toBe(getTiptapComposerMarkdown(editor).length);
+    expect(
+      tiptapComposerPositionForExpandedCursor(editor, getTiptapComposerMarkdown(editor).length),
+    ).toBe(editor.state.doc.content.size - 1);
+
+    editor.view.dispatch(editor.state.tr.insertText("Explain this code"));
+    expect(getTiptapComposerMarkdown(editor)).toBe(
+      "```ts\nconst answer = 42\n```\n\nExplain this code",
+    );
+  });
+
+  it("keeps a trailing blockquote escape paragraph out of Markdown", () => {
+    const editor = new Editor({
+      extensions: tiptapComposerExtensions(),
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "blockquote",
+            content: [{ type: "paragraph", content: [{ type: "text", text: "quoted" }] }],
+          },
+          { type: "paragraph" },
+        ],
+      },
+    });
+    editors.push(editor);
+
+    expect(getTiptapComposerMarkdown(editor)).toBe("> quoted");
+  });
+});
