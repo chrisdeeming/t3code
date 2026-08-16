@@ -2528,10 +2528,12 @@ html[data-theme-id] .composer-tiptap .tiptap pre {
   display: inline-block;
   vertical-align: -0.125em;
   line-height: 1;
-  /* The chip's border sits flush against the preceding space, so `Brief: ` and
-     the pill read as one run. A hair of margin restores the word gap without
-     touching the shared chip class, which chat renders with too. */
-  margin-inline: 0.15em;
+  /* The chip's border sits flush against the surrounding text, so `Brief: ` and
+     the pill read as one run and a caret parked after the chip paints on top of
+     its border. Margin restores the word gap and gives the caret clear room.
+     Applied to the composer's NodeView wrapper, not the shared chip class that
+     chat also renders with. */
+  margin-inline: 0.2em;
 }
 
 /* A block ending in a chip gets ProseMirror's separator <img> and trailing
@@ -2555,11 +2557,9 @@ html[data-theme-id] .composer-tiptap .tiptap pre {
 }
 
 /* Composer chips are non-editable atoms, so the browser skips them when
-   painting text selection; these overlays stand in for the native highlight —
-   one for a range that spans the chip, one for clicking the chip itself. */
-.composer-inline-chip[data-composer-chip-selected]::after,
-.composer-tiptap .tiptap .ProseMirror-selectednode .composer-inline-chip::after,
-.composer-tiptap .tiptap .composer-inline-chip:has(.ProseMirror-selectednode)::after {
+   painting text selection; this overlay stands in for the native highlight on a
+   range that spans the chip. */
+.composer-inline-chip[data-composer-chip-selected]::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -2567,12 +2567,4 @@ html[data-theme-id] .composer-tiptap .tiptap pre {
   background-color: Highlight;
   opacity: 0.3;
   pointer-events: none;
-}
-
-/* A clicked chip is a NodeSelection: typing replaces it, so it has to look
-   selected rather than merely focused. */
-.composer-tiptap .tiptap .ProseMirror-selectednode {
-  border-radius: 6px;
-  outline: 2px solid color-mix(in srgb, var(--ring) 70%, transparent);
-  outline-offset: 1px;
 }

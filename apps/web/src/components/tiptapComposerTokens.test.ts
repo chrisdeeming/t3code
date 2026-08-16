@@ -45,6 +45,18 @@ describe("Tiptap composer tokens", () => {
     for (const editor of editors.splice(0)) editor.destroy();
   });
 
+  /**
+   * With `selectable: true`, ArrowRight into a chip made a NodeSelection rather
+   * than moving past it: the caret disappeared and the next keystroke replaced
+   * the chip. A caret walking a sentence should step over it.
+   */
+  it("does not let the cursor land on a token as a node selection", () => {
+    const editor = createComposerEditor("See [config.json](src/config.json) now");
+    const [tokenPosition] = tokenPositions(editor);
+
+    expect(editor.state.doc.nodeAt(tokenPosition!)?.type.spec.selectable).toBe(false);
+  });
+
   it("selects a whole token as one unit rather than splitting it", () => {
     const editor = createComposerEditor("See [config.json](src/config.json) now");
     const [tokenPosition] = tokenPositions(editor);

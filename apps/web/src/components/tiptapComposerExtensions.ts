@@ -157,16 +157,21 @@ export interface ComposerTokenOptions {
 }
 
 /**
- * Selectable so ProseMirror's own NodeSelection drives the legacy behaviors:
- * arrows step over the chip as one unit, a range spanning it paints, and
- * Backspace/Delete removes the whole token instead of splitting it.
+ * Not selectable: with `selectable: true`, ArrowRight into a chip made a
+ * NodeSelection instead of moving past it, so the caret vanished and the next
+ * keystroke replaced the chip. The Lexical composer stepped over a chip as one
+ * unit, which is what a caret walking through a sentence should do.
+ *
+ * Deletion does not depend on this — `deleteAdjacentComposerToken` removes the
+ * whole atom from a collapsed cursor either way — and a range spanning a chip
+ * still paints, via the overlay in the stylesheet.
  */
 export const TiptapComposerToken = Node.create<ComposerTokenOptions>({
   name: "composerToken",
   group: "inline",
   inline: true,
   atom: true,
-  selectable: true,
+  selectable: false,
 
   addOptions() {
     return { nodeView: null };
