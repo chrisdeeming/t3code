@@ -1,6 +1,6 @@
 import { Extension, type JSONContent } from "@tiptap/core";
 import type { ResolvedPos } from "@tiptap/pm/model";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type Selection } from "@tiptap/pm/state";
 import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 
 /**
@@ -58,6 +58,20 @@ export function composerPasteContent(
   return content;
 }
 
+/**
+ * Whether a paste at this selection should become mention chips.
+ *
+ * Inside a fence a path is just text, and turning it into a chip would lift the
+ * paste out of the code block. Both ends matter: a range reaching into a fence
+ * replaces it, so honouring only the start would delete the block outright. A
+ * selection resolved at the document (Cmd+A) has no textblock parent to trust.
+ */
+export function composerPasteAppliesTo(selection: Selection): boolean {
+  const { $from, $to } = selection;
+  if (!$from.parent.isTextblock || !$to.parent.isTextblock) return false;
+  return !$from.parent.type.spec.code && !$to.parent.type.spec.code;
+}
+
 export const composerPasteKey = new PluginKey("composerInlineTokenPaste");
 
 /**
@@ -78,11 +92,9 @@ export const TiptapComposerPaste = Extension.create({
             const text = event.clipboardData.getData("text/plain");
             if (!text) return false;
 
-            const { $from } = view.state.selection;
-            // Inside a fence a path is just text; turning it into a chip would
-            // also lift the paste out of the code block into a new paragraph.
-            if ($from.parent.type.spec.code) return false;
+            if (!composerPasteAppliesTo(view.state.selection)) return false;
 
+            const { $from } = view.state.selection;
             const content = composerPasteContent(text, pasteAbutsNonWhitespace($from));
             if (!content) return false;
 

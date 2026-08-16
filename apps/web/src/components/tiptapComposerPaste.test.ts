@@ -1,8 +1,13 @@
 import { Editor } from "@tiptap/core";
+import { AllSelection, TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { getTiptapComposerMarkdown, tiptapComposerExtensions } from "./tiptapComposerExtensions";
-import { composerPasteContent, pasteAbutsNonWhitespace } from "./tiptapComposerPaste";
+import {
+  composerPasteAppliesTo,
+  composerPasteContent,
+  pasteAbutsNonWhitespace,
+} from "./tiptapComposerPaste";
 
 const editors: Editor[] = [];
 
@@ -15,6 +20,9 @@ function createComposerEditor(markdown: string): Editor {
   editors.push(editor);
   return editor;
 }
+
+/** The handler declines when the selection is not somewhere a chip may live. */
+const pasteIsDeclined = (editor: Editor) => !composerPasteAppliesTo(editor.state.selection);
 
 function tokenPosition(editor: Editor): number {
   let position = -1;
@@ -115,6 +123,29 @@ describe("Tiptap composer paste", () => {
 
   it("leaves scoped package references as plain text", () => {
     expect(composerPasteContent("npm install @scope/pkg", false)).toBeNull();
+  });
+
+  /**
+   * Checking only `$from` let a range that started in prose and ended in a
+   * fence through: the paste replaced the selection, deleting the code block
+   * and leaving a chip where the fence had been.
+   */
+  it("declines a selection that reaches into a code block", () => {
+    const editor = createComposerEditor("para text\n\n```\ncode here\n```");
+    const codeBlockStart = editor.state.doc.content.size - 11;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 5, codeBlockStart)),
+    );
+
+    expect(pasteIsDeclined(editor)).toBe(true);
+    expect(getTiptapComposerMarkdown(editor)).toBe("para text\n\n```\ncode here\n```");
+  });
+
+  it("declines a whole-document selection", () => {
+    const editor = createComposerEditor("```\ncode here\n```");
+    editor.view.dispatch(editor.state.tr.setSelection(new AllSelection(editor.state.doc)));
+
+    expect(pasteIsDeclined(editor)).toBe(true);
   });
 
   /**
