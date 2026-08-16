@@ -163,6 +163,16 @@ describe("Tiptap composer paste", () => {
   });
 
   /**
+   * A paste can carry both a file link and block structure. Checking mentions
+   * first returned early and traded the list, the fences and the blank lines
+   * for the single chip inside them.
+   */
+  it("treats text with both a mention and block structure as Markdown", () => {
+    expect(pastedTextLooksLikeMarkdown("- Brief: [notes.md](/tmp/notes.md)")).toBe(true);
+    expect(composerPasteContent("- Brief: [notes.md](/tmp/notes.md)\n", false)).not.toBeNull();
+  });
+
+  /**
    * Emphasis characters are everywhere in prose and code. Treating them as a
    * signal would rewrite text the user pasted literally.
    */

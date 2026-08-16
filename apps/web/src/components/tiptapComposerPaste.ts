@@ -158,14 +158,17 @@ export const TiptapComposerPaste = Extension.create({
               return true;
             }
 
-            const mentions = composerPasteContent(text, pasteAbutsNonWhitespace($from));
-            if (mentions) {
-              editor.commands.insertContent(mentions);
+            // Structure first: the Markdown parser builds mention chips too, so
+            // checking mentions ahead of it would trade a pasted list or fence
+            // for the one chip inside it.
+            if (pastedTextLooksLikeMarkdown(text)) {
+              editor.commands.insertContent(text, { contentType: "markdown" });
               return true;
             }
 
-            if (pastedTextLooksLikeMarkdown(text)) {
-              editor.commands.insertContent(text, { contentType: "markdown" });
+            const mentions = composerPasteContent(text, pasteAbutsNonWhitespace($from));
+            if (mentions) {
+              editor.commands.insertContent(mentions);
               return true;
             }
 
