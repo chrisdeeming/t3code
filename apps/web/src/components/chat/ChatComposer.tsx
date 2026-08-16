@@ -83,11 +83,7 @@ import {
   shouldUseCompactComposerPrimaryActions,
   shouldUseCompactComposerFooter,
 } from "../composerFooterLayout";
-import {
-  type ComposerEditorDebugSnapshot,
-  type ComposerPromptEditorHandle,
-  ComposerPromptEditor,
-} from "../ComposerPromptEditor";
+import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../ComposerPromptEditor";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
@@ -568,7 +564,6 @@ export interface ChatComposerProps {
   composerTerminalContextsRef: React.RefObject<TerminalContextDraft[]>;
   composerElementContextsRef: React.RefObject<ElementContextDraft[]>;
   composerRef: React.RefObject<ChatComposerHandle | null>;
-  onDebugSnapshotChange?: (snapshot: ComposerEditorDebugSnapshot) => void;
 
   // Callbacks
   onSend: (e?: { preventDefault: () => void }) => void;
@@ -3043,9 +3038,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 onChange={onPromptChange}
                 onCommandKeyDown={onComposerCommandKey}
                 onPaste={onComposerPaste}
-                {...(props.onDebugSnapshotChange
-                  ? { onDebugSnapshotChange: props.onDebugSnapshotChange }
-                  : {})}
                 placeholder={
                   isComposerApprovalState
                     ? (activePendingApproval?.detail ?? "Resolve this approval request to continue")

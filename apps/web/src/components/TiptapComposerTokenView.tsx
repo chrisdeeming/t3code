@@ -122,6 +122,9 @@ export function TiptapComposerTokenView(props: ReactNodeViewProps) {
   const terminalIndex = terminalContextIndexBefore(props.getPos(), props.editor.state.doc);
 
   return (
+    // `as` must be a span so the chip stays valid inline content. NodeViewWrapper
+    // spreads its props, so the attribute also lands in the DOM; harmless, and
+    // the alternative is a div inside a paragraph.
     <NodeViewWrapper
       as="span"
       className="composer-inline-chip relative inline-flex align-[-0.125em] leading-none"

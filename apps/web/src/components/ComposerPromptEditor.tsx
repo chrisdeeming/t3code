@@ -17,12 +17,6 @@ export interface ComposerPromptEditorHandle {
   };
 }
 
-export type ComposerEditorDebugSnapshot = {
-  dom: string;
-  json: string;
-  markdown: string;
-};
-
 export interface ComposerPromptEditorProps {
   value: string;
   cursor: number;
@@ -44,7 +38,6 @@ export interface ComposerPromptEditorProps {
     event: KeyboardEvent,
   ) => boolean;
   onPaste: React.ClipboardEventHandler<HTMLElement>;
-  onDebugSnapshotChange?: (snapshot: ComposerEditorDebugSnapshot) => void;
   editorRef: React.RefObject<ComposerPromptEditorHandle | null>;
 }
 
