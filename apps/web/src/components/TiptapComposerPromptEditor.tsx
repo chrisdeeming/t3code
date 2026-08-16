@@ -16,6 +16,7 @@ import {
   expandCollapsedComposerCursor,
   isCollapsedCursorAdjacentToInlineToken,
 } from "~/composer-logic";
+import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { cn } from "~/lib/utils";
 
 import type {
@@ -219,6 +220,10 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
     extensions: tiptapComposerExtensions({
       placeholder: props.placeholder,
       tokenNodeView: composerTokenNodeView(),
+      codeBlockTheme: () =>
+        resolveDiffThemeName(
+          document.documentElement.classList.contains("dark") ? "dark" : "light",
+        ),
     }),
     content: props.value,
     contentType: "markdown",

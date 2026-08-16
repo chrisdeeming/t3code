@@ -1,6 +1,7 @@
 import {
   decodeHtmlEntities,
   type Editor,
+  Extension,
   Node,
   type Extensions,
   type JSONContent,
@@ -13,8 +14,10 @@ import StarterKit from "@tiptap/starter-kit";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 
+import type { DiffThemeName } from "~/lib/diffRendering";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
 
+import { composerCodeBlockHighlight } from "./tiptapComposerCodeBlock";
 import { TiptapComposerPaste } from "./tiptapComposerPaste";
 import { TiptapComposerSurround } from "./tiptapComposerSurround";
 
@@ -202,6 +205,29 @@ const ComposerMarkdown = Markdown.extend({
   },
 });
 
+/**
+ * Mirrors the code block's language onto the `<pre>` so the stylesheet can
+ * label the block, without putting a NodeView between the user and the text.
+ * Rendered only; the value still lives on the code block's own attribute.
+ */
+const ComposerCodeBlockLanguageLabel = Extension.create({
+  name: "composerCodeBlockLanguageLabel",
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["codeBlock"],
+        attributes: {
+          language: {
+            renderHTML: (attributes) =>
+              attributes.language ? { "data-language": attributes.language } : {},
+          },
+        },
+      },
+    ];
+  },
+});
+
 export interface TiptapComposerExtensionOptions {
   placeholder?: string;
   /**
@@ -210,6 +236,11 @@ export interface TiptapComposerExtensionOptions {
    * free of React and the DOM.
    */
   tokenNodeView?: NodeViewRenderer;
+  /**
+   * Supplied by the React entry point so code blocks pick up the active theme.
+   * Omitted in headless tests, which do not paint highlighting.
+   */
+  codeBlockTheme?: () => DiffThemeName;
 }
 
 export function tiptapComposerExtensions(options: TiptapComposerExtensionOptions = {}): Extensions {
@@ -221,9 +252,13 @@ export function tiptapComposerExtensions(options: TiptapComposerExtensionOptions
       },
       trailingNode: false,
     }),
+    ComposerCodeBlockLanguageLabel,
     TiptapComposerToken.configure({ nodeView: options.tokenNodeView ?? null }),
     TiptapComposerPaste,
     TiptapComposerSurround,
+    ...(options.codeBlockTheme
+      ? [composerCodeBlockHighlight({ resolveTheme: options.codeBlockTheme })]
+      : []),
     Placeholder.configure({
       placeholder: ({ node }) =>
         node.type.name === "paragraph" ? (options.placeholder ?? "") : "",
