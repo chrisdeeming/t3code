@@ -159,8 +159,11 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
     props.onDebugSnapshotChange?.(snapshot);
   });
   const commandKeyDown = useEffectEvent(
-    (key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab", event: KeyboardEvent) =>
-      props.onCommandKeyDown?.(key, event) ?? false,
+    (
+      key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
+      event: KeyboardEvent,
+      intent?: "default" | "menu-only" | "submit",
+    ) => props.onCommandKeyDown?.(key, event, intent) ?? false,
   );
   const snapshotRef = useRef<ComposerSnapshot>({
     value: props.value,
@@ -248,12 +251,32 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
           event.preventDefault();
           return true;
         }
+        // Structural Enter is contextual, so a list, quote or fence otherwise
+        // has no keyboard route to send at all. Mod+Enter always submits, and
+        // is checked before the guards below so it works from anywhere.
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          const submitted = commandKeyDown("Enter", event, "submit");
+          if (submitted) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+          return submitted;
+        }
+        // Inside a list, quote or fence Enter belongs to the structure — but
+        // the command menu still gets first refusal, so picking a file with
+        // Enter works there too. `menuOnly` stops the parent falling through
+        // to submitting once the menu declines.
         if (
           event.key === "Enter" &&
           (view.state.selection.$from.parent.type.name === "codeBlock" ||
             view.state.selection.$from.depth > 1)
         ) {
-          return false;
+          const handledByMenu = commandKeyDown("Enter", event, "menu-only");
+          if (handledByMenu) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+          return handledByMenu;
         }
         const handled = commandKeyDown(event.key, event);
         if (handled) {

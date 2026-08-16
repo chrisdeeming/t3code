@@ -1872,6 +1872,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const onComposerCommandKey = (
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
     event: KeyboardEvent,
+    intent: "default" | "menu-only" | "submit" = "default",
   ) => {
     if (key === "Tab" && event.shiftKey) {
       if (!planModeUiEnabled) return false;
@@ -1895,6 +1896,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         onSelectComposerItem(selectedItem);
         return true;
       }
+    }
+    // Inside a list, quote or fence the menu gets first refusal and Enter then
+    // belongs to the structure; Mod+Enter is the escape hatch that always sends.
+    if (key === "Enter" && intent === "menu-only") {
+      return false;
+    }
+    if (key === "Enter" && intent === "submit") {
+      submitComposer();
+      return true;
     }
     if (
       key === "Enter" &&
