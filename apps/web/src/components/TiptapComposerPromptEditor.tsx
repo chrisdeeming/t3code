@@ -1,7 +1,14 @@
 import { decodeHtmlEntities, type Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { AllSelection, type EditorState, TextSelection, type Transaction } from "@tiptap/pm/state";
-import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from "react";
 
 import {
   clampCollapsedComposerCursor,
@@ -10,8 +17,6 @@ import {
   isCollapsedCursorAdjacentToInlineToken,
 } from "~/composer-logic";
 import { cn } from "~/lib/utils";
-import { basenameOfPath } from "~/pierre-icons";
-import { formatProviderSkillDisplayName } from "~/providerSkillPresentation";
 
 import type {
   ComposerEditorDebugSnapshot,
@@ -19,6 +24,8 @@ import type {
   ComposerPromptEditorProps,
 } from "./ComposerPromptEditor";
 import { getTiptapComposerMarkdown, tiptapComposerExtensions } from "./tiptapComposerExtensions";
+import { composerTokenNodeView } from "./tiptapComposerNodeViews";
+import { ComposerTokenMetadataProvider } from "./TiptapComposerTokenView";
 
 const CURSOR_SENTINEL = "\uE000";
 
@@ -115,57 +122,28 @@ export function tiptapComposerPositionForExpandedCursor(
   return bestPosition;
 }
 
-function terminalContextIds(editor: Editor): string[] {
+/**
+ * Terminal-context tokens are positional: the nth placeholder in the document
+ * belongs to the nth pending draft, so ids come from the prop rather than from
+ * node attributes that would have to be kept in sync by extra transactions.
+ */
+function terminalContextIds(
+  editor: Editor,
+  terminalContexts: ComposerPromptEditorProps["terminalContexts"],
+): string[] {
   const ids: string[] = [];
   editor.state.doc.descendants((node) => {
     if (node.type.name !== "composerToken" || node.attrs.kind !== "terminal-context") return;
-    if (typeof node.attrs.contextId === "string" && node.attrs.contextId) {
-      ids.push(node.attrs.contextId);
-    }
+    const context = terminalContexts[ids.length];
+    if (context) ids.push(context.id);
   });
   return ids;
 }
 
-function syncTokenMetadata(
+function snapshotAtSelection(
   editor: Editor,
   terminalContexts: ComposerPromptEditorProps["terminalContexts"],
-  skills: ComposerPromptEditorProps["skills"],
-): void {
-  const skillLabels = new Map(
-    skills.map((skill) => [skill.name, formatProviderSkillDisplayName(skill)]),
-  );
-  let terminalIndex = 0;
-  let transaction = editor.state.tr;
-
-  editor.state.doc.descendants((node, position) => {
-    if (node.type.name !== "composerToken") return;
-    let contextId: string | null = null;
-    let label: string | null = null;
-    if (node.attrs.kind === "terminal-context") {
-      const context = terminalContexts[terminalIndex];
-      terminalIndex += 1;
-      contextId = context?.id ?? null;
-      label = context?.terminalLabel ?? "Terminal context";
-    } else if (node.attrs.kind === "mention") {
-      label = basenameOfPath(String(node.attrs.value));
-    } else if (node.attrs.kind === "skill") {
-      label = skillLabels.get(String(node.attrs.value)) ?? `$${String(node.attrs.value)}`;
-    }
-    if (node.attrs.contextId === contextId && node.attrs.label === label) return;
-    transaction = transaction.setNodeMarkup(position, undefined, {
-      ...node.attrs,
-      contextId,
-      label,
-    });
-  });
-
-  if (transaction.steps.length > 0) {
-    transaction.setMeta("addToHistory", false);
-    editor.view.dispatch(transaction);
-  }
-}
-
-function snapshotAtSelection(editor: Editor): ComposerSnapshot {
+): ComposerSnapshot {
   const { value, expandedCursor } = serializeTiptapComposerWithCursor(
     editor,
     editor.state.selection.anchor,
@@ -175,7 +153,7 @@ function snapshotAtSelection(editor: Editor): ComposerSnapshot {
     value,
     cursor,
     expandedCursor,
-    terminalContextIds: terminalContextIds(editor),
+    terminalContextIds: terminalContextIds(editor, terminalContexts),
   };
 }
 
@@ -205,6 +183,13 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
     expandedCursor: expandCollapsedComposerCursor(props.value, props.cursor),
     terminalContextIds: props.terminalContexts.map((context) => context.id),
   });
+  // Read by editor callbacks that must stay stable across renders.
+  const terminalContextsRef = useRef(props.terminalContexts);
+  terminalContextsRef.current = props.terminalContexts;
+  const tokenMetadata = useMemo(
+    () => ({ terminalContexts: props.terminalContexts, skills: props.skills }),
+    [props.skills, props.terminalContexts],
+  );
   const refreshDebugSnapshot = useCallback((editor: Editor) => {
     if (!props.onDebugSnapshotChange) return;
     emitDebugSnapshot({
@@ -215,7 +200,7 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
   }, []);
 
   const publishSnapshot = useCallback((editor: Editor) => {
-    const snapshot = snapshotAtSelection(editor);
+    const snapshot = snapshotAtSelection(editor, terminalContextsRef.current);
     if (snapshotEquals(snapshotRef.current, snapshot)) return;
     snapshotRef.current = snapshot;
     const adjacentToToken =
@@ -231,7 +216,10 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
   }, []);
 
   const editor = useEditor({
-    extensions: tiptapComposerExtensions({ placeholder: props.placeholder }),
+    extensions: tiptapComposerExtensions({
+      placeholder: props.placeholder,
+      tokenNodeView: composerTokenNodeView(),
+    }),
     content: props.value,
     contentType: "markdown",
     editable: !props.disabled,
@@ -287,7 +275,6 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
       },
     },
     onCreate({ editor: createdEditor }) {
-      syncTokenMetadata(createdEditor, props.terminalContexts, props.skills);
       refreshDebugSnapshot(createdEditor);
     },
     onUpdate({ editor: updatedEditor }) {
@@ -313,11 +300,9 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
       currentValue === props.value &&
       snapshotRef.current.value === props.value &&
       snapshotRef.current.cursor === normalizedCursor;
-    syncTokenMetadata(editor, props.terminalContexts, props.skills);
     if (isControlledEcho) return;
     if (currentValue !== props.value) {
       editor.commands.setContent(props.value, { contentType: "markdown", emitUpdate: false });
-      syncTokenMetadata(editor, props.terminalContexts, props.skills);
     }
     const expandedCursor = expandCollapsedComposerCursor(props.value, normalizedCursor);
     const position = tiptapComposerPositionForExpandedCursor(editor, expandedCursor);
@@ -326,16 +311,9 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
         editor.state.tr.setSelection(TextSelection.create(editor.state.doc, position)),
       );
     }
-    snapshotRef.current = snapshotAtSelection(editor);
+    snapshotRef.current = snapshotAtSelection(editor, props.terminalContexts);
     refreshDebugSnapshot(editor);
-  }, [
-    editor,
-    props.cursor,
-    props.skills,
-    props.terminalContexts,
-    props.value,
-    refreshDebugSnapshot,
-  ]);
+  }, [editor, props.cursor, props.terminalContexts, props.value, refreshDebugSnapshot]);
 
   const focusAt = useCallback(
     (cursor: number) => {
@@ -347,7 +325,7 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
         expandCollapsedComposerCursor(value, collapsedCursor),
       );
       editor.commands.focus(position, { scrollIntoView: false });
-      snapshotRef.current = snapshotAtSelection(editor);
+      snapshotRef.current = snapshotAtSelection(editor, terminalContextsRef.current);
     },
     [editor],
   );
@@ -367,7 +345,9 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
         );
       },
       readSnapshot: () => {
-        if (editor) snapshotRef.current = snapshotAtSelection(editor);
+        if (editor) {
+          snapshotRef.current = snapshotAtSelection(editor, terminalContextsRef.current);
+        }
         return snapshotRef.current;
       },
     }),
@@ -375,8 +355,10 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
   );
 
   return (
-    <div className="composer-tiptap relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]">
-      <EditorContent editor={editor} onPaste={props.onPaste} />
-    </div>
+    <ComposerTokenMetadataProvider value={tokenMetadata}>
+      <div className="composer-tiptap relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]">
+        <EditorContent editor={editor} onPaste={props.onPaste} />
+      </div>
+    </ComposerTokenMetadataProvider>
   );
 }

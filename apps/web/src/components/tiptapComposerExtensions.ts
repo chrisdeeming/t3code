@@ -5,6 +5,7 @@ import {
   type Extensions,
   type JSONContent,
   type MarkdownToken,
+  type NodeViewRenderer,
 } from "@tiptap/core";
 import { Markdown } from "@tiptap/markdown";
 import { Placeholder } from "@tiptap/extensions";
@@ -19,8 +20,6 @@ export type ComposerTokenKind = "mention" | "skill" | "terminal-context";
 type ComposerTokenAttributes = {
   kind: ComposerTokenKind;
   value: string;
-  contextId?: string;
-  label?: string;
 };
 
 function tokenAttributes(token: MarkdownToken): ComposerTokenAttributes {
@@ -57,19 +56,50 @@ function firstComposerTokenOffset(source: string): number {
   return Math.min(inlineToken.start, terminalContextOffset);
 }
 
-export const TiptapComposerToken = Node.create({
+/**
+ * Removes the atom immediately before or after a collapsed cursor. Returns
+ * false when the cursor is not touching one, letting the default chain run.
+ */
+export function deleteAdjacentComposerToken(editor: Editor, side: "before" | "after"): boolean {
+  const { selection } = editor.state;
+  if (!selection.empty) return false;
+  const { $from } = selection;
+  const candidate = side === "before" ? $from.nodeBefore : $from.nodeAfter;
+  if (candidate?.type.name !== "composerToken") return false;
+  const from = side === "before" ? $from.pos - candidate.nodeSize : $from.pos;
+  return editor.commands.deleteRange({ from, to: from + candidate.nodeSize });
+}
+
+export interface ComposerTokenOptions {
+  /** Set by the React entry point; headless tests render the fallback HTML. */
+  nodeView: NodeViewRenderer | null;
+}
+
+/**
+ * Selectable so ProseMirror's own NodeSelection drives the legacy behaviors:
+ * arrows step over the chip as one unit, a range spanning it paints, and
+ * Backspace/Delete removes the whole token instead of splitting it.
+ */
+export const TiptapComposerToken = Node.create<ComposerTokenOptions>({
   name: "composerToken",
   group: "inline",
   inline: true,
   atom: true,
-  selectable: false,
+  selectable: true,
+
+  addOptions() {
+    return { nodeView: null };
+  },
+
+  // A falsy result leaves the node on its plain renderHTML output.
+  addNodeView() {
+    return this.options.nodeView as NodeViewRenderer;
+  },
 
   addAttributes() {
     return {
       kind: { default: null },
       value: { default: "" },
-      contextId: { default: null },
-      label: { default: null },
     };
   },
 
@@ -85,15 +115,26 @@ export const TiptapComposerToken = Node.create({
         "data-composer-token": attributes.kind,
         "data-composer-token-value": attributes.value,
         contenteditable: "false",
-        class: "rounded bg-muted px-1.5 py-0.5 text-[0.9em] text-foreground",
       },
-      attributes.label ??
-        (attributes.kind === "terminal-context" ? "Terminal context" : attributes.value),
+      attributes.kind === "terminal-context" ? "Terminal context" : attributes.value,
     ];
   },
 
   renderText({ node }) {
     return serializedToken(node.toJSON());
+  },
+
+  /**
+   * Tiptap's default Backspace chain only *selects* an adjacent atom
+   * (`selectNodeBackward`), leaving a second keypress to delete it. The legacy
+   * composer removed a chip in one press, so delete the neighbouring token
+   * outright before the default chain runs.
+   */
+  addKeyboardShortcuts() {
+    return {
+      Backspace: () => deleteAdjacentComposerToken(this.editor, "before"),
+      Delete: () => deleteAdjacentComposerToken(this.editor, "after"),
+    };
   },
 
   markdownTokenName: "composerToken",
@@ -130,7 +171,17 @@ export const TiptapComposerToken = Node.create({
   },
 });
 
-export function tiptapComposerExtensions(options: { placeholder?: string } = {}): Extensions {
+export interface TiptapComposerExtensionOptions {
+  placeholder?: string;
+  /**
+   * Supplied by the React entry point. Kept as an injection point so this
+   * module — and the tests that drive a headless editor through it — stay
+   * free of React and the DOM.
+   */
+  tokenNodeView?: NodeViewRenderer;
+}
+
+export function tiptapComposerExtensions(options: TiptapComposerExtensionOptions = {}): Extensions {
   return [
     StarterKit.configure({
       link: {
@@ -139,7 +190,7 @@ export function tiptapComposerExtensions(options: { placeholder?: string } = {})
       },
       trailingNode: false,
     }),
-    TiptapComposerToken,
+    TiptapComposerToken.configure({ nodeView: options.tokenNodeView ?? null }),
     Placeholder.configure({
       placeholder: ({ node }) =>
         node.type.name === "paragraph" ? (options.placeholder ?? "") : "",
