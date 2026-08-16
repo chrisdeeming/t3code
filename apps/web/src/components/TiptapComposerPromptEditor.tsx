@@ -20,7 +20,12 @@ import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { cn } from "~/lib/utils";
 
 import type { ComposerPromptEditorHandle, ComposerPromptEditorProps } from "./ComposerPromptEditor";
-import { getTiptapComposerMarkdown, tiptapComposerExtensions } from "./tiptapComposerExtensions";
+import {
+  composerTerminalContextIds,
+  getTiptapComposerMarkdown,
+  stampComposerTerminalContextIds,
+  tiptapComposerExtensions,
+} from "./tiptapComposerExtensions";
 import { composerTokenNodeView } from "./tiptapComposerNodeViews";
 import { ComposerTokenMetadataProvider } from "./TiptapComposerTokenView";
 
@@ -119,28 +124,7 @@ export function tiptapComposerPositionForExpandedCursor(
   return bestPosition;
 }
 
-/**
- * Terminal-context tokens are positional: the nth placeholder in the document
- * belongs to the nth pending draft, so ids come from the prop rather than from
- * node attributes that would have to be kept in sync by extra transactions.
- */
-function terminalContextIds(
-  editor: Editor,
-  terminalContexts: ComposerPromptEditorProps["terminalContexts"],
-): string[] {
-  const ids: string[] = [];
-  editor.state.doc.descendants((node) => {
-    if (node.type.name !== "composerToken" || node.attrs.kind !== "terminal-context") return;
-    const context = terminalContexts[ids.length];
-    if (context) ids.push(context.id);
-  });
-  return ids;
-}
-
-function snapshotAtSelection(
-  editor: Editor,
-  terminalContexts: ComposerPromptEditorProps["terminalContexts"],
-): ComposerSnapshot {
+function snapshotAtSelection(editor: Editor): ComposerSnapshot {
   const { value, expandedCursor } = serializeTiptapComposerWithCursor(
     editor,
     editor.state.selection.anchor,
@@ -150,7 +134,7 @@ function snapshotAtSelection(
     value,
     cursor,
     expandedCursor,
-    terminalContextIds: terminalContextIds(editor, terminalContexts),
+    terminalContextIds: composerTerminalContextIds(editor.state.doc),
   };
 }
 
@@ -186,7 +170,7 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
   );
 
   const publishSnapshot = useCallback((editor: Editor) => {
-    const snapshot = snapshotAtSelection(editor, terminalContextsRef.current);
+    const snapshot = snapshotAtSelection(editor);
     if (snapshotEquals(snapshotRef.current, snapshot)) return;
     snapshotRef.current = snapshot;
     const adjacentToToken =
@@ -264,7 +248,12 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
         return handled;
       },
     },
+    onCreate({ editor: createdEditor }) {
+      stampComposerTerminalContextIds(createdEditor, terminalContextsRef.current);
+    },
     onUpdate({ editor: updatedEditor }) {
+      // A paste or autocomplete can introduce a placeholder mid-edit.
+      stampComposerTerminalContextIds(updatedEditor, terminalContextsRef.current);
       publishSnapshot(updatedEditor);
     },
     onSelectionUpdate({ editor: updatedEditor }) {
@@ -285,10 +274,16 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
       currentValue === props.value &&
       snapshotRef.current.value === props.value &&
       snapshotRef.current.cursor === normalizedCursor;
-    if (isControlledEcho) return;
+    if (isControlledEcho) {
+      // A new draft arrives as a props change with the prompt text unchanged,
+      // so its placeholder still has to be matched to it.
+      stampComposerTerminalContextIds(editor, props.terminalContexts);
+      return;
+    }
     if (currentValue !== props.value) {
       editor.commands.setContent(props.value, { contentType: "markdown", emitUpdate: false });
     }
+    stampComposerTerminalContextIds(editor, props.terminalContexts);
     const expandedCursor = expandCollapsedComposerCursor(props.value, normalizedCursor);
     const position = tiptapComposerPositionForExpandedCursor(editor, expandedCursor);
     if (editor.state.selection.anchor !== position) {
@@ -296,7 +291,7 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
         editor.state.tr.setSelection(TextSelection.create(editor.state.doc, position)),
       );
     }
-    snapshotRef.current = snapshotAtSelection(editor, props.terminalContexts);
+    snapshotRef.current = snapshotAtSelection(editor);
   }, [editor, props.cursor, props.terminalContexts, props.value]);
 
   const focusAt = useCallback(
@@ -309,7 +304,7 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
         expandCollapsedComposerCursor(value, collapsedCursor),
       );
       editor.commands.focus(position, { scrollIntoView: false });
-      snapshotRef.current = snapshotAtSelection(editor, terminalContextsRef.current);
+      snapshotRef.current = snapshotAtSelection(editor);
     },
     [editor],
   );
@@ -330,7 +325,7 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
       },
       readSnapshot: () => {
         if (editor) {
-          snapshotRef.current = snapshotAtSelection(editor, terminalContextsRef.current);
+          snapshotRef.current = snapshotAtSelection(editor);
         }
         return snapshotRef.current;
       },

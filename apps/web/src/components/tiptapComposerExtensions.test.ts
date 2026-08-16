@@ -60,9 +60,12 @@ describe("Tiptap composer Markdown", () => {
       .content?.[0]?.content?.filter((node) => node.type === "composerToken");
 
     expect(tokens).toEqual([
-      { type: "composerToken", attrs: { kind: "mention", value: "src/config.json" } },
-      { type: "composerToken", attrs: { kind: "skill", value: "review" } },
-      { type: "composerToken", attrs: { kind: "terminal-context", value: "" } },
+      {
+        type: "composerToken",
+        attrs: { kind: "mention", value: "src/config.json", contextId: null },
+      },
+      { type: "composerToken", attrs: { kind: "skill", value: "review", contextId: null } },
+      { type: "composerToken", attrs: { kind: "terminal-context", value: "", contextId: null } },
     ]);
     expect(getTiptapComposerMarkdown(editor)).toBe(markdown);
   });

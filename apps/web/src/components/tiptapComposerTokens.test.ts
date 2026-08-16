@@ -5,11 +5,14 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
 
 import {
-  composerTerminalContextIndexBefore,
+  composerTerminalContextIds,
   deleteAdjacentComposerToken,
   getTiptapComposerMarkdown,
+  stampComposerTerminalContextIds,
   tiptapComposerExtensions,
 } from "./tiptapComposerExtensions";
+
+const DRAFTS = [{ id: "a" }, { id: "b" }, { id: "c" }];
 
 const editors: Editor[] = [];
 
@@ -133,38 +136,66 @@ describe("Tiptap composer tokens", () => {
     expect(getTiptapComposerMarkdown(editor)).toBe("plain text");
   });
 
-  it("numbers terminal-context tokens by how many precede them", () => {
+  it("matches each terminal-context placeholder to a draft in order", () => {
     const editor = createComposerEditor(
       `one ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} two ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} three`,
     );
-    const positions = tokenPositions(editor);
 
-    expect(
-      positions.map((position) => composerTerminalContextIndexBefore(editor.state.doc, position)),
-    ).toEqual([0, 1]);
+    stampComposerTerminalContextIds(editor, DRAFTS);
+
+    expect(composerTerminalContextIds(editor.state.doc)).toEqual(["a", "b"]);
   });
 
   /**
-   * A walk that only skipped children would keep counting the token in the
-   * second paragraph, giving the first chip the second draft's context.
+   * The reported ids drive `syncTerminalContextsByIds`, which reconciles by id.
+   * Reporting them positionally released the last draft instead of the deleted
+   * one, so the user lost a context they had not touched.
    */
-  it("does not count tokens that follow the position in a later block", () => {
+  it("releases the deleted draft when a middle chip is removed", () => {
     const editor = createComposerEditor(
-      `first ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER}\n\nsecond ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER}`,
+      `${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} x ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} y ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER}`,
     );
-    const [firstToken, secondToken] = tokenPositions(editor);
+    stampComposerTerminalContextIds(editor, DRAFTS);
+    const middle = tokenPositions(editor)[1];
 
-    expect(composerTerminalContextIndexBefore(editor.state.doc, firstToken!)).toBe(0);
-    expect(composerTerminalContextIndexBefore(editor.state.doc, secondToken!)).toBe(1);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, middle!)),
+    );
+    editor.commands.deleteSelection();
+
+    expect(composerTerminalContextIds(editor.state.doc)).toEqual(["a", "c"]);
   });
 
-  it("carries only the attributes Markdown round-trips", () => {
+  it("keeps a stamped id when the document is edited around it", () => {
+    const editor = createComposerEditor(`start ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} end`);
+    stampComposerTerminalContextIds(editor, DRAFTS);
+
+    editor.commands.setTextSelection(1);
+    editor.view.dispatch(editor.state.tr.insertText("more "));
+
+    expect(composerTerminalContextIds(editor.state.doc)).toEqual(["a"]);
+  });
+
+  it("does not reuse a draft that is already stamped elsewhere", () => {
+    const editor = createComposerEditor(
+      `${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} and ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER}`,
+    );
+    stampComposerTerminalContextIds(editor, DRAFTS);
+
+    // Running again must be a no-op rather than re-assigning from the top.
+    expect(stampComposerTerminalContextIds(editor, DRAFTS)).toBe(false);
+    expect(composerTerminalContextIds(editor.state.doc)).toEqual(["a", "b"]);
+  });
+
+  it("carries only the attributes the composer needs", () => {
     const editor = createComposerEditor("See [config.json](src/config.json) now");
     const [tokenPosition] = tokenPositions(editor);
 
+    // `contextId` is only ever set on terminal-context tokens.
     expect(editor.state.doc.nodeAt(tokenPosition!)?.attrs).toEqual({
       kind: "mention",
       value: "src/config.json",
+      contextId: null,
     });
   });
 });

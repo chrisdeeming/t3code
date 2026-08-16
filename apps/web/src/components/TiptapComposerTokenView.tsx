@@ -12,7 +12,6 @@ import {
   COMPOSER_INLINE_SKILL_CHIP_LABEL_CLASS_NAME,
   SKILL_CHIP_ICON_SVG,
 } from "./composerInlineChip";
-import { composerTerminalContextIndexBefore } from "./tiptapComposerExtensions";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
 import { FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -106,13 +105,10 @@ function ComposerSkillChip(props: { name: string }) {
   );
 }
 
-/**
- * Terminal-context tokens are positional: the nth placeholder in the prompt
- * maps to the nth pending draft, matching how the prompt text is assembled.
- */
-function ComposerTerminalContextChip(props: { index: number }) {
+/** The node knows which draft it stands for; see `stampComposerTerminalContextIds`. */
+function ComposerTerminalContextChip(props: { contextId: string | null }) {
   const { terminalContexts } = use(ComposerTokenMetadataContext);
-  const context = terminalContexts[props.index];
+  const context = terminalContexts.find((candidate) => candidate.id === props.contextId);
   if (!context) return null;
   return <ComposerPendingTerminalContextChip context={context} />;
 }
@@ -120,7 +116,8 @@ function ComposerTerminalContextChip(props: { index: number }) {
 export function TiptapComposerTokenView(props: ReactNodeViewProps) {
   const kind = props.node.attrs.kind as string;
   const value = String(props.node.attrs.value ?? "");
-  const terminalIndex = composerTerminalContextIndexBefore(props.editor.state.doc, props.getPos());
+  const contextId =
+    typeof props.node.attrs.contextId === "string" ? props.node.attrs.contextId : null;
 
   return (
     // `as` must be a span so the chip stays valid inline content. NodeViewWrapper
@@ -135,7 +132,7 @@ export function TiptapComposerTokenView(props: ReactNodeViewProps) {
     >
       {kind === "mention" ? <ComposerMentionChip path={value} /> : null}
       {kind === "skill" ? <ComposerSkillChip name={value} /> : null}
-      {kind === "terminal-context" ? <ComposerTerminalContextChip index={terminalIndex} /> : null}
+      {kind === "terminal-context" ? <ComposerTerminalContextChip contextId={contextId} /> : null}
     </NodeViewWrapper>
   );
 }

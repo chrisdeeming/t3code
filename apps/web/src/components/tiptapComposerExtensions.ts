@@ -28,6 +28,13 @@ export type ComposerTokenKind = "mention" | "skill" | "terminal-context";
 type ComposerTokenAttributes = {
   kind: ComposerTokenKind;
   value: string;
+  /**
+   * Which terminal-context draft this node stands for. The Markdown
+   * placeholder carries no identity, so it is stamped on after parsing and
+   * then travels with the node, which is what lets the composer report the
+   * surviving ids correctly when a chip in the middle is deleted.
+   */
+  contextId: string | null;
 };
 
 function tokenAttributes(token: MarkdownToken): ComposerTokenAttributes {
@@ -39,7 +46,7 @@ function tokenAttributes(token: MarkdownToken): ComposerTokenAttributes {
   ) {
     throw new Error("Invalid composer token kind");
   }
-  return { kind: attributes.kind, value: attributes.value ?? "" };
+  return { kind: attributes.kind, value: attributes.value ?? "", contextId: null };
 }
 
 function serializedToken(node: JSONContent): string {
@@ -78,25 +85,60 @@ export function deleteAdjacentComposerToken(editor: Editor, side: "before" | "af
   return editor.commands.deleteRange({ from, to: from + candidate.nodeSize });
 }
 
+function isTerminalContextToken(node: ProseMirrorNode): boolean {
+  return node.type.name === "composerToken" && node.attrs.kind === "terminal-context";
+}
+
 /**
- * Counts the terminal-context tokens before `position`, which is how a chip
- * finds its pending draft: the nth placeholder belongs to the nth draft.
+ * Reports the drafts still referenced by the document, in document order.
  *
- * `nodesBetween` is bounded to the range, unlike `descendants`, whose `false`
- * return only skips a node's children and would keep counting tokens that sit
- * after the position in later blocks.
+ * Nodes stamped by `stampComposerTerminalContextIds` know their own draft, so
+ * deleting a chip in the middle drops that draft rather than the last one.
  */
-export function composerTerminalContextIndexBefore(
-  doc: ProseMirrorNode,
-  position: number | undefined,
-): number {
-  if (position === undefined || position <= 0) return 0;
-  let index = 0;
-  doc.nodesBetween(0, Math.min(position, doc.content.size), (node) => {
-    if (node.type.name === "composerToken" && node.attrs.kind === "terminal-context") index += 1;
-    return true;
+export function composerTerminalContextIds(doc: ProseMirrorNode): string[] {
+  const ids: string[] = [];
+  doc.descendants((node) => {
+    if (!isTerminalContextToken(node)) return true;
+    if (typeof node.attrs.contextId === "string") ids.push(node.attrs.contextId);
+    return false;
   });
-  return index;
+  return ids;
+}
+
+/**
+ * Gives every unstamped terminal-context token the draft matching its position.
+ *
+ * The Markdown placeholder is identity-free, so a freshly parsed document has
+ * to be matched up with the pending drafts once; after that the id rides along
+ * with the node through edits. Returns true when the document changed.
+ */
+export function stampComposerTerminalContextIds(
+  editor: Editor,
+  terminalContexts: ReadonlyArray<{ id: string }>,
+): boolean {
+  const stamped = new Set(composerTerminalContextIds(editor.state.doc));
+  const available = terminalContexts.filter((context) => !stamped.has(context.id));
+  let transaction = editor.state.tr;
+  let nextAvailable = 0;
+
+  editor.state.doc.descendants((node, position) => {
+    if (!isTerminalContextToken(node)) return true;
+    if (typeof node.attrs.contextId === "string") return false;
+    const context = available[nextAvailable];
+    nextAvailable += 1;
+    if (!context) return false;
+    transaction = transaction.setNodeMarkup(position, undefined, {
+      ...node.attrs,
+      contextId: context.id,
+    });
+    return false;
+  });
+
+  if (transaction.steps.length === 0) return false;
+  // Identity bookkeeping is not an edit the user should be able to undo.
+  transaction.setMeta("addToHistory", false);
+  editor.view.dispatch(transaction);
+  return true;
 }
 
 export interface ComposerTokenOptions {
@@ -129,6 +171,7 @@ export const TiptapComposerToken = Node.create<ComposerTokenOptions>({
     return {
       kind: { default: null },
       value: { default: "" },
+      contextId: { default: null },
     };
   },
 
