@@ -89,26 +89,6 @@ export function deleteAdjacentComposerToken(editor: Editor, side: "before" | "af
   return editor.commands.deleteRange({ from, to: from + candidate.nodeSize });
 }
 
-/**
- * Moves a collapsed cursor across an adjacent chip in one press, so the caret
- * never comes to rest on the atom itself.
- *
- * The chip stays selectable for clicks, but a caret walking a sentence should
- * treat it as one character. Without this, an arrow key turns the caret into a
- * NodeSelection: it disappears, and the next keystroke replaces the chip.
- * Mirrors `ComposerInlineTokenArrowPlugin`.
- */
-export function stepOverComposerToken(editor: Editor, side: "before" | "after"): boolean {
-  const { selection } = editor.state;
-  if (!selection.empty) return false;
-  const { $from } = selection;
-  const candidate = side === "before" ? $from.nodeBefore : $from.nodeAfter;
-  if (candidate?.type.name !== "composerToken") return false;
-  const target =
-    side === "before" ? $from.pos - candidate.nodeSize : $from.pos + candidate.nodeSize;
-  return editor.commands.setTextSelection(target);
-}
-
 function isTerminalContextToken(node: ProseMirrorNode): boolean {
   return node.type.name === "composerToken" && node.attrs.kind === "terminal-context";
 }
@@ -177,9 +157,10 @@ export interface ComposerTokenOptions {
 }
 
 /**
- * Selectable, so clicking a chip selects it as one unit — the affordance the
- * Lexical decorators had. Arrow keys stepping onto it are handled separately;
- * see the ArrowLeft/ArrowRight shortcuts below.
+ * Selectable, so a chip behaves as one unit: clicking selects it, and an arrow
+ * key moving onto it selects it rather than slipping past — the affordance the
+ * Lexical decorators had, and the step that makes the next Backspace or
+ * keystroke act on the whole chip.
  */
 export const TiptapComposerToken = Node.create<ComposerTokenOptions>({
   name: "composerToken",
@@ -236,8 +217,6 @@ export const TiptapComposerToken = Node.create<ComposerTokenOptions>({
     return {
       Backspace: () => deleteAdjacentComposerToken(this.editor, "before"),
       Delete: () => deleteAdjacentComposerToken(this.editor, "after"),
-      ArrowLeft: () => stepOverComposerToken(this.editor, "before"),
-      ArrowRight: () => stepOverComposerToken(this.editor, "after"),
     };
   },
 

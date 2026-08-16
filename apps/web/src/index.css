@@ -2529,11 +2529,12 @@ html[data-theme-id] .composer-tiptap .tiptap pre {
   vertical-align: -0.125em;
   line-height: 1;
   /* The chip's border sits flush against the surrounding text, so `Brief: ` and
-     the pill read as one run and a caret parked after the chip paints on top of
-     its border. Margin restores the word gap and gives the caret clear room.
-     Applied to the composer's NodeView wrapper, not the shared chip class that
-     chat also renders with. */
-  margin-inline: 0.2em;
+     the pill read as one run, and a caret at either edge paints on top of the
+     border. Padding rather than margin: the caret is drawn at the wrapper's
+     edge, so the gap has to be inside the wrapper for the caret to clear the
+     pill. Applied here rather than to the shared chip class that chat renders
+     with too. */
+  padding-inline: 0.22em;
 }
 
 /* ProseMirror marks the position after a trailing inline node with a zero-size
@@ -2546,6 +2547,16 @@ html[data-theme-id] .composer-tiptap .tiptap pre {
   display: inline;
   border: none;
   margin: 0;
+}
+
+/* A chip holding the selection — clicked, or arrowed onto — is about to be
+   replaced or deleted by the next keystroke, so it has to look selected. The
+   NodeView wrapper carries the class, and the ring goes on the pill inside it
+   so it traces the chip rather than the padded wrapper box. */
+.composer-tiptap .tiptap .ProseMirror-selectednode > .composer-inline-chip {
+  border-radius: 0.5em;
+  outline: 2px solid color-mix(in srgb, var(--ring) 75%, transparent);
+  outline-offset: 1px;
 }
 
 /* Composer chips are non-editable atoms, so the browser skips them when
