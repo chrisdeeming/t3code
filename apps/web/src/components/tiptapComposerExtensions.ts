@@ -278,6 +278,19 @@ const ComposerMarkdown = Markdown.extend({
 });
 
 /**
+ * A soft break emits a plain newline rather than Markdown's two-trailing-spaces
+ * form. The composer's value is a prompt, and invisible trailing whitespace on
+ * every soft-broken line is noise the agent has to read past.
+ */
+const ComposerStarterKit = StarterKit.extend({
+  addExtensions() {
+    return (this.parent?.() ?? []).map((extension) =>
+      extension.name === "hardBreak" ? extension.extend({ renderMarkdown: () => "\n" }) : extension,
+    );
+  },
+});
+
+/**
  * Mirrors the code block's language onto the `<pre>` so the stylesheet can
  * label the block, without putting a NodeView between the user and the text.
  * Rendered only; the value still lives on the code block's own attribute.
@@ -317,7 +330,7 @@ export interface TiptapComposerExtensionOptions {
 
 export function tiptapComposerExtensions(options: TiptapComposerExtensionOptions = {}): Extensions {
   return [
-    StarterKit.configure({
+    ComposerStarterKit.configure({
       link: {
         autolink: false,
         openOnClick: false,

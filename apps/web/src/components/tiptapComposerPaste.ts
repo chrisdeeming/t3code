@@ -59,12 +59,13 @@ export function composerPasteContent(
 }
 
 /**
- * Whether a paste at this selection should become mention chips.
+ * Whether a paste at this selection may produce structure — chips or parsed
+ * Markdown — rather than literal characters.
  *
- * Inside a fence a path is just text, and turning it into a chip would lift the
- * paste out of the code block. Both ends matter: a range reaching into a fence
- * replaces it, so honouring only the start would delete the block outright. A
- * selection resolved at the document (Cmd+A) has no textblock parent to trust.
+ * Inside a fence every character is content, so a path there is just a path.
+ * Both ends matter: a range reaching into a fence replaces it, so honouring
+ * only the start would delete the block outright. A selection resolved at the
+ * document (Cmd+A) has no textblock parent to trust.
  */
 export function composerPasteAppliesTo(selection: Selection): boolean {
   const { $from, $to } = selection;
@@ -72,11 +73,64 @@ export function composerPasteAppliesTo(selection: Selection): boolean {
   return !$from.parent.type.spec.code && !$to.parent.type.spec.code;
 }
 
+/**
+ * Block-level Markdown constructs that only make sense as structure. Inline
+ * emphasis is deliberately absent: `*` and `_` appear constantly in prose and
+ * code, and treating them as a signal would rewrite text the user pasted
+ * literally. A fence, heading, list marker, quote or table row is unambiguous
+ * enough to act on.
+ */
+const MARKDOWN_BLOCK_SIGNALS = [
+  /^```/m,
+  /^~~~/m,
+  /^#{1,6}\s/m,
+  /^\s*[-*+]\s/m,
+  /^\s*\d+[.)]\s/m,
+  /^\s*>\s/m,
+  /^\s*\|.*\|/m,
+];
+
+/**
+ * Whether pasted text should be parsed as Markdown rather than inserted as
+ * literal characters.
+ *
+ * Typing ```` ```php ```` builds a code block, so pasting the same source has
+ * to as well — anything else makes the composer's behaviour depend on how the
+ * text arrived. Text without a block-level signal is left alone, so prose and
+ * code snippets keep every character the user copied.
+ */
+export function pastedTextLooksLikeMarkdown(text: string): boolean {
+  return MARKDOWN_BLOCK_SIGNALS.some((signal) => signal.test(text));
+}
+
+/**
+ * Plain text as inline content, one hard break per newline.
+ *
+ * ProseMirror's default splits pasted text into a paragraph per line, which
+ * serializes back with a blank line between every line — so a pasted stack
+ * trace reached the agent double-spaced. Mirrors Lexical's
+ * `$appendTextWithLineBreaks`.
+ */
+export function plainTextContent(text: string): JSONContent[] {
+  const content: JSONContent[] = [];
+  const lines = text.split("\n");
+  for (const [index, line] of lines.entries()) {
+    if (line.length > 0) content.push({ type: "text", text: line });
+    if (index < lines.length - 1) content.push({ type: "hardBreak" });
+  }
+  return content;
+}
+
 export const composerPasteKey = new PluginKey("composerInlineTokenPaste");
 
 /**
- * Intercepts plain-text pastes that carry canonical file links so they arrive
- * as mention chips rather than raw Markdown the user has to look at.
+ * Owns plain-text pasting, so that text arriving from the clipboard behaves the
+ * same as text the user typed.
+ *
+ * Three cases, in order: inside a fence the text stays literal; text carrying
+ * block-level Markdown is parsed, so pasting a ```` ```php ```` block yields the
+ * same code block typing it does; everything else is inserted verbatim with its
+ * newlines intact. Canonical file links still become mention chips.
  */
 export const TiptapComposerPaste = Extension.create({
   name: "composerInlineTokenPaste",
@@ -92,13 +146,30 @@ export const TiptapComposerPaste = Extension.create({
             const text = event.clipboardData.getData("text/plain");
             if (!text) return false;
 
-            if (!composerPasteAppliesTo(view.state.selection)) return false;
+            // Prefer real HTML from rich sources; only plain text is ours.
+            if (event.clipboardData.types.includes("text/html")) return false;
 
-            const { $from } = view.state.selection;
-            const content = composerPasteContent(text, pasteAbutsNonWhitespace($from));
-            if (!content) return false;
+            const { $from, $to } = view.state.selection;
+            if (!$from.parent.isTextblock || !$to.parent.isTextblock) return false;
 
-            editor.commands.insertContent(content);
+            // In a fence every character is content, including newlines.
+            if (!composerPasteAppliesTo(view.state.selection)) {
+              editor.commands.insertContent(plainTextContent(text));
+              return true;
+            }
+
+            const mentions = composerPasteContent(text, pasteAbutsNonWhitespace($from));
+            if (mentions) {
+              editor.commands.insertContent(mentions);
+              return true;
+            }
+
+            if (pastedTextLooksLikeMarkdown(text)) {
+              editor.commands.insertContent(text, { contentType: "markdown" });
+              return true;
+            }
+
+            editor.commands.insertContent(plainTextContent(text));
             return true;
           },
         },

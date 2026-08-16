@@ -7,6 +7,8 @@ import {
   composerPasteAppliesTo,
   composerPasteContent,
   pasteAbutsNonWhitespace,
+  pastedTextLooksLikeMarkdown,
+  plainTextContent,
 } from "./tiptapComposerPaste";
 
 const editors: Editor[] = [];
@@ -21,8 +23,8 @@ function createComposerEditor(markdown: string): Editor {
   return editor;
 }
 
-/** The handler declines when the selection is not somewhere a chip may live. */
-const pasteIsDeclined = (editor: Editor) => !composerPasteAppliesTo(editor.state.selection);
+/** Whether a paste here may build structure, rather than staying literal. */
+const pasteMayCreateStructure = (editor: Editor) => composerPasteAppliesTo(editor.state.selection);
 
 function tokenPosition(editor: Editor): number {
   let position = -1;
@@ -130,22 +132,58 @@ describe("Tiptap composer paste", () => {
    * fence through: the paste replaced the selection, deleting the code block
    * and leaving a chip where the fence had been.
    */
-  it("declines a selection that reaches into a code block", () => {
+  it("keeps a paste literal when the selection reaches into a code block", () => {
     const editor = createComposerEditor("para text\n\n```\ncode here\n```");
     const codeBlockStart = editor.state.doc.content.size - 11;
     editor.view.dispatch(
       editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 5, codeBlockStart)),
     );
 
-    expect(pasteIsDeclined(editor)).toBe(true);
-    expect(getTiptapComposerMarkdown(editor)).toBe("para text\n\n```\ncode here\n```");
+    expect(pasteMayCreateStructure(editor)).toBe(false);
   });
 
-  it("declines a whole-document selection", () => {
+  it("keeps a paste literal for a whole-document selection", () => {
     const editor = createComposerEditor("```\ncode here\n```");
     editor.view.dispatch(editor.state.tr.setSelection(new AllSelection(editor.state.doc)));
 
-    expect(pasteIsDeclined(editor)).toBe(true);
+    expect(pasteMayCreateStructure(editor)).toBe(false);
+  });
+
+  /**
+   * Typing a fence builds a code block, so pasting the same source has to as
+   * well. Previously no handler ran, ProseMirror's default split the text into
+   * one paragraph per line, and the block never appeared.
+   */
+  it("recognises block-level Markdown so a pasted fence becomes a code block", () => {
+    expect(pastedTextLooksLikeMarkdown("```php\n<?php\n```")).toBe(true);
+    expect(pastedTextLooksLikeMarkdown("# Title")).toBe(true);
+    expect(pastedTextLooksLikeMarkdown("- one\n- two")).toBe(true);
+    expect(pastedTextLooksLikeMarkdown("1. one")).toBe(true);
+    expect(pastedTextLooksLikeMarkdown("> quoted")).toBe(true);
+  });
+
+  /**
+   * Emphasis characters are everywhere in prose and code. Treating them as a
+   * signal would rewrite text the user pasted literally.
+   */
+  it("leaves prose and code snippets alone", () => {
+    expect(pastedTextLooksLikeMarkdown("just some prose")).toBe(false);
+    expect(pastedTextLooksLikeMarkdown("fix __init__ please")).toBe(false);
+    expect(pastedTextLooksLikeMarkdown("a * b and c_d_e")).toBe(false);
+    expect(pastedTextLooksLikeMarkdown('Traceback:\n  File "a.py", line 3')).toBe(false);
+  });
+
+  /**
+   * ProseMirror's default made a paragraph per line, which serializes with a
+   * blank line between each — a pasted stack trace arrived double-spaced.
+   */
+  it("keeps newlines single when inserting plain text", () => {
+    const editor = createComposerEditor("start");
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+
+    editor.commands.insertContent(plainTextContent("line 1\nline 2\nline 3"));
+
+    expect(getTiptapComposerMarkdown(editor)).toBe("startline 1\nline 2\nline 3");
   });
 
   /**
