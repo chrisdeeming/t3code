@@ -2,7 +2,7 @@ import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { getTiptapComposerMarkdown, tiptapComposerExtensions } from "./tiptapComposerExtensions";
-import { composerPasteContent } from "./tiptapComposerPaste";
+import { composerPasteContent, pasteAbutsNonWhitespace } from "./tiptapComposerPaste";
 
 const editors: Editor[] = [];
 
@@ -16,9 +16,17 @@ function createComposerEditor(markdown: string): Editor {
   return editor;
 }
 
+function tokenPosition(editor: Editor): number {
+  let position = -1;
+  editor.state.doc.descendants((node, nodePosition) => {
+    if (node.type.name === "composerToken") position = nodePosition;
+  });
+  return position;
+}
+
 /** Applies what the paste handler would insert at the current selection. */
-function paste(editor: Editor, text: string, precedingCharacter = ""): boolean {
-  const content = composerPasteContent(text, precedingCharacter);
+function paste(editor: Editor, text: string, abutsNonWhitespace = false): boolean {
+  const content = composerPasteContent(text, abutsNonWhitespace);
   if (!content) return false;
   editor.commands.insertContent(content);
   return true;
@@ -30,8 +38,8 @@ describe("Tiptap composer paste", () => {
   });
 
   it("declines text without a canonical file link so the default paste runs", () => {
-    expect(composerPasteContent("just some prose", "")).toBeNull();
-    expect(composerPasteContent("see https://example.com/a.ts for details", "")).toBeNull();
+    expect(composerPasteContent("just some prose", false)).toBeNull();
+    expect(composerPasteContent("see https://example.com/a.ts for details", false)).toBeNull();
   });
 
   it("turns a pasted file link into a mention atom", () => {
@@ -44,7 +52,10 @@ describe("Tiptap composer paste", () => {
       .getJSON()
       .content?.[0]?.content?.filter((node) => node.type === "composerToken");
     expect(tokens).toEqual([
-      { type: "composerToken", attrs: { kind: "mention", value: "src/config.json" } },
+      {
+        type: "composerToken",
+        attrs: { kind: "mention", value: "src/config.json", contextId: null },
+      },
     ]);
   });
 
@@ -58,13 +69,13 @@ describe("Tiptap composer paste", () => {
   });
 
   it("adds a leading space when the mention would abut existing text", () => {
-    const content = composerPasteContent("[config.json](src/config.json)", "x");
+    const content = composerPasteContent("[config.json](src/config.json)", true);
 
     expect(content?.[0]).toEqual({ type: "text", text: " " });
   });
 
   it("does not add a leading space after whitespace", () => {
-    const content = composerPasteContent("[config.json](src/config.json)", " ");
+    const content = composerPasteContent("[config.json](src/config.json)", false);
 
     expect(content?.[0]).toEqual({
       type: "composerToken",
@@ -84,7 +95,7 @@ describe("Tiptap composer paste", () => {
   });
 
   it("converts several mentions in one paste", () => {
-    const content = composerPasteContent("[a.ts](src/a.ts) and [b.ts](src/b.ts)", "");
+    const content = composerPasteContent("[a.ts](src/a.ts) and [b.ts](src/b.ts)", false);
 
     expect(content?.filter((node) => node.type === "composerToken")).toEqual([
       { type: "composerToken", attrs: { kind: "mention", value: "src/a.ts" } },
@@ -93,7 +104,7 @@ describe("Tiptap composer paste", () => {
   });
 
   it("keeps multi-line pastes on separate lines", () => {
-    const content = composerPasteContent("[a.ts](src/a.ts)\nsecond line", "");
+    const content = composerPasteContent("[a.ts](src/a.ts)\nsecond line", false);
 
     expect(content).toEqual([
       { type: "composerToken", attrs: { kind: "mention", value: "src/a.ts" } },
@@ -103,6 +114,33 @@ describe("Tiptap composer paste", () => {
   });
 
   it("leaves scoped package references as plain text", () => {
-    expect(composerPasteContent("npm install @scope/pkg", "")).toBeNull();
+    expect(composerPasteContent("npm install @scope/pkg", false)).toBeNull();
+  });
+
+  /**
+   * `textBetween` skips atom nodes, so measuring the neighbour by position
+   * reported nothing next to a chip. The pasted mention then fused with the
+   * existing one and re-parsing the prompt found a single token.
+   */
+  it("treats an existing chip as a neighbour that needs separating", () => {
+    const editor = createComposerEditor("see [a.ts](src/a.ts) ");
+    const tokenEnd = tokenPosition(editor) + 1;
+    editor.commands.setTextSelection(tokenEnd);
+
+    expect(pasteAbutsNonWhitespace(editor.state.doc.resolve(tokenEnd))).toBe(true);
+  });
+
+  it("does not need a separator when the cursor follows a space", () => {
+    const editor = createComposerEditor("see a file ");
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+
+    expect(pasteAbutsNonWhitespace(editor.state.selection.$from)).toBe(false);
+  });
+
+  it("needs a separator when the cursor follows a word character", () => {
+    const editor = createComposerEditor("see");
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+
+    expect(pasteAbutsNonWhitespace(editor.state.selection.$from)).toBe(true);
   });
 });

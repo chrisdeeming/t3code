@@ -1,4 +1,5 @@
 import { Extension, type JSONContent } from "@tiptap/core";
+import type { ResolvedPos } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 
@@ -15,7 +16,7 @@ import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineToken
  */
 export function composerPasteContent(
   text: string,
-  precedingCharacter: string,
+  abutsNonWhitespace: boolean,
 ): JSONContent[] | null {
   // Token grammar requires trailing whitespace; a virtual newline lets a
   // mention at the very end of the pasted text still parse.
@@ -33,7 +34,7 @@ export function composerPasteContent(
     }
   };
 
-  if (mentions[0]?.start === 0 && precedingCharacter.length > 0 && !/\s/.test(precedingCharacter)) {
+  if (mentions[0]?.start === 0 && abutsNonWhitespace) {
     content.push({ type: "text", text: " " });
   }
 
@@ -78,7 +79,11 @@ export const TiptapComposerPaste = Extension.create({
             if (!text) return false;
 
             const { $from } = view.state.selection;
-            const content = composerPasteContent(text, characterBefore(view.state, $from.pos));
+            // Inside a fence a path is just text; turning it into a chip would
+            // also lift the paste out of the code block into a new paragraph.
+            if ($from.parent.type.spec.code) return false;
+
+            const content = composerPasteContent(text, pasteAbutsNonWhitespace($from));
             if (!content) return false;
 
             editor.commands.insertContent(content);
@@ -90,10 +95,19 @@ export const TiptapComposerPaste = Extension.create({
   },
 });
 
-function characterBefore(
-  state: { doc: { textBetween: (from: number, to: number) => string } },
-  position: number,
-): string {
-  if (position <= 1) return "";
-  return state.doc.textBetween(position - 1, position);
+/**
+ * Whether the paste would land straight against a non-whitespace neighbour,
+ * which is when the mention grammar needs a space inserted before it.
+ *
+ * An existing chip counts as one: `textBetween` skips atom nodes and reports
+ * nothing there, so a mention pasted directly after a chip would gain no
+ * separating space and the two would fuse into a single unparseable token.
+ */
+export function pasteAbutsNonWhitespace($from: ResolvedPos): boolean {
+  const before = $from.nodeBefore;
+  if (!before) return false;
+  if (before.type.name === "composerToken") return true;
+  if (!before.isText) return false;
+  const character = before.text?.slice(-1) ?? "";
+  return character.length > 0 && !/\s/.test(character);
 }
