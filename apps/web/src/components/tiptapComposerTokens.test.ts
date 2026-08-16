@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
 
 import {
+  composerTerminalContextIndexBefore,
   deleteAdjacentComposerToken,
   getTiptapComposerMarkdown,
   tiptapComposerExtensions,
@@ -130,6 +131,31 @@ describe("Tiptap composer tokens", () => {
     expect(deleteAdjacentComposerToken(editor, "before")).toBe(false);
     expect(deleteAdjacentComposerToken(editor, "after")).toBe(false);
     expect(getTiptapComposerMarkdown(editor)).toBe("plain text");
+  });
+
+  it("numbers terminal-context tokens by how many precede them", () => {
+    const editor = createComposerEditor(
+      `one ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} two ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} three`,
+    );
+    const positions = tokenPositions(editor);
+
+    expect(
+      positions.map((position) => composerTerminalContextIndexBefore(editor.state.doc, position)),
+    ).toEqual([0, 1]);
+  });
+
+  /**
+   * A walk that only skipped children would keep counting the token in the
+   * second paragraph, giving the first chip the second draft's context.
+   */
+  it("does not count tokens that follow the position in a later block", () => {
+    const editor = createComposerEditor(
+      `first ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER}\n\nsecond ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER}`,
+    );
+    const [firstToken, secondToken] = tokenPositions(editor);
+
+    expect(composerTerminalContextIndexBefore(editor.state.doc, firstToken!)).toBe(0);
+    expect(composerTerminalContextIndexBefore(editor.state.doc, secondToken!)).toBe(1);
   });
 
   it("carries only the attributes Markdown round-trips", () => {

@@ -12,6 +12,7 @@ import {
   COMPOSER_INLINE_SKILL_CHIP_LABEL_CLASS_NAME,
   SKILL_CHIP_ICON_SVG,
 } from "./composerInlineChip";
+import { composerTerminalContextIndexBefore } from "./tiptapComposerExtensions";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
 import { FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -119,7 +120,7 @@ function ComposerTerminalContextChip(props: { index: number }) {
 export function TiptapComposerTokenView(props: ReactNodeViewProps) {
   const kind = props.node.attrs.kind as string;
   const value = String(props.node.attrs.value ?? "");
-  const terminalIndex = terminalContextIndexBefore(props.getPos(), props.editor.state.doc);
+  const terminalIndex = composerTerminalContextIndexBefore(props.editor.state.doc, props.getPos());
 
   return (
     // `as` must be a span so the chip stays valid inline content. NodeViewWrapper
@@ -137,18 +138,4 @@ export function TiptapComposerTokenView(props: ReactNodeViewProps) {
       {kind === "terminal-context" ? <ComposerTerminalContextChip index={terminalIndex} /> : null}
     </NodeViewWrapper>
   );
-}
-
-function terminalContextIndexBefore(
-  position: number | undefined,
-  doc: ReactNodeViewProps["editor"]["state"]["doc"],
-): number {
-  if (position === undefined) return 0;
-  let index = 0;
-  doc.descendants((node, nodePosition) => {
-    if (nodePosition >= position) return false;
-    if (node.type.name === "composerToken" && node.attrs.kind === "terminal-context") index += 1;
-    return true;
-  });
-  return index;
 }

@@ -14,6 +14,8 @@ import StarterKit from "@tiptap/starter-kit";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+
 import type { DiffThemeName } from "~/lib/diffRendering";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
 
@@ -74,6 +76,27 @@ export function deleteAdjacentComposerToken(editor: Editor, side: "before" | "af
   if (candidate?.type.name !== "composerToken") return false;
   const from = side === "before" ? $from.pos - candidate.nodeSize : $from.pos;
   return editor.commands.deleteRange({ from, to: from + candidate.nodeSize });
+}
+
+/**
+ * Counts the terminal-context tokens before `position`, which is how a chip
+ * finds its pending draft: the nth placeholder belongs to the nth draft.
+ *
+ * `nodesBetween` is bounded to the range, unlike `descendants`, whose `false`
+ * return only skips a node's children and would keep counting tokens that sit
+ * after the position in later blocks.
+ */
+export function composerTerminalContextIndexBefore(
+  doc: ProseMirrorNode,
+  position: number | undefined,
+): number {
+  if (position === undefined || position <= 0) return 0;
+  let index = 0;
+  doc.nodesBetween(0, Math.min(position, doc.content.size), (node) => {
+    if (node.type.name === "composerToken" && node.attrs.kind === "terminal-context") index += 1;
+    return true;
+  });
+  return index;
 }
 
 export interface ComposerTokenOptions {
