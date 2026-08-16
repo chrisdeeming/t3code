@@ -1,5 +1,5 @@
 import { Editor } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
+import { AllSelection, TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { getTiptapComposerMarkdown, tiptapComposerExtensions } from "./tiptapComposerExtensions";
@@ -138,6 +138,38 @@ describe("Tiptap composer selection surround", () => {
     const { anchor, head } = editor.state.selection;
     expect(anchor).toBeGreaterThan(head);
     expect(editor.state.doc.textBetween(head, anchor)).toBe("this");
+  });
+
+  /**
+   * The composer binds Cmd/Ctrl+A to an AllSelection, whose ends resolve at the
+   * document rather than a textblock. That made `sameParent` trivially true and
+   * `parent.type.spec.code` undefined, so the block and code guards both passed
+   * and the whole prompt got wrapped.
+   */
+  it("refuses to wrap a whole-document selection", () => {
+    const editor = createComposerEditor("first para\n\nsecond para");
+    editor.view.dispatch(editor.state.tr.setSelection(new AllSelection(editor.state.doc)));
+
+    expect(surroundComposerSelection(editor, "(")).toBe(false);
+    expect(getTiptapComposerMarkdown(editor)).toBe("first para\n\nsecond para");
+  });
+
+  it("refuses a whole-document selection over a code block", () => {
+    const editor = createComposerEditor("```ts\nconst a = 1\n```");
+    editor.view.dispatch(editor.state.tr.setSelection(new AllSelection(editor.state.doc)));
+
+    expect(surroundComposerSelection(editor, "`")).toBe(false);
+    expect(getTiptapComposerMarkdown(editor)).toBe("```ts\nconst a = 1\n```");
+  });
+
+  it("still wraps a selection that spans marks within one paragraph", () => {
+    const editor = createComposerEditor("hello **bold** world");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1, 15)),
+    );
+
+    expect(surroundComposerSelection(editor, "(")).toBe(true);
+    expect(getTiptapComposerMarkdown(editor)).toBe("(hello **bold** wor)ld");
   });
 
   it("refuses to swallow the whitespace a token needs beside it", () => {

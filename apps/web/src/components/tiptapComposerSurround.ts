@@ -39,11 +39,18 @@ export function surroundComposerSelection(editor: Editor, input: string): boolea
   if (!close) return false;
 
   const { state } = editor;
-  const { $from, $to, from, to, empty } = state.selection;
+  const { selection } = state;
+  const { $from, $to, from, to, empty } = selection;
   if (empty) return false;
 
+  // Cmd+A installs an AllSelection, whose ends resolve at the document rather
+  // than a textblock: `sameParent` is trivially true and `parent.type.spec.code`
+  // is undefined, so every guard below would wave it through and wrap the whole
+  // prompt. Only a range inside one textblock can be wrapped.
+  if (!(selection instanceof TextSelection)) return false;
   // One delimiter per block would land the pair in two different paragraphs.
   if (!$from.sameParent($to)) return false;
+  if (!$from.parent.isTextblock) return false;
   // In a fence the delimiters are code, not markup.
   if ($from.parent.type.spec.code) return false;
   if (selectionSpansComposerToken(state, from, to)) return false;
@@ -89,8 +96,13 @@ function selectionEatsTokenBoundaryWhitespace(
   from: number,
   to: number,
 ): boolean {
-  const isTokenAt = (position: number) => state.doc.nodeAt(position)?.type.name === "composerToken";
+  const isTokenAt = (position: number) =>
+    position >= 0 &&
+    position < state.doc.content.size &&
+    state.doc.nodeAt(position)?.type.name === "composerToken";
   const isWhitespaceAt = (position: number) =>
+    position >= 0 &&
+    position < state.doc.content.size &&
     /\s/.test(state.doc.textBetween(position, position + 1, "\n"));
 
   // A leading space that follows a token, or a trailing space that precedes one.
