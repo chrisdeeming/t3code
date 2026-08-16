@@ -1,0 +1,117 @@
+import { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+
+import { getTiptapComposerMarkdown, tiptapComposerExtensions } from "./tiptapComposerExtensions";
+import { surroundComposerSelection, surroundCloseSymbol } from "./tiptapComposerSurround";
+
+const editors: Editor[] = [];
+
+function createComposerEditor(markdown: string): Editor {
+  const editor = new Editor({
+    extensions: tiptapComposerExtensions(),
+    content: markdown,
+    contentType: "markdown",
+  });
+  editors.push(editor);
+  return editor;
+}
+
+function selectText(editor: Editor, needle: string): { from: number; to: number } {
+  const text = editor.state.doc.textBetween(0, editor.state.doc.content.size, "\n", "￼");
+  const index = text.indexOf(needle);
+  if (index < 0) throw new Error(`"${needle}" is not in the document`);
+  // Document positions lead text offsets by the opening paragraph token.
+  const from = index + 1;
+  const to = from + needle.length;
+  editor.view.dispatch(
+    editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)),
+  );
+  return { from, to };
+}
+
+describe("Tiptap composer selection surround", () => {
+  afterEach(() => {
+    for (const editor of editors.splice(0)) editor.destroy();
+  });
+
+  it("pairs every symbol the legacy composer wrapped with", () => {
+    expect(surroundCloseSymbol("(")).toBe(")");
+    expect(surroundCloseSymbol("[")).toBe("]");
+    expect(surroundCloseSymbol("{")).toBe("}");
+    expect(surroundCloseSymbol("`")).toBe("`");
+    expect(surroundCloseSymbol("*")).toBe("*");
+    expect(surroundCloseSymbol("_")).toBe("_");
+    expect(surroundCloseSymbol("<")).toBe(">");
+    expect(surroundCloseSymbol("«")).toBe("»");
+    expect(surroundCloseSymbol("a")).toBeNull();
+  });
+
+  it("wraps the selection instead of replacing it", () => {
+    const editor = createComposerEditor("wrap this word");
+    selectText(editor, "this");
+
+    expect(surroundComposerSelection(editor, "`")).toBe(true);
+    expect(getTiptapComposerMarkdown(editor)).toBe("wrap `this` word");
+  });
+
+  it("keeps the original text selected inside the delimiters", () => {
+    const editor = createComposerEditor("wrap this word");
+    selectText(editor, "this");
+
+    surroundComposerSelection(editor, "(");
+
+    const { from, to } = editor.state.selection;
+    expect(editor.state.doc.textBetween(from, to)).toBe("this");
+  });
+
+  it("keeps the selection wrappable so pairs can be stacked", () => {
+    const editor = createComposerEditor("wrap this word");
+    selectText(editor, "this");
+
+    surroundComposerSelection(editor, "*");
+    surroundComposerSelection(editor, "*");
+
+    expect(getTiptapComposerMarkdown(editor)).toBe("wrap **this** word");
+  });
+
+  it("ignores characters that are not wrapping symbols", () => {
+    const editor = createComposerEditor("wrap this word");
+    selectText(editor, "this");
+
+    expect(surroundComposerSelection(editor, "a")).toBe(false);
+    expect(getTiptapComposerMarkdown(editor)).toBe("wrap this word");
+  });
+
+  it("does nothing without a selection", () => {
+    const editor = createComposerEditor("wrap this word");
+    editor.commands.setTextSelection(3);
+
+    expect(surroundComposerSelection(editor, "`")).toBe(false);
+  });
+
+  it("refuses to wrap a range that spans a token", () => {
+    const editor = createComposerEditor("see [config.json](src/config.json) now");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, 1, editor.state.doc.content.size - 1),
+      ),
+    );
+
+    expect(surroundComposerSelection(editor, "`")).toBe(false);
+    expect(getTiptapComposerMarkdown(editor)).toBe("see [config.json](src/config.json) now");
+  });
+
+  it("refuses to swallow the whitespace a token needs beside it", () => {
+    const editor = createComposerEditor("see [config.json](src/config.json) now");
+    // Selects the space directly after the token plus the following word.
+    const tokenEnd = editor.state.doc.content.size - 5;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, tokenEnd, editor.state.doc.content.size - 1),
+      ),
+    );
+
+    expect(surroundComposerSelection(editor, "`")).toBe(false);
+  });
+});
