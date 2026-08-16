@@ -102,6 +102,44 @@ describe("Tiptap composer selection surround", () => {
     expect(getTiptapComposerMarkdown(editor)).toBe("see [config.json](src/config.json) now");
   });
 
+  /**
+   * The delimiters would land in different paragraphs, e.g.
+   * `first (para\n\nsec)ond para`.
+   */
+  it("refuses to wrap a selection that crosses a block boundary", () => {
+    const editor = createComposerEditor("first para\n\nsecond para");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 7, 17)),
+    );
+
+    expect(surroundComposerSelection(editor, "(")).toBe(false);
+    expect(getTiptapComposerMarkdown(editor)).toBe("first para\n\nsecond para");
+  });
+
+  it("refuses to wrap inside a code block, where a delimiter is code", () => {
+    const editor = createComposerEditor("```ts\nconst a = 1\n```");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 7, 12)),
+    );
+
+    expect(surroundComposerSelection(editor, "`")).toBe(false);
+    expect(getTiptapComposerMarkdown(editor)).toBe("```ts\nconst a = 1\n```");
+  });
+
+  it("keeps a backwards selection backwards after wrapping", () => {
+    const editor = createComposerEditor("wrap this word");
+    editor.view.dispatch(
+      // anchor after head: the user extended leftwards.
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 10, 6)),
+    );
+
+    surroundComposerSelection(editor, "(");
+
+    const { anchor, head } = editor.state.selection;
+    expect(anchor).toBeGreaterThan(head);
+    expect(editor.state.doc.textBetween(head, anchor)).toBe("this");
+  });
+
   it("refuses to swallow the whitespace a token needs beside it", () => {
     const editor = createComposerEditor("see [config.json](src/config.json) now");
     // Selects the space directly after the token plus the following word.

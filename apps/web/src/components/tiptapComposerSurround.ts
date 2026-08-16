@@ -29,18 +29,23 @@ export function surroundCloseSymbol(input: string): string | null {
  * Wraps the current selection in `input` and its partner, leaving the original
  * text selected between the delimiters so the user can keep typing pairs.
  *
- * Refuses when the range is empty, spans an atomic token, or touches the
- * whitespace a mention needs on either side — wrapping there would break the
- * token grammar, which is why the Lexical plugin guarded the same cases.
+ * Refuses when the range is empty, crosses a block, sits in code, spans an
+ * atomic token, or touches the whitespace a mention needs on either side.
+ * The Lexical plugin guarded the token cases; the block and code cases are new,
+ * because it worked on flat prompt text where a block break was only a `\n`.
  */
 export function surroundComposerSelection(editor: Editor, input: string): boolean {
   const close = surroundCloseSymbol(input);
   if (!close) return false;
 
   const { state } = editor;
-  const { from, to, empty } = state.selection;
+  const { $from, $to, from, to, empty } = state.selection;
   if (empty) return false;
 
+  // One delimiter per block would land the pair in two different paragraphs.
+  if (!$from.sameParent($to)) return false;
+  // In a fence the delimiters are code, not markup.
+  if ($from.parent.type.spec.code) return false;
   if (selectionSpansComposerToken(state, from, to)) return false;
   // The mention grammar is whitespace-delimited, so a wrap that swallows the
   // space beside a token would silently dissolve it back into plain text.
@@ -52,8 +57,16 @@ export function surroundComposerSelection(editor: Editor, input: string): boolea
   // Close first: inserting at `to` before `from` keeps the earlier offset valid.
   const transaction = state.tr.insertText(close, to).insertText(input, from);
   const selectionStart = from + input.length;
+  const selectionEnd = selectionStart + selectedLength;
+  // Preserve which end the user was extending from, so Shift+Arrow continues
+  // in the direction they were already going.
+  const backwards = state.selection.anchor > state.selection.head;
   transaction.setSelection(
-    TextSelection.create(transaction.doc, selectionStart, selectionStart + selectedLength),
+    TextSelection.create(
+      transaction.doc,
+      backwards ? selectionEnd : selectionStart,
+      backwards ? selectionStart : selectionEnd,
+    ),
   );
   editor.view.dispatch(transaction);
   return true;
@@ -89,8 +102,11 @@ function selectionEatsTokenBoundaryWhitespace(
 export const composerSurroundKey = new PluginKey("composerSurroundSelection");
 
 /**
- * macOS dead keys (Option+`) emit the backtick through composition rather than
- * a plain `insertText`, so the composition path is handled alongside it.
+ * Known gap: macOS dead keys (Option+` then Space) deliver the backtick through
+ * composition, and prosemirror-view's keypress handler bails out near a
+ * composition before `handleTextInput` runs, so that route does not wrap. The
+ * Lexical plugin carried a separate `beforeinput`/`compositionend` state machine
+ * for it. Ordinary typed delimiters are unaffected.
  */
 export const TiptapComposerSurround = Extension.create({
   name: "composerSurroundSelection",
