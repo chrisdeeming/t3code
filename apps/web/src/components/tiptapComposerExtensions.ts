@@ -293,6 +293,34 @@ const ComposerMarkdown = Markdown.extend({
  * form. The composer's value is a prompt, and invisible trailing whitespace on
  * every soft-broken line is noise the agent has to read past.
  */
+/**
+ * Collapses `[url](url)` back to the bare URL.
+ *
+ * marked's GFM tokenizer turns a typed URL into a link mark, and the serializer
+ * writes it as `[https://x](https://x)` — the user's URL duplicated in a prompt
+ * they never marked up. Only an exact label/href match is collapsed, so a link
+ * the user wrote as `[label](href)` is untouched.
+ *
+ * Done after serialization because the Markdown manager snapshots each
+ * extension's `renderMarkdown` when it registers them, before an extension of
+ * ours could replace the link mark's.
+ */
+function collapseAutolinkedUrls(markdown: string): string {
+  return markdown.replace(
+    // The label must look like a URL or an email: a mention for a file in the
+    // repo root serializes as `[notes.md](notes.md)`, which also has a matching
+    // label and href but is a chip, not an autolink — collapsing that would turn
+    // it back into plain text. An email's href gains a `mailto:` prefix the
+    // user never typed, so match that shape too.
+    /\[((?:https?:\/\/|mailto:)?[^\]\s]+)\]\(([^)\s]+)\)/g,
+    (match, label: string, href: string) => {
+      if (label === href && /^(?:https?:\/\/|mailto:)/.test(label)) return label;
+      if (href === `mailto:${label}` && label.includes("@")) return label;
+      return match;
+    },
+  );
+}
+
 const ComposerStarterKit = StarterKit.extend({
   addExtensions() {
     return (this.parent?.() ?? []).map((extension) =>
@@ -384,14 +412,18 @@ export function getTiptapComposerMarkdown(editor: Editor): string {
     previousNode != null &&
     ["blockquote", "bulletList", "codeBlock", "orderedList"].includes(previousNode.type);
 
-  if (!hasEditorEscapeParagraph) return decodeHtmlEntities(editor.getMarkdown());
+  if (!hasEditorEscapeParagraph) {
+    return collapseAutolinkedUrls(decodeHtmlEntities(editor.getMarkdown()));
+  }
 
   const markdown = editor.markdown;
   if (!markdown) throw new Error("Tiptap Markdown manager is unavailable");
-  return decodeHtmlEntities(
-    markdown.serialize({
-      ...document,
-      content: content.slice(0, -1),
-    }),
+  return collapseAutolinkedUrls(
+    decodeHtmlEntities(
+      markdown.serialize({
+        ...document,
+        content: content.slice(0, -1),
+      }),
+    ),
   );
 }

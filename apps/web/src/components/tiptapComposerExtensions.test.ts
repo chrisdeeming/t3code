@@ -97,6 +97,38 @@ describe("Tiptap composer Markdown", () => {
     expect(mentions).toBe(1);
   });
 
+  /**
+   * marked autolinks a typed URL into a link mark, which the serializer then
+   * writes as `[https://x](https://x)` — the user's URL duplicated in a prompt
+   * they never marked up.
+   */
+  it.each([
+    "see https://example.com/x now",
+    "bare https://example.com at end",
+    "mail me@example.com now",
+  ])("keeps a typed URL or email bare: %j", (markdown) => {
+    expect(getTiptapComposerMarkdown(createComposerEditor(markdown))).toBe(markdown);
+  });
+
+  /**
+   * A mention for a file in the repo root serializes with a matching label and
+   * href, exactly like an autolink. Collapsing it would turn a chip back into
+   * plain text, so the collapse only applies to real URL and email shapes.
+   */
+  it.each(["see [notes.md](notes.md) now", "see [a.ts](a.ts) now"])(
+    "keeps a root-level mention intact: %j",
+    (markdown) => {
+      const editor = createComposerEditor(markdown);
+      let chips = 0;
+      editor.state.doc.descendants((node) => {
+        if (node.type.name === "composerToken") chips += 1;
+      });
+
+      expect(chips).toBe(1);
+      expect(getTiptapComposerMarkdown(editor)).toBe(markdown);
+    },
+  );
+
   it("leaves ordinary Markdown links and scoped packages alone", () => {
     const markdown = "Read [Tiptap](https://tiptap.dev) then run npm install @scope/pkg now";
     const editor = createComposerEditor(markdown);
