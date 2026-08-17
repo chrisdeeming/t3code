@@ -1,5 +1,6 @@
 import {
   decodeHtmlEntities,
+  type InputRule,
   type Editor,
   Extension,
   Node,
@@ -321,11 +322,37 @@ function collapseAutolinkedUrls(markdown: string): string {
   );
 }
 
+/**
+ * Underscores are punctuation in code, not emphasis. Bold and italic both carry
+ * an underscore input rule, so typing `__init__`, `__all__` or `MAX_SIZE _x_`
+ * silently turned an identifier into formatted text and ate the underscores.
+ * The asterisk rules stay, so `**bold**` and `*italic*` still work as typed —
+ * `*` is far rarer inside identifiers.
+ */
+function withoutUnderscoreInputRules<T extends { name: string }>(extension: T): T {
+  const marksWithUnderscoreRules = ["bold", "italic"];
+  if (!marksWithUnderscoreRules.includes(extension.name)) return extension;
+  return (extension as unknown as { extend: (config: object) => T }).extend({
+    addInputRules(this: { parent?: () => InputRule[] }) {
+      // `find` holds the rule's pattern; the underscore variants are the ones
+      // whose source mentions `_`.
+      return (this.parent?.() ?? []).filter((rule) => {
+        const pattern = (rule as unknown as { find: RegExp | unknown }).find;
+        return !(pattern instanceof RegExp) || !pattern.source.includes("_");
+      });
+    },
+  });
+}
+
 const ComposerStarterKit = StarterKit.extend({
   addExtensions() {
-    return (this.parent?.() ?? []).map((extension) =>
-      extension.name === "hardBreak" ? extension.extend({ renderMarkdown: () => "\n" }) : extension,
-    );
+    return (this.parent?.() ?? [])
+      .map((extension) =>
+        extension.name === "hardBreak"
+          ? extension.extend({ renderMarkdown: () => "\n" })
+          : extension,
+      )
+      .map(withoutUnderscoreInputRules);
   },
 });
 

@@ -129,6 +129,37 @@ describe("Tiptap composer Markdown", () => {
     },
   );
 
+  /**
+   * Underscores are punctuation in code. Bold and italic each ship an underscore
+   * input rule, so typing `__init__` turned a Python identifier into bold text
+   * and ate the underscores as the user typed. The asterisk rules stay, since
+   * `*` is far rarer inside identifiers.
+   *
+   * Input rules only fire against a live view, so this asserts the registration
+   * that drives them; the typed behavior is checked in the browser.
+   */
+  it("registers no underscore input rule for bold or italic", () => {
+    const editor = createComposerEditor("x");
+    const underscorePatterns = editor.extensionManager.extensions
+      .filter((extension) => extension.name === "bold" || extension.name === "italic")
+      .flatMap((extension) => {
+        const addInputRules = extension.config.addInputRules as
+          | (() => ReadonlyArray<{ find: unknown }>)
+          | undefined;
+        const context = {
+          name: extension.name,
+          options: extension.options,
+          storage: {},
+          editor,
+          type: editor.schema.marks[extension.name],
+        };
+        return (addInputRules?.call(context as never) ?? []).map((rule) => rule.find);
+      })
+      .filter((pattern) => pattern instanceof RegExp && pattern.source.includes("_"));
+
+    expect(underscorePatterns).toEqual([]);
+  });
+
   it("leaves ordinary Markdown links and scoped packages alone", () => {
     const markdown = "Read [Tiptap](https://tiptap.dev) then run npm install @scope/pkg now";
     const editor = createComposerEditor(markdown);
