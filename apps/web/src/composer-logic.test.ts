@@ -24,6 +24,46 @@ describe("shouldSubmitComposerOnEnter", () => {
   it("inserts a newline for Shift+Enter", () => {
     expect(shouldSubmitComposerOnEnter({ isMobileViewport: false, shiftKey: true })).toBe(false);
   });
+
+  /**
+   * The "newline" mode moves sending to Cmd/Ctrl+Enter, which the editor routes
+   * separately, so plain Enter never submits here however it is pressed.
+   */
+  it("never submits plain Enter when Enter is set to add a newline", () => {
+    expect(
+      shouldSubmitComposerOnEnter({
+        isMobileViewport: false,
+        shiftKey: false,
+        enterBehavior: "newline",
+      }),
+    ).toBe(false);
+    expect(
+      shouldSubmitComposerOnEnter({
+        isMobileViewport: false,
+        shiftKey: true,
+        enterBehavior: "newline",
+      }),
+    ).toBe(false);
+  });
+
+  it("still submits plain Enter when Enter is set to send", () => {
+    expect(
+      shouldSubmitComposerOnEnter({
+        isMobileViewport: false,
+        shiftKey: false,
+        enterBehavior: "send",
+      }),
+    ).toBe(true);
+  });
+
+  /** A narrow viewport wins regardless: there is no comfortable modifier there. */
+  it("keeps Enter as a newline on a narrow viewport in either mode", () => {
+    for (const enterBehavior of ["send", "newline"] as const) {
+      expect(
+        shouldSubmitComposerOnEnter({ isMobileViewport: true, shiftKey: false, enterBehavior }),
+      ).toBe(false);
+    }
+  });
 });
 
 describe("detectComposerTrigger", () => {

@@ -22,6 +22,7 @@ import {
   type EnvironmentIdentificationMode,
   MAX_CODE_FONT_SIZE,
   MAX_GLASS_OPACITY,
+  type ComposerEnterBehavior,
   MAX_INTERFACE_FONT_SIZE,
   MAX_PROMPT_FONT_SIZE,
   MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
@@ -1648,6 +1649,7 @@ const LEGACY_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set([
 // Same reasoning as the legacy set: the rows sit behind the fold, so a
 // settings-search jump has to expand the section before its target can mount.
 const BETA_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set([
+  "composer-enter-behavior",
   "beta-tiptap-composer",
   "beta-tiptap-composer-debug",
 ]);
@@ -1684,6 +1686,34 @@ function BetaFeaturesSection() {
         </CollapsibleTrigger>
         <CollapsiblePanel>
           <div className="relative space-y-1 overflow-visible pt-3 text-foreground">
+            <SettingsRow
+              {...searchableSetting("composer-enter-behavior")}
+              description="What Enter does while writing a prompt. Sending keeps Enter as send and Shift+Enter as a new paragraph. Adding a new line moves sending to Cmd/Ctrl+Enter, which suits long multi-line prompts."
+              control={
+                <Select
+                  value={settings.composerEnterBehavior}
+                  onValueChange={(value) => {
+                    updateSettings({ composerEnterBehavior: value as ComposerEnterBehavior });
+                  }}
+                >
+                  <SelectTrigger className="w-full sm:w-44" aria-label="Enter key behavior">
+                    <SelectValue>
+                      {settings.composerEnterBehavior === "newline"
+                        ? "Adds a new line"
+                        : "Sends the message"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup align="end" alignItemWithTrigger={false}>
+                    <SelectItem hideIndicator value="send">
+                      Sends the message
+                    </SelectItem>
+                    <SelectItem hideIndicator value="newline">
+                      Adds a new line
+                    </SelectItem>
+                  </SelectPopup>
+                </Select>
+              }
+            />
             <SettingsRow
               {...searchableSetting("beta-tiptap-composer")}
               description="Writes prompts in a rich Markdown editor: headings, lists and quotes format as you type, and fenced code is highlighted. Drafts are stored as Markdown either way, so you can switch back at any time without losing work."

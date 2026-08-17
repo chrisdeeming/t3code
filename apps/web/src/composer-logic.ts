@@ -11,11 +11,23 @@ export interface ComposerTrigger {
   rangeEnd: number;
 }
 
+/**
+ * How the composer treats Enter, named after what the key does rather than what
+ * it does not. Mirrors the choice Slack and Linear expose.
+ */
+export type ComposerEnterBehavior = "send" | "newline";
+
 export function shouldSubmitComposerOnEnter(input: {
   isMobileViewport: boolean;
   shiftKey: boolean;
+  /** Defaults to sending, which is the behavior the composer has always had. */
+  enterBehavior?: ComposerEnterBehavior;
 }): boolean {
-  return !input.isMobileViewport && !input.shiftKey;
+  // A narrow viewport is the phone-shaped case: Enter has to write a newline
+  // there, because there is no comfortable modifier to reach for.
+  if (input.isMobileViewport) return false;
+  if (input.enterBehavior === "newline") return false;
+  return !input.shiftKey;
 }
 
 const isInlineTokenSegment = (

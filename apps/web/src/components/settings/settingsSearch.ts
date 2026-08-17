@@ -160,6 +160,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
   },
   {
+    id: "composer-enter-behavior",
+    title: "Enter key behavior",
+    to: "/settings/general",
+  },
+  {
     id: "beta-tiptap-composer",
     title: "Rich composer (beta)",
     to: "/settings/general",

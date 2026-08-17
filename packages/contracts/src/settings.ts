@@ -111,6 +111,14 @@ export const DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE: EnvironmentIdentificationM
 export const FontFamilyPreference = Schema.String.check(Schema.isMaxLength(200));
 export type FontFamilyPreference = typeof FontFamilyPreference.Type;
 
+/**
+ * What Enter does in the composer, named for what the key does rather than what
+ * it does not. "newline" moves sending to Cmd/Ctrl+Enter.
+ */
+export const ComposerEnterBehavior = Schema.Literals(["send", "newline"]);
+export type ComposerEnterBehavior = typeof ComposerEnterBehavior.Type;
+export const DEFAULT_COMPOSER_ENTER_BEHAVIOR: ComposerEnterBehavior = "send";
+
 export const ClientSettingsSchema = Schema.Struct({
   confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -187,6 +195,12 @@ export const ClientSettingsSchema = Schema.Struct({
   // the beta above is on.
   tiptapComposerDebugPanelEnabled: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
+  // What Enter does in the composer. "send" is the long-standing behavior;
+  // "newline" moves sending to Cmd/Ctrl+Enter for people who write multi-line
+  // prompts and are used to that arrangement from Slack.
+  composerEnterBehavior: ComposerEnterBehavior.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_COMPOSER_ENTER_BEHAVIOR)),
   ),
   sidebarAutoSettleAfterDays: Schema.NullOr(SidebarAutoSettleAfterDays).pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS)),
@@ -806,6 +820,7 @@ export const ClientSettingsPatch = Schema.Struct({
   legacySidebarEnabled: Schema.optionalKey(Schema.Boolean),
   tiptapComposerEnabled: Schema.optionalKey(Schema.Boolean),
   tiptapComposerDebugPanelEnabled: Schema.optionalKey(Schema.Boolean),
+  composerEnterBehavior: Schema.optionalKey(ComposerEnterBehavior),
   sidebarAutoSettleAfterDays: Schema.optionalKey(Schema.NullOr(SidebarAutoSettleAfterDays)),
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
   sidebarProjectGroupingMode: Schema.optionalKey(SidebarProjectGroupingMode),

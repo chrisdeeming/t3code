@@ -1908,7 +1908,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     if (
       key === "Enter" &&
-      shouldSubmitComposerOnEnter({ isMobileViewport, shiftKey: event.shiftKey })
+      shouldSubmitComposerOnEnter({
+        isMobileViewport,
+        shiftKey: event.shiftKey,
+        enterBehavior: settings.composerEnterBehavior,
+      })
     ) {
       submitComposer();
       return true;

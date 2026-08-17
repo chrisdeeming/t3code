@@ -1,7 +1,10 @@
 import { decodeHtmlEntities, type Editor, type JSONContent } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
+import { liftEmptyBlock, splitBlock } from "@tiptap/pm/commands";
 import { Fragment } from "@tiptap/pm/model";
+import { splitListItem } from "@tiptap/pm/schema-list";
 import { AllSelection, type EditorState, TextSelection, type Transaction } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
 import {
   useCallback,
   useEffect,
@@ -207,6 +210,28 @@ export function replaceChangedSpan(
   return true;
 }
 
+/**
+ * Splits the current block, lifting out of an empty list item or quote first.
+ *
+ * Standard editor behaviour: Shift+Enter on an empty bullet leaves the list
+ * rather than adding another empty one.
+ */
+function splitComposerBlock(view: EditorView): boolean {
+  const dispatch = view.dispatch.bind(view);
+  return (
+    liftEmptyBlock(view.state, dispatch) ||
+    splitListItem(view.state.schema.nodes.listItem!)(view.state, dispatch) ||
+    splitBlock(view.state, dispatch)
+  );
+}
+
+function insertComposerHardBreak(view: EditorView): boolean {
+  const hardBreak = view.state.schema.nodes.hardBreak;
+  if (!hardBreak) return false;
+  view.dispatch(view.state.tr.replaceSelectionWith(hardBreak.create()).scrollIntoView());
+  return true;
+}
+
 function snapshotAtSelection(editor: Editor): ComposerSnapshot {
   const { value, expandedCursor } = serializeTiptapComposerWithCursor(
     editor,
@@ -325,10 +350,32 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
         }
         if (
           event.key === "Enter" &&
+          !event.shiftKey &&
           convertTiptapCodeFenceOnEnter(view.state, (transaction) => view.dispatch(transaction))
         ) {
           event.preventDefault();
           return true;
+        }
+        // Shift+Enter used to emit a hard break, which is a soft line *inside* a
+        // paragraph — and input rules only fire at the start of a block, so a
+        // user who broke a line that way found `- `, `> ` and fences no longer
+        // did anything. A new paragraph keeps Markdown working, which is the
+        // more useful default; the hard break moves to Mod+Shift+Enter.
+        if (event.key === "Enter" && event.shiftKey) {
+          const inCode = view.state.selection.$from.parent.type.spec.code === true;
+          // In a fence every Enter is a newline: splitting it into two blocks is
+          // never wanted, and reaching for a modifier while typing code is not
+          // a reasonable ask.
+          if (inCode) return false;
+          const applied =
+            event.metaKey || event.ctrlKey
+              ? insertComposerHardBreak(view)
+              : splitComposerBlock(view);
+          if (applied) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+          return applied;
         }
         // Structural Enter is contextual, so a list, quote or fence otherwise
         // has no keyboard route to send at all. Mod+Enter always submits, and
