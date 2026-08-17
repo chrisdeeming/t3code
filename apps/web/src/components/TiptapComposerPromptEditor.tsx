@@ -1,5 +1,6 @@
-import { decodeHtmlEntities, type Editor } from "@tiptap/core";
+import { decodeHtmlEntities, type Editor, type JSONContent } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
+import { Fragment } from "@tiptap/pm/model";
 import { AllSelection, type EditorState, TextSelection, type Transaction } from "@tiptap/pm/state";
 import {
   useCallback,
@@ -126,6 +127,84 @@ export function tiptapComposerPositionForExpandedCursor(
   }
 
   return bestPosition;
+}
+
+/**
+ * The inline children of a parsed one-paragraph document, or null when the
+ * parse produced anything else — a span replacement can only carry inline
+ * content.
+ */
+function parsedInlineContent(parsed: JSONContent | undefined): JSONContent[] | null {
+  const blocks = parsed?.content;
+  if (!blocks || blocks.length !== 1) return null;
+  const [block] = blocks;
+  if (block?.type !== "paragraph") return null;
+  return block.content ?? [];
+}
+
+/**
+ * Applies a controlled value change as an edit to the one span that differs,
+ * rather than re-parsing the whole prompt.
+ *
+ * A full `setContent` runs every character back through the Markdown parser,
+ * which rewrites text the change never touched — `fix __init__` arrives as
+ * `fix **init**`, a bare URL becomes a link. Autocomplete replaces a single
+ * range, so diffing the common prefix and suffix recovers that range and lets
+ * the untouched text stay exactly as the user typed it.
+ *
+ * Returns false when the edit is not a plain substitution inside one text block,
+ * leaving the caller to fall back to a full parse.
+ */
+export function replaceChangedSpan(
+  editor: Editor,
+  currentValue: string,
+  nextValue: string,
+): boolean {
+  let prefix = 0;
+  const maxPrefix = Math.min(currentValue.length, nextValue.length);
+  while (prefix < maxPrefix && currentValue[prefix] === nextValue[prefix]) prefix += 1;
+
+  let suffix = 0;
+  const maxSuffix = maxPrefix - prefix;
+  while (
+    suffix < maxSuffix &&
+    currentValue[currentValue.length - 1 - suffix] === nextValue[nextValue.length - 1 - suffix]
+  ) {
+    suffix += 1;
+  }
+
+  const inserted = nextValue.slice(prefix, nextValue.length - suffix);
+  // Block-level syntax changes the document's shape, which a span replacement
+  // cannot express.
+  if (/[\n#>|]/.test(inserted)) return false;
+
+  const from = tiptapComposerPositionForExpandedCursor(editor, prefix);
+  const to = tiptapComposerPositionForExpandedCursor(editor, currentValue.length - suffix);
+  if (from > to) return false;
+
+  const $from = editor.state.doc.resolve(from);
+  const $to = editor.state.doc.resolve(to);
+  // A range spanning blocks, or landing in code, is not a simple substitution.
+  if (!$from.sameParent($to) || !$from.parent.isTextblock) return false;
+
+  // The inserted span still goes through the parser, so an autocompleted file
+  // link becomes a chip; only the untouched text either side is spared.
+  const transaction = editor.state.tr;
+  if (inserted) {
+    const parsed = editor.markdown?.parse(inserted);
+    const inline = parsedInlineContent(parsed);
+    if (!inline) return false;
+    transaction.replaceWith(from, to, Fragment.fromJSON(editor.state.schema, inline));
+  } else {
+    transaction.delete(from, to);
+  }
+  transaction.setMeta("addToHistory", false);
+  editor.view.dispatch(transaction);
+
+  // The splice is only correct if it actually reproduced the requested value.
+  if (getTiptapComposerMarkdown(editor) === nextValue) return true;
+  editor.commands.setContent(nextValue, { contentType: "markdown", emitUpdate: false });
+  return true;
 }
 
 function snapshotAtSelection(editor: Editor): ComposerSnapshot {
@@ -322,7 +401,14 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
       return;
     }
     if (currentValue !== props.value) {
-      editor.commands.setContent(props.value, { contentType: "markdown", emitUpdate: false });
+      // Re-parsing the whole prompt rewrites text the change never touched:
+      // `__init__` becomes `**init**`, a bare URL becomes a link. Autocomplete
+      // edits one span and leaves the rest alone, so splice that span into the
+      // live document and only fall back to a full parse when the edit is not a
+      // simple substitution.
+      if (!replaceChangedSpan(editor, currentValue, props.value)) {
+        editor.commands.setContent(props.value, { contentType: "markdown", emitUpdate: false });
+      }
     }
     stampComposerTerminalContextIds(editor, props.terminalContexts);
     const expandedCursor = expandCollapsedComposerCursor(props.value, normalizedCursor);
