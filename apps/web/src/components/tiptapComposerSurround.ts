@@ -2,8 +2,9 @@ import { Extension, type Editor } from "@tiptap/core";
 import { type EditorState, Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 
 /**
- * Typing one of these with text selected wraps the selection instead of
- * replacing it. Mirrors `SURROUND_SYMBOLS` in the Lexical composer.
+ * Brackets and quotes: typing one with text selected surrounds the selection
+ * with the literal characters instead of replacing it. From Lexical's
+ * `SURROUND_SYMBOLS`, minus the Markdown delimiters, which now toggle a mark.
  */
 export const SURROUND_SYMBOLS: ReadonlyArray<readonly [string, string]> = [
   ["(", ")"],
@@ -12,17 +13,34 @@ export const SURROUND_SYMBOLS: ReadonlyArray<readonly [string, string]> = [
   ["'", "'"],
   ['"', '"'],
   ["“", "”"],
-  ["`", "`"],
   ["<", ">"],
   ["«", "»"],
-  ["*", "*"],
-  ["_", "_"],
+];
+
+/**
+ * Markdown delimiters apply formatting rather than literal characters. In a
+ * WYSIWYG editor the delimiters are meant to disappear into the mark, the same
+ * way `# ` becomes a heading — inserting them as text left the user looking at
+ * raw backticks and asterisks, and pressing `*` twice produced `**text**` as
+ * literal characters rather than bold.
+ */
+const MARKDOWN_DELIMITER_MARKS: ReadonlyArray<readonly [string, string]> = [
+  ["`", "code"],
+  ["*", "italic"],
+  ["_", "italic"],
+  ["~", "strike"],
 ];
 
 const SURROUND_SYMBOLS_MAP = new Map<string, string>(SURROUND_SYMBOLS);
+const MARKDOWN_DELIMITER_MARK_MAP = new Map<string, string>(MARKDOWN_DELIMITER_MARKS);
 
 export function surroundCloseSymbol(input: string): string | null {
   return SURROUND_SYMBOLS_MAP.get(input) ?? null;
+}
+
+/** The mark a Markdown delimiter toggles, if it is one. */
+export function markdownDelimiterMark(input: string): string | null {
+  return MARKDOWN_DELIMITER_MARK_MAP.get(input) ?? null;
 }
 
 /**
@@ -36,7 +54,8 @@ export function surroundCloseSymbol(input: string): string | null {
  */
 export function surroundComposerSelection(editor: Editor, input: string): boolean {
   const close = surroundCloseSymbol(input);
-  if (!close) return false;
+  const markName = markdownDelimiterMark(input);
+  if (!close && !markName) return false;
 
   const { state } = editor;
   const { selection } = state;
@@ -57,6 +76,16 @@ export function surroundComposerSelection(editor: Editor, input: string): boolea
   // The mention grammar is whitespace-delimited, so a wrap that swallows the
   // space beside a token would silently dissolve it back into plain text.
   if (selectionEatsTokenBoundaryWhitespace(state, from, to)) return false;
+
+  // A Markdown delimiter formats the selection rather than surrounding it with
+  // characters, so the mark does the work and the selection is left alone.
+  if (markName) {
+    if (!state.schema.marks[markName]) return false;
+    // No `.focus()`: the editor already has focus when a key produced this,
+    // and the call fails without a view, which headless tests run without.
+    return editor.commands.toggleMark(markName);
+  }
+  if (!close) return false;
 
   // Inserting the delimiters as text steps rather than parsed content keeps the
   // selected characters exactly as the user typed them.

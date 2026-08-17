@@ -3,7 +3,11 @@ import { AllSelection, TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { getTiptapComposerMarkdown, tiptapComposerExtensions } from "./tiptapComposerExtensions";
-import { surroundComposerSelection, surroundCloseSymbol } from "./tiptapComposerSurround";
+import {
+  markdownDelimiterMark,
+  surroundCloseSymbol,
+  surroundComposerSelection,
+} from "./tiptapComposerSurround";
 
 const editors: Editor[] = [];
 
@@ -35,24 +39,43 @@ describe("Tiptap composer selection surround", () => {
     for (const editor of editors.splice(0)) editor.destroy();
   });
 
-  it("pairs every symbol the legacy composer wrapped with", () => {
+  it("pairs the bracket and quote symbols with literal partners", () => {
     expect(surroundCloseSymbol("(")).toBe(")");
     expect(surroundCloseSymbol("[")).toBe("]");
     expect(surroundCloseSymbol("{")).toBe("}");
-    expect(surroundCloseSymbol("`")).toBe("`");
-    expect(surroundCloseSymbol("*")).toBe("*");
-    expect(surroundCloseSymbol("_")).toBe("_");
     expect(surroundCloseSymbol("<")).toBe(">");
     expect(surroundCloseSymbol("«")).toBe("»");
     expect(surroundCloseSymbol("a")).toBeNull();
   });
 
-  it("wraps the selection instead of replacing it", () => {
+  /**
+   * Markdown delimiters format instead of inserting characters. Typing them as
+   * text left raw backticks on screen in a WYSIWYG editor, and `*` twice built
+   * `**text**` as literal characters rather than bold.
+   */
+  it("maps Markdown delimiters to the mark they format with", () => {
+    expect(markdownDelimiterMark("`")).toBe("code");
+    expect(markdownDelimiterMark("*")).toBe("italic");
+    expect(markdownDelimiterMark("_")).toBe("italic");
+    expect(markdownDelimiterMark("~")).toBe("strike");
+    expect(markdownDelimiterMark("(")).toBeNull();
+  });
+
+  it("applies inline code when a backtick is typed over a selection", () => {
     const editor = createComposerEditor("wrap this word");
     selectText(editor, "this");
 
     expect(surroundComposerSelection(editor, "`")).toBe(true);
     expect(getTiptapComposerMarkdown(editor)).toBe("wrap `this` word");
+    expect(editor.isActive("code")).toBe(true);
+  });
+
+  it("surrounds with literal characters for a bracket", () => {
+    const editor = createComposerEditor("wrap this word");
+    selectText(editor, "this");
+
+    expect(surroundComposerSelection(editor, "(")).toBe(true);
+    expect(getTiptapComposerMarkdown(editor)).toBe("wrap (this) word");
   });
 
   it("keeps the original text selected inside the delimiters", () => {
@@ -65,14 +88,16 @@ describe("Tiptap composer selection surround", () => {
     expect(editor.state.doc.textBetween(from, to)).toBe("this");
   });
 
-  it("keeps the selection wrappable so pairs can be stacked", () => {
+  /** Toggling means a second press removes the mark, rather than doubling it. */
+  it("toggles a Markdown mark off when the delimiter is typed again", () => {
     const editor = createComposerEditor("wrap this word");
     selectText(editor, "this");
 
     surroundComposerSelection(editor, "*");
-    surroundComposerSelection(editor, "*");
+    expect(getTiptapComposerMarkdown(editor)).toBe("wrap *this* word");
 
-    expect(getTiptapComposerMarkdown(editor)).toBe("wrap **this** word");
+    surroundComposerSelection(editor, "*");
+    expect(getTiptapComposerMarkdown(editor)).toBe("wrap this word");
   });
 
   it("ignores characters that are not wrapping symbols", () => {
