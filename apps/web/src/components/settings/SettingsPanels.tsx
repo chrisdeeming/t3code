@@ -1645,6 +1645,80 @@ const LEGACY_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set([
   "legacy-sidebar",
 ]);
 
+// Same reasoning as the legacy set: the rows sit behind the fold, so a
+// settings-search jump has to expand the section before its target can mount.
+const BETA_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set([
+  "beta-tiptap-composer",
+  "beta-tiptap-composer-debug",
+]);
+
+/**
+ * Features that are finished enough to use but not yet the default. Collapsed
+ * like the legacy set, and unfolded by a settings-search jump.
+ */
+function BetaFeaturesSection() {
+  const settings = usePrimarySettings();
+  const updateSettings = useUpdatePrimarySettings();
+  const [open, setOpen] = useState(false);
+  const searchTargetId = useSettingsSearchTargetId();
+  const lastExpandedTargetRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (searchTargetId === null) {
+      lastExpandedTargetRef.current = null;
+      return;
+    }
+    if (!BETA_FEATURE_TARGET_IDS.has(searchTargetId)) return;
+    if (lastExpandedTargetRef.current === searchTargetId) return;
+    lastExpandedTargetRef.current = searchTargetId;
+    setOpen(true);
+  }, [searchTargetId]);
+
+  return (
+    <section className="space-y-3">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger className="group flex min-h-8 w-full items-center gap-2 px-3 sm:px-4">
+          <h2 className="text-lg font-semibold tracking-[-0.025em] text-muted-foreground transition-colors group-hover:text-foreground">
+            Beta features
+          </h2>
+          <ChevronRightIcon className="size-4 text-muted-foreground transition-transform duration-200 group-data-panel-open:rotate-90" />
+        </CollapsibleTrigger>
+        <CollapsiblePanel>
+          <div className="relative space-y-1 overflow-visible pt-3 text-foreground">
+            <SettingsRow
+              {...searchableSetting("beta-tiptap-composer")}
+              description="Writes prompts in a rich Markdown editor: headings, lists and quotes format as you type, and fenced code is highlighted. Drafts are stored as Markdown either way, so you can switch back at any time without losing work."
+              control={
+                <Switch
+                  checked={settings.tiptapComposerEnabled}
+                  onCheckedChange={(checked) =>
+                    updateSettings({ tiptapComposerEnabled: Boolean(checked) })
+                  }
+                  aria-label="Rich composer (beta)"
+                />
+              }
+            />
+            {settings.tiptapComposerEnabled ? (
+              <SettingsRow
+                {...searchableSetting("beta-tiptap-composer-debug")}
+                description="Advanced: shows the composer's document JSON, the Markdown it will send, and its editor DOM in a panel below the composer. Useful for checking that text round-trips unchanged."
+                control={
+                  <Switch
+                    checked={settings.tiptapComposerDebugPanelEnabled}
+                    onCheckedChange={(checked) =>
+                      updateSettings({ tiptapComposerDebugPanelEnabled: Boolean(checked) })
+                    }
+                    aria-label="Composer debug panel (beta)"
+                  />
+                }
+              />
+            ) : null}
+          </div>
+        </CollapsiblePanel>
+      </Collapsible>
+    </section>
+  );
+}
+
 /**
  * Retired features kept only for users who still depend on them. Collapsed by
  * default so they stay out of the everyday settings path; a settings-search
@@ -2329,6 +2403,7 @@ export function GeneralSettingsPanel() {
         />
       </SettingsSection>
 
+      <BetaFeaturesSection />
       <LegacyFeaturesSection />
     </SettingsPageContainer>
   );

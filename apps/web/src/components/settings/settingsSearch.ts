@@ -160,6 +160,16 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
   },
   {
+    id: "beta-tiptap-composer",
+    title: "Rich composer (beta)",
+    to: "/settings/general",
+  },
+  {
+    id: "beta-tiptap-composer-debug",
+    title: "Composer debug panel (beta)",
+    to: "/settings/general",
+  },
+  {
     id: "legacy-plan-mode",
     title: "Plan mode (legacy)",
     to: "/settings/general",

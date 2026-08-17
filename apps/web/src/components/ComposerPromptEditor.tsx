@@ -3,6 +3,7 @@ import type React from "react";
 
 import type { TerminalContextDraft } from "~/lib/terminalContext";
 
+import { LexicalComposerPromptEditor } from "./LegacyLexicalComposerPromptEditor";
 import { TiptapComposerPromptEditor } from "./TiptapComposerPromptEditor";
 
 export interface ComposerPromptEditorHandle {
@@ -54,6 +55,23 @@ export interface ComposerPromptEditorProps {
   onPaste: React.ClipboardEventHandler<HTMLElement>;
   onDebugSnapshotChange?: (snapshot: ComposerEditorDebugSnapshot) => void;
   editorRef: React.RefObject<ComposerPromptEditorHandle | null>;
+  /** Settings → Beta → Tiptap composer. Off keeps the Lexical editor. */
+  useTiptapComposer?: boolean;
 }
 
-export const ComposerPromptEditor = TiptapComposerPromptEditor;
+/**
+ * Picks the prompt editor implementation behind the beta flag.
+ *
+ * Both editors take the same props and speak the same Markdown value, so the
+ * switch is seamless: a draft written in one opens in the other. Keyed on the
+ * flag so flipping it remounts rather than trying to reconcile two very
+ * different editor trees.
+ */
+export function ComposerPromptEditor(props: ComposerPromptEditorProps) {
+  const { useTiptapComposer = false, ...editorProps } = props;
+  return useTiptapComposer ? (
+    <TiptapComposerPromptEditor key="tiptap" {...editorProps} />
+  ) : (
+    <LexicalComposerPromptEditor key="lexical" {...editorProps} />
+  );
+}

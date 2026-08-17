@@ -354,7 +354,6 @@ const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
-const TIPTAP_COMPOSER_DEBUG = 1;
 type ComposerDebugTab = keyof ComposerEditorDebugSnapshot;
 function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
   const transitionGroupRef = useRef<HTMLDivElement | null>(null);
@@ -1346,6 +1345,10 @@ function ChatViewContent(props: ChatViewProps) {
     json: "",
     markdown: "",
   });
+  // The panel inspects the Tiptap document, so it is only meaningful while that
+  // editor is the one running.
+  const composerDebugPanelEnabled =
+    settings.tiptapComposerEnabled && settings.tiptapComposerDebugPanelEnabled;
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
   const optimisticUserMessagesRef = useRef(optimisticUserMessages);
@@ -6401,7 +6404,7 @@ function ChatViewContent(props: ChatViewProps) {
                             composerImagesRef={composerImagesRef}
                             composerTerminalContextsRef={composerTerminalContextsRef}
                             composerElementContextsRef={composerElementContextsRef}
-                            {...(TIPTAP_COMPOSER_DEBUG
+                            {...(composerDebugPanelEnabled
                               ? { onDebugSnapshotChange: setComposerDebugSnapshot }
                               : {})}
                             onSend={onSend}
@@ -6468,7 +6471,7 @@ function ChatViewContent(props: ChatViewProps) {
                         </div>
                       </div>
                     </div>
-                    {TIPTAP_COMPOSER_DEBUG ? (
+                    {composerDebugPanelEnabled ? (
                       <div className="mx-auto mt-3 w-full max-w-3xl overflow-hidden rounded-lg border border-border bg-background text-xs">
                         <div className="flex border-b border-border bg-muted/40" role="tablist">
                           {(["json", "markdown", "dom"] as const).map((tab) => (

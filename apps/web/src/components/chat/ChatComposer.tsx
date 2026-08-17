@@ -3034,6 +3034,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             <div className="relative">
               <ComposerPromptEditor
                 editorRef={composerEditorRef}
+                useTiptapComposer={settings.tiptapComposerEnabled}
                 value={
                   isComposerApprovalState
                     ? ""
@@ -3053,7 +3054,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 onChange={onPromptChange}
                 onCommandKeyDown={onComposerCommandKey}
                 onPaste={onComposerPaste}
-                {...(props.onDebugSnapshotChange
+                {...(props.onDebugSnapshotChange &&
+                settings.tiptapComposerEnabled &&
+                settings.tiptapComposerDebugPanelEnabled
                   ? { onDebugSnapshotChange: props.onDebugSnapshotChange }
                   : {})}
                 placeholder={
