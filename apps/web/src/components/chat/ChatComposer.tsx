@@ -63,6 +63,7 @@ import {
   usePromptStashStore,
   type PromptStashEntry,
 } from "../../promptStashStore";
+import { ComposerSendButton, composerSendButtonLabel } from "./ComposerSendButton";
 import { ComposerStashBadge } from "./ComposerStashBadge";
 import { ComposerStashMenu } from "./ComposerStashMenu";
 import { compressImageForStash, compressImageToByteLimit } from "../../lib/imageCompression";
@@ -82,6 +83,7 @@ import { ComposerPendingElementContexts } from "./ComposerPendingElementContexts
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
 import { ComposerPreviewAnnotationCards } from "./ComposerPreviewAnnotationCards";
 import {
+  shouldCollapseRestingComposer,
   shouldUseCompactComposerPrimaryActions,
   shouldUseCompactComposerFooter,
 } from "../composerFooterLayout";
@@ -183,6 +185,7 @@ function ComposerCommandMenuLayer(props: { anchor: HTMLElement | null; children:
 
   return createPortal(
     <div
+      data-chat-composer-floating-layer="true"
       className="pointer-events-auto fixed z-[70]"
       style={{
         bottom: position.bottom,
@@ -260,13 +263,23 @@ const runtimeModeConfig: Record<
 };
 
 const runtimeModeOptions = Object.keys(runtimeModeConfig) as RuntimeMode[];
-const COMPOSER_FLOATING_LAYER_SELECTOR = [
+// Every focus-taking popup slot in the UI library. Toasts and tooltips are
+// deliberately absent: they never take focus, so they cannot be the reason a
+// blur should be deferred.
+const FLOATING_LAYER_SELECTOR = [
   '[data-slot="popover-popup"]',
   '[data-slot="menu-popup"]',
   '[data-slot="select-popup"]',
   '[data-slot="combobox-popup"]',
   '[data-slot="autocomplete-popup"]',
+  '[data-slot="dialog-popup"]',
+  '[data-slot="alert-dialog-popup"]',
+  '[data-slot="command-dialog-popup"]',
+  '[data-slot="sheet-popup"]',
 ].join(",");
+
+/** Marks the composer's own portalled menu so blur can tell it from app chrome. */
+const COMPOSER_FLOATING_LAYER_ATTR = "data-chat-composer-floating-layer";
 
 const extendReplacementRangeForTrailingSpace = (
   text: string,
@@ -296,8 +309,17 @@ const terminalContextIdListsEqual = (
 ): boolean =>
   contexts.length === ids.length && contexts.every((context, index) => context.id === ids[index]);
 
-function isInsideComposerFloatingLayer(element: Element): boolean {
-  return element.closest(COMPOSER_FLOATING_LAYER_SELECTOR) !== null;
+/**
+ * Whether focus sits in any floating layer. Base UI portals every popup to the
+ * document root, so this cannot tell a composer-owned popup from unrelated app
+ * chrome — the composer stays expanded for both, and reconciles once focus
+ * settles somewhere that is not a popup (see `scheduleComposerCollapseCheck`).
+ */
+function isInsideFloatingLayer(element: Element): boolean {
+  return (
+    element.closest(`[${COMPOSER_FLOATING_LAYER_ATTR}="true"]`) !== null ||
+    element.closest(FLOATING_LAYER_SELECTOR) !== null
+  );
 }
 
 const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
@@ -950,6 +972,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     null,
   );
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
+  // A ref cannot drive the collapse gate, and images being compressed are not
+  // in composerImages yet. Bumping this on every change to
+  // pendingImageCompressionsRef re-renders so the gate can read the live count
+  // for the *active* thread — a paste in another thread must not pin this one.
+  const [pendingImageCompressionVersion, setPendingImageCompressionVersion] = useState(0);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
@@ -965,8 +992,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     active: false,
   });
   const isMobileViewport = useMediaQuery("max-sm");
-  const isComposerCollapsedMobile =
-    isMobileViewport && !forceExpandedOnMobile && !isComposerFocused;
 
   // ------------------------------------------------------------------
   // Refs
@@ -980,9 +1005,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerMenuItemsRef = useRef<ComposerCommandItem[]>([]);
   const activeComposerMenuItemRef = useRef<ComposerCommandItem | null>(null);
   const composerBlurFrameRef = useRef<number | null>(null);
-  const mobileComposerExpandFrameRef = useRef<number | null>(null);
-  const mobileComposerExpandReleaseFrameRef = useRef<number | null>(null);
-  const mobileComposerExpandInFlightRef = useRef(false);
+  const composerExpandFrameRef = useRef<number | null>(null);
+  const composerExpandReleaseFrameRef = useRef<number | null>(null);
+  const composerExpandInFlightRef = useRef(false);
+  /** Set when a blur check deferred because focus was inside a popup. */
+  const composerFocusReconcilePendingRef = useRef(false);
+  /** Forward handle: the expand path runs before this callback is defined. */
+  const scheduleComposerCollapseCheckRef = useRef<(() => void) | null>(null);
+  /** Set when a blur arrived mid-expand and still needs to be honoured. */
+  const composerBlurDuringExpandRef = useRef(false);
+  /** Mirrors the editor's `disabled` prop for the dependency-free expand path. */
+  const composerEditorDisabledRef = useRef(false);
   const stashPulseKeyRef = useRef(0);
   const stashPulseTimeoutRef = useRef<number | null>(null);
   /**
@@ -1022,6 +1055,55 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       prompt,
     ],
   );
+
+  // The version is the dependency, not the value: it changes whenever the ref
+  // mutates, which is what makes this recompute for the active thread.
+  const hasPendingImageCompressionForActiveThread = useMemo(
+    () =>
+      activeThreadId !== null && (pendingImageCompressionsRef.current.get(activeThreadId) ?? 0) > 0,
+    [activeThreadId, pendingImageCompressionVersion],
+  );
+
+  // Attachments outlive the prompt text in the collapsed row, which renders
+  // words only, so they are what keeps the composer open at rest. Images still
+  // compressing count too: they are not in composerImages yet, and collapsing
+  // mid-compression would flash the resting row and read as a failed attach.
+  const composerHasAttachments =
+    hasPendingImageCompressionForActiveThread ||
+    composerImages.length > 0 ||
+    composerElementContexts.length > 0 ||
+    composerPreviewAnnotations.length > 0 ||
+    composerReviewComments.length > 0 ||
+    // Raw length, not the sendable subset: expired contexts still render as
+    // chips, so they have to keep the composer open like any other chip.
+    composerTerminalContexts.length > 0;
+
+  // Approvals and pending inputs have collapsed variants that keep their
+  // controls reachable, but the plan follow-up banner and its Implement /
+  // Refine actions only exist in the expanded tree.
+  const composerHasActionableChrome = showPlanFollowUpPrompt && activeProposedPlan !== null;
+
+  const isComposerCollapsed = shouldCollapseRestingComposer({
+    isFocused: isComposerFocused,
+    hasAttachments: composerHasAttachments,
+    hasActionableChrome: composerHasActionableChrome,
+    // All three live in the expanded tree and are reachable from global
+    // keybindings, so collapsing would open nothing (the menus) or swallow the
+    // save confirmation (the pulse, which clears itself after 1200ms).
+    hasTransientChrome: isStashMenuOpen || isComposerModelPickerOpen || stashPulse.active,
+    // Every in-flight signal, not just a running turn: the footer owns the
+    // Stop control, the send spinner and the "Preparing worktree" label. An
+    // outstanding request is excluded — the session stays "running" while it
+    // waits, and approvals and pending inputs carry their actions in their own
+    // collapsed rows.
+    isBusy:
+      (phase === "running" || isSendBusy || isConnecting || isPreparingWorktree) &&
+      activePendingApproval === null &&
+      pendingUserInputs.length === 0,
+    // The draft hero sets this without a viewport check, but it is a mobile-only
+    // override — the hero composer should still collapse at rest on desktop.
+    forceExpanded: forceExpandedOnMobile && isMobileViewport,
+  });
 
   // ------------------------------------------------------------------
   // Derived: composer trigger / menu
@@ -1150,8 +1232,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isComposerApprovalState ||
     pendingUserInputs.length > 0 ||
     (showPlanFollowUpPrompt && activeProposedPlan !== null);
-  const showCollapsedMobilePromptRow =
-    isComposerCollapsedMobile && !isComposerApprovalState && pendingUserInputs.length === 0;
+  const showCollapsedPromptRow =
+    isComposerCollapsed && !isComposerApprovalState && pendingUserInputs.length === 0;
 
   const composerFooterHasWideActions = showPlanFollowUpPrompt || activePendingProgress !== null;
   const composerFooterActionLayoutKey = useMemo(() => {
@@ -1253,9 +1335,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     projectSelectionRequired ||
     environmentUnavailable !== null ||
     !composerSendState.hasSendableContent;
-  const collapsedComposerPrimaryActionLabel = "Send message";
+  const collapsedComposerPrimaryActionLabel = composerSendButtonLabel({
+    isEnvironmentUnavailable:
+      environmentUnavailable !== null || noProviderAvailable || projectSelectionRequired,
+    sendDisabledReason,
+    isConnecting,
+    isPreparingWorktree,
+    isSendBusy,
+  });
+  // Mirrors the editor's own `disabled` prop: expanding into an editor that
+  // cannot take focus would flash the composer open and straight back shut.
+  const collapsedComposerExpandDisabled =
+    isConnecting || isComposerApprovalState || projectSelectionRequired;
+  composerEditorDisabledRef.current = collapsedComposerExpandDisabled;
   const showMobilePendingAnswerActions =
-    isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
+    isMobileViewport && !isComposerCollapsed && pendingPrimaryAction !== null;
 
   // ------------------------------------------------------------------
   // Prompt helpers
@@ -1605,6 +1699,84 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Callbacks: prompt replacement / menu
   // ------------------------------------------------------------------
+  /**
+   * Expands the composer, then focuses it once React has actually rendered the
+   * editor. While collapsed the editor sits behind `display:none`, where
+   * `focus()` is a no-op — so this retries across frames until the element is
+   * focusable rather than assuming one frame is enough, and reconciles the
+   * collapse state if focus never lands (otherwise a missed focus would leave
+   * the composer expanded with no caret).
+   */
+  const expandComposerThenFocus = useCallback(
+    (focusEditor?: (editor: ComposerPromptEditorHandle) => void) => {
+      // A disabled editor is `contenteditable="false"`, so focus can never
+      // land. Starting the handshake would expand, miss every attempt, then
+      // reconcile straight back to collapsed — a flash with nothing to show
+      // for it. Leave the composer exactly as it is instead.
+      if (composerEditorDisabledRef.current) {
+        return;
+      }
+      if (composerBlurFrameRef.current !== null) {
+        window.cancelAnimationFrame(composerBlurFrameRef.current);
+        composerBlurFrameRef.current = null;
+      }
+      if (composerExpandFrameRef.current !== null) {
+        window.cancelAnimationFrame(composerExpandFrameRef.current);
+      }
+      if (composerExpandReleaseFrameRef.current !== null) {
+        window.cancelAnimationFrame(composerExpandReleaseFrameRef.current);
+      }
+      composerExpandInFlightRef.current = true;
+      setIsComposerFocused(true);
+
+      // A handful of frames is ample for React to commit; the cap stops a
+      // detached composer from retrying forever.
+      let attemptsRemaining = 5;
+      const attemptFocus = () => {
+        composerExpandFrameRef.current = null;
+        const editor = composerEditorRef.current;
+        const surface = composerSurfaceRef.current;
+        const editorIsRendered = surface !== null && surface.isConnected;
+        if (editor && editorIsRendered) {
+          if (focusEditor) {
+            focusEditor(editor);
+          } else {
+            editor.focusAtEnd();
+          }
+        }
+        // Success means the *editor* took focus, not merely something inside
+        // the surface: the collapsed expand control lives in there too, and
+        // counting it would stop the retries while the editor is still hidden.
+        const editorRoot = surface?.querySelector('[contenteditable="true"]') ?? null;
+        const focused =
+          editorRoot !== null &&
+          document.activeElement instanceof Node &&
+          editorRoot.contains(document.activeElement);
+        attemptsRemaining -= 1;
+        if (!focused && attemptsRemaining > 0) {
+          composerExpandFrameRef.current = window.requestAnimationFrame(attemptFocus);
+          return;
+        }
+        composerExpandReleaseFrameRef.current = window.requestAnimationFrame(() => {
+          composerExpandReleaseFrameRef.current = null;
+          composerExpandInFlightRef.current = false;
+          // Re-check when focus never landed (nothing would blur it later), or
+          // when a blur arrived while the lock was held and was dropped.
+          const hadDeferredBlur = composerBlurDuringExpandRef.current;
+          composerBlurDuringExpandRef.current = false;
+          if (!focused || hadDeferredBlur) {
+            scheduleComposerCollapseCheckRef.current?.();
+          }
+        });
+      };
+      composerExpandFrameRef.current = window.requestAnimationFrame(attemptFocus);
+    },
+    [],
+  );
+  const expandComposer = useCallback(() => {
+    expandComposerThenFocus();
+  }, [expandComposerThenFocus]);
+
   const applyPromptReplacement = useCallback(
     (
       rangeStart: number,
@@ -1640,8 +1812,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       setComposerCursor(nextCursor);
       setComposerTrigger(detectComposerTrigger(next.text, nextExpandedCursor));
       if (options?.focusEditorAfterReplace !== false) {
-        window.requestAnimationFrame(() => {
-          composerEditorRef.current?.focusAt(nextCursor);
+        expandComposerThenFocus((editor) => {
+          editor.focusAt(nextCursor);
         });
       }
       return true;
@@ -1649,6 +1821,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       activePendingProgress?.activeQuestion,
       activePendingUserInput,
+      expandComposerThenFocus,
       onChangeActivePendingUserInputCustomAnswer,
       promptRef,
       setPrompt,
@@ -1888,28 +2061,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       shouldBlurMobileComposerOnSubmit,
     ],
   );
-  const expandMobileComposer = useCallback(() => {
-    if (composerBlurFrameRef.current !== null) {
-      window.cancelAnimationFrame(composerBlurFrameRef.current);
-      composerBlurFrameRef.current = null;
-    }
-    if (mobileComposerExpandFrameRef.current !== null) {
-      window.cancelAnimationFrame(mobileComposerExpandFrameRef.current);
-    }
-    if (mobileComposerExpandReleaseFrameRef.current !== null) {
-      window.cancelAnimationFrame(mobileComposerExpandReleaseFrameRef.current);
-    }
-    mobileComposerExpandInFlightRef.current = true;
-    setIsComposerFocused(true);
-    mobileComposerExpandFrameRef.current = window.requestAnimationFrame(() => {
-      mobileComposerExpandFrameRef.current = null;
-      composerEditorRef.current?.focusAtEnd();
-      mobileComposerExpandReleaseFrameRef.current = window.requestAnimationFrame(() => {
-        mobileComposerExpandReleaseFrameRef.current = null;
-        mobileComposerExpandInFlightRef.current = false;
-      });
-    });
-  }, []);
 
   // ------------------------------------------------------------------
   // Callbacks: command key
@@ -1970,7 +2121,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     };
   }, []);
 
-  /** Briefly highlight the badge so the save registers without a flourish. */
+  /**
+   * Briefly highlight the badge so the save registers without a flourish. The
+   * badge only exists in the expanded tree, so a resting composer is held open
+   * for the pulse — otherwise ⌘S would clear the draft with no visible
+   * confirmation — and released again when the pulse ends. The editor is left
+   * alone: stashing should not steal the caret from wherever the user is.
+   */
   const pulseStashBadge = useCallback(() => {
     stashPulseKeyRef.current += 1;
     setStashPulse({ key: stashPulseKeyRef.current, active: true });
@@ -2083,9 +2240,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       // Only yank the caret to the end when text was actually inserted;
       // restoring images alone should leave the user where they were typing.
       if (promptChanged) {
-        window.requestAnimationFrame(() => {
-          composerEditorRef.current?.focusAtEnd();
-        });
+        expandComposerThenFocus();
       }
     },
     [
@@ -2183,10 +2338,28 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       // preview annotations, and review comments are not stashable, so
       // destroying them here would be unrecoverable.
       promptRef.current = "";
+      // ⌘S is a global shortcut, so it fires with focus anywhere. Clearing the
+      // editor pulls focus into it, which would expand a resting composer and
+      // leave it open until the user clicked away; put focus back where it was.
+      const focusBeforeStash = document.activeElement;
+      const composerSurface = composerSurfaceRef.current;
+      const focusWasOutsideComposer =
+        focusBeforeStash instanceof HTMLElement &&
+        composerSurface !== null &&
+        !composerSurface.contains(focusBeforeStash);
       clearComposerDraftPromptAndImages(stashTarget);
       setComposerCursor(0);
       setComposerTrigger(null);
       pulseStashBadge();
+      if (focusWasOutsideComposer) {
+        window.requestAnimationFrame(() => {
+          // The origin can be gone if the transcript re-rendered; leave focus
+          // alone rather than throwing it somewhere arbitrary.
+          if (document.activeElement !== focusBeforeStash && focusBeforeStash.isConnected) {
+            focusBeforeStash.focus();
+          }
+        });
+      }
 
       if (evicted) {
         toastManager.add({
@@ -2369,6 +2542,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (acceptedFiles.length === 0) return;
 
     pendingImageCompressionsRef.current.set(threadId, pendingCount + acceptedFiles.length);
+    setPendingImageCompressionVersion((version) => version + 1);
     try {
       const nextImages: ComposerImageAttachment[] = [];
       let compressionError: string | null = null;
@@ -2415,6 +2589,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       } else {
         pendingImageCompressionsRef.current.delete(threadId);
       }
+      setPendingImageCompressionVersion((version) => version + 1);
     }
   };
 
@@ -2499,10 +2674,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     void onImplementPlanInNewThread();
   }, [onImplementPlanInNewThread]);
   const scheduleComposerCollapseCheck = useCallback(() => {
-    if (!isMobileViewport) {
-      return;
-    }
-    if (mobileComposerExpandInFlightRef.current) {
+    if (composerExpandInFlightRef.current) {
+      // A blur during the expand handshake is real, but acting on it now would
+      // race the focus we are about to place. Replay it once the lock clears.
+      composerBlurDuringExpandRef.current = true;
       return;
     }
     if (composerBlurFrameRef.current !== null) {
@@ -2510,14 +2685,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     composerBlurFrameRef.current = window.requestAnimationFrame(() => {
       composerBlurFrameRef.current = null;
-      if (mobileComposerExpandInFlightRef.current) {
+      if (composerExpandInFlightRef.current) {
+        composerBlurDuringExpandRef.current = true;
         return;
       }
       const composerSurface = composerSurfaceRef.current;
       const activeElement = document.activeElement;
-      if (activeElement instanceof Element && isInsideComposerFloatingLayer(activeElement)) {
+      if (activeElement instanceof Element && isInsideFloatingLayer(activeElement)) {
+        // A popup has focus. It may be the composer's own (model picker, stash
+        // menu) or unrelated app chrome, and portalling makes those
+        // indistinguishable here — so defer rather than guess, and re-check
+        // when focus lands somewhere that is not a popup.
+        composerFocusReconcilePendingRef.current = true;
         return;
       }
+      composerFocusReconcilePendingRef.current = false;
       if (
         composerSurface &&
         activeElement instanceof Node &&
@@ -2527,18 +2709,42 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       setIsComposerFocused(false);
     });
-  }, [isMobileViewport]);
+  }, []);
+  scheduleComposerCollapseCheckRef.current = scheduleComposerCollapseCheck;
+
+  // Popups portal to the document root, so a blur into one cannot be attributed
+  // to the composer or to unrelated app chrome. The check defers in that case;
+  // this re-runs it as soon as focus lands outside every popup, so closing an
+  // unrelated menu no longer leaves the composer pinned open.
+  useEffect(() => {
+    const reconcile = (target: EventTarget | null) => {
+      if (!composerFocusReconcilePendingRef.current) return;
+      if (target instanceof Element && isInsideFloatingLayer(target)) return;
+      composerFocusReconcilePendingRef.current = false;
+      scheduleComposerCollapseCheck();
+    };
+    const handleFocusIn = (event: FocusEvent) => reconcile(event.target);
+    // Dismissing a popup by clicking empty space moves focus to <body>, which
+    // fires no focusin, so pointerdown is the fallback path.
+    const handlePointerDown = (event: PointerEvent) => reconcile(event.target);
+    document.addEventListener("focusin", handleFocusIn, true);
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      document.removeEventListener("focusin", handleFocusIn, true);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [scheduleComposerCollapseCheck]);
 
   useEffect(() => {
     return () => {
       if (composerBlurFrameRef.current !== null) {
         window.cancelAnimationFrame(composerBlurFrameRef.current);
       }
-      if (mobileComposerExpandFrameRef.current !== null) {
-        window.cancelAnimationFrame(mobileComposerExpandFrameRef.current);
+      if (composerExpandFrameRef.current !== null) {
+        window.cancelAnimationFrame(composerExpandFrameRef.current);
       }
-      if (mobileComposerExpandReleaseFrameRef.current !== null) {
-        window.cancelAnimationFrame(mobileComposerExpandReleaseFrameRef.current);
+      if (composerExpandReleaseFrameRef.current !== null) {
+        window.cancelAnimationFrame(composerExpandReleaseFrameRef.current);
       }
     };
   }, []);
@@ -2550,10 +2756,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerRef,
     () => ({
       focusAtEnd: () => {
-        composerEditorRef.current?.focusAtEnd();
+        expandComposerThenFocus();
       },
       focusAt: (cursor: number) => {
-        composerEditorRef.current?.focusAt(cursor);
+        expandComposerThenFocus((editor) => {
+          editor.focusAt(cursor);
+        });
       },
       addDroppedFiles: (files: File[]) => {
         void addComposerImages(files);
@@ -2619,8 +2827,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         promptRef.current = insertion.prompt;
         setComposerCursor(nextCollapsedCursor);
         setComposerTrigger(detectComposerTrigger(insertion.prompt, insertion.cursor));
-        window.requestAnimationFrame(() => {
-          composerEditorRef.current?.focusAt(nextCollapsedCursor);
+        expandComposerThenFocus((editor) => {
+          editor.focusAt(nextCollapsedCursor);
         });
       },
       getSendContext: () => ({
@@ -2701,7 +2909,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       >
         <div
           ref={composerSurfaceRef}
-          data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
+          data-chat-composer-collapsed={isComposerCollapsed ? "true" : "false"}
           className={cn(
             "rounded-[20px] transition-[background-color] duration-200",
             isDragOverComposer ? "bg-accent/45 ring-1 ring-primary/70" : null,
@@ -2711,7 +2919,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           onFocusCapture={(event) => {
             const activeElement = event.target;
             if (
-              isComposerCollapsedMobile &&
+              isComposerCollapsed &&
               activeElement instanceof HTMLElement &&
               activeElement.closest('[data-chat-composer-collapsed-controls="true"]')
             ) {
@@ -2727,7 +2935,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             scheduleComposerCollapseCheck();
           }}
         >
-          {!isComposerCollapsedMobile &&
+          {!isComposerCollapsed &&
             (activePendingApproval ? (
               <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
                 <ComposerPendingApprovalPanel
@@ -2755,7 +2963,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               </div>
             ) : null)}
 
-          {isComposerCollapsedMobile && activePendingApproval ? (
+          {isComposerCollapsed && activePendingApproval ? (
             <div
               className="rounded-t-[19px] border-b border-border/65 bg-muted/20"
               data-chat-composer-collapsed-controls="true"
@@ -2772,7 +2980,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 />
               </div>
             </div>
-          ) : isComposerCollapsedMobile && pendingUserInputs.length > 0 ? (
+          ) : isComposerCollapsed && pendingUserInputs.length > 0 ? (
             <div
               className="rounded-t-[19px] border-b border-border/65 bg-muted/20"
               data-chat-composer-collapsed-controls="true"
@@ -2796,12 +3004,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   <button
                     type="button"
                     className={cn(
-                      "min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-sm",
+                      "min-w-0 flex-1 cursor-pointer truncate rounded-sm bg-transparent py-1.5 text-left [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       activePendingProgress?.customAnswer ? "text-foreground" : "text-placeholder",
                       !activePendingProgress?.activeQuestion?.multiSelect && "px-3 py-2",
                     )}
                     onPointerDown={(event) => event.preventDefault()}
-                    onClick={expandMobileComposer}
+                    onClick={expandComposer}
                     aria-label="Write custom answer"
                   >
                     {activePendingProgress?.customAnswer || "Write custom answer"}
@@ -2834,47 +3042,52 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             </div>
           ) : null}
 
-          {showCollapsedMobilePromptRow ? (
-            <div className="flex items-center justify-between gap-2 px-3 py-2">
+          {showCollapsedPromptRow ? (
+            <div className="flex items-center justify-between gap-2 px-3 py-2 sm:px-4">
               <button
                 type="button"
+                disabled={collapsedComposerExpandDisabled}
                 className={cn(
-                  "min-w-0 flex-1 truncate bg-transparent p-0 text-left text-[14px] focus:outline-none",
+                  // Same font variables as the editor, so a parked draft does
+                  // not re-typeset the moment the composer expands.
+                  "min-w-0 flex-1 truncate rounded-sm bg-transparent p-0 text-left [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)] enabled:cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   (activePendingProgress ? activePendingProgress.customAnswer : prompt.trim())
                     ? "text-foreground"
                     : "text-placeholder",
                 )}
                 onPointerDown={(event) => event.preventDefault()}
-                onClick={expandMobileComposer}
+                onClick={expandComposer}
+                // Tabbing here is a request to start typing, so expand and let
+                // the caret land in the editor rather than parking on a button.
+                onFocus={expandComposer}
                 aria-label="Expand composer"
               >
                 {activePendingProgress
                   ? activePendingProgress.customAnswer ||
                     "Type your own answer, or leave this blank to use the selected option"
                   : prompt.trim() ||
-                    (noProviderAvailable ? "Enable a provider in Settings" : "Ask anything...")}
+                    (projectSelectionRequired
+                      ? "Choose a project above to start a thread"
+                      : noProviderAvailable
+                        ? "Enable a provider in Settings"
+                        : phase === "disconnected"
+                          ? DISCONNECTED_COMPOSER_PLACEHOLDER
+                          : "Ask anything...")}
               </button>
-              <button
+              <ComposerSendButton
                 type="button"
-                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-30"
+                // Exempt from focus-driven expansion: expanding would unmount
+                // this button while the keyboard user is standing on it.
+                collapsedControl
+                preserveComposerFocusOnPointerDown
                 disabled={collapsedComposerPrimaryActionDisabled}
-                aria-label={collapsedComposerPrimaryActionLabel}
-                onPointerDown={(event) => event.preventDefault()}
+                isBusy={isConnecting || isSendBusy}
+                label={collapsedComposerPrimaryActionLabel}
                 onClick={(event) => {
                   event.stopPropagation();
                   submitComposer();
                 }}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path
-                    d="M8 3L8 13M8 3L4 7M8 3L12 7"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
+              />
             </div>
           ) : null}
 
@@ -2883,7 +3096,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             className={cn(
               "relative px-3 pb-2 sm:px-4",
               hasComposerHeader ? "pt-2.5 sm:pt-3" : "pt-3.5 sm:pt-4",
-              isComposerCollapsedMobile && "hidden",
+              isComposerCollapsed && "hidden",
             )}
           >
             <ComposerStashBadge
@@ -2924,7 +3137,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               </ComposerCommandMenuLayer>
             )}
 
-            {!isComposerCollapsedMobile &&
+            {!isComposerCollapsed &&
               !isComposerApprovalState &&
               pendingUserInputs.length === 0 &&
               composerPreviewAnnotations.length > 0 && (
@@ -2942,7 +3155,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 />
               )}
 
-            {!isComposerCollapsedMobile &&
+            {!isComposerCollapsed &&
               !isComposerApprovalState &&
               pendingUserInputs.length === 0 &&
               composerReviewComments.length > 0 && (
@@ -2955,7 +3168,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 />
               )}
 
-            {!isComposerCollapsedMobile &&
+            {!isComposerCollapsed &&
               !isComposerApprovalState &&
               pendingUserInputs.length === 0 &&
               composerElementContexts.length > 0 && (
@@ -2968,7 +3181,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 />
               )}
 
-            {!isComposerCollapsedMobile &&
+            {!isComposerCollapsed &&
               !isComposerApprovalState &&
               pendingUserInputs.length === 0 &&
               composerImages.some(
@@ -3121,7 +3334,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           />
 
           {/* Bottom toolbar */}
-          {isComposerCollapsedMobile ? null : activePendingApproval ? (
+          {isComposerCollapsed ? null : activePendingApproval ? (
             <div className="flex flex-wrap items-center justify-end gap-2 px-3 pb-3 sm:px-4 sm:pb-4">
               <ComposerPendingApprovalActions
                 requestId={activePendingApproval.requestId}
