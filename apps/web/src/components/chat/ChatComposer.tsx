@@ -161,6 +161,79 @@ type ComposerCommandMenuPosition = {
   width: number;
 };
 
+const COMPOSER_SCROLL_COLLAPSE_THRESHOLD_PX = 24;
+const COMPOSER_SCROLL_GESTURE_RESET_MS = 120;
+const COMPOSER_RESTING_TRANSITION_DURATION_MS = 180;
+const COMPOSER_RESTING_TRANSITION_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
+
+function useComposerRestingTransition(isResting: boolean) {
+  const elementRef = useRef<HTMLDivElement>(null);
+  const previousRestingRef = useRef(isResting);
+  const previousHeightRef = useRef<number | null>(null);
+  const animationRef = useRef<Animation | null>(null);
+
+  useLayoutEffect(() => {
+    const element = elementRef.current;
+    const surface = element?.querySelector<HTMLElement>('[data-chat-composer-surface="true"]');
+    if (!element || !surface) return;
+
+    const interruptedHeight = animationRef.current ? element.getBoundingClientRect().height : null;
+    animationRef.current?.cancel();
+    animationRef.current = null;
+    element.style.removeProperty("overflow");
+    surface.style.removeProperty("height");
+
+    const nextHeight = element.getBoundingClientRect().height;
+    const previousHeight = interruptedHeight ?? previousHeightRef.current;
+    const stateChanged = previousRestingRef.current !== isResting;
+    const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+    if (
+      stateChanged &&
+      !prefersReducedMotion &&
+      previousHeight !== null &&
+      Math.abs(previousHeight - nextHeight) >= 0.5
+    ) {
+      element.style.overflow = "clip";
+      surface.style.height = "100%";
+      const animation = element.animate(
+        [{ height: `${previousHeight}px` }, { height: `${nextHeight}px` }],
+        {
+          duration: COMPOSER_RESTING_TRANSITION_DURATION_MS,
+          easing: COMPOSER_RESTING_TRANSITION_EASING,
+        },
+      );
+      animation.id = "t3-composer-resting-transition";
+      animationRef.current = animation;
+      void animation.finished
+        .catch(() => undefined)
+        .then(() => {
+          if (animationRef.current !== animation) return;
+          animationRef.current = null;
+          element.style.removeProperty("overflow");
+          surface.style.removeProperty("height");
+        });
+    }
+
+    previousRestingRef.current = isResting;
+    previousHeightRef.current = nextHeight;
+  }, [isResting]);
+
+  useEffect(() => {
+    return () => {
+      animationRef.current?.cancel();
+      animationRef.current = null;
+      const element = elementRef.current;
+      element?.style.removeProperty("overflow");
+      element
+        ?.querySelector<HTMLElement>('[data-chat-composer-surface="true"]')
+        ?.style.removeProperty("height");
+    };
+  }, []);
+
+  return elementRef;
+}
+
 function composerCommandMenuPositionsEqual(
   a: ComposerCommandMenuPosition,
   b: ComposerCommandMenuPosition,
@@ -1159,6 +1232,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const [isComposerFocused, setIsComposerFocused] = useState(false);
+  const [isComposerScrollCollapsed, setIsComposerScrollCollapsed] = useState(false);
   const [composerSubmissionError, setComposerSubmissionError] = useState<string | null>(null);
   const [providerInputSubmissionError, setProviderInputSubmissionError] = useState<string | null>(
     null,
@@ -1191,6 +1265,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const mobileComposerExpandFrameRef = useRef<number | null>(null);
   const mobileComposerExpandReleaseFrameRef = useRef<number | null>(null);
   const mobileComposerExpandInFlightRef = useRef(false);
+  const desktopOutsidePointerInFlightRef = useRef(false);
+  const desktopOutsidePointerReleaseTimeoutRef = useRef<number | null>(null);
+  const composerScrollCollapseDeltaRef = useRef(0);
+  const composerScrollCollapseTimeoutRef = useRef<number | null>(null);
   const stashPulseKeyRef = useRef(0);
   const stashPulseTimeoutRef = useRef<number | null>(null);
   /**
@@ -1696,6 +1774,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setComposerCursor(collapseExpandedComposerCursor(promptRef.current, promptRef.current.length));
     setComposerTrigger(detectComposerTrigger(promptRef.current, promptRef.current.length));
     setIsDragOverComposer(false);
+    setIsComposerScrollCollapsed(false);
   }, [draftId, activeThreadId, promptRef]);
 
   // ------------------------------------------------------------------
@@ -1823,6 +1902,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       cursorAdjacentToMention: boolean,
       terminalContextIds: string[],
     ) => {
+      setIsComposerScrollCollapsed(false);
       if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
         setComposerCursor(nextCursor);
         setComposerTrigger(
@@ -2860,25 +2940,88 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       steps={visibleTaskSteps}
     />
   ) : null;
+  const composerHasExpandedChrome =
+    showComposerTopDrawer ||
+    isTasksDrawerOpen ||
+    composerMenuOpen ||
+    isStashMenuOpen ||
+    isComposerModelPickerOpen ||
+    isDragOverComposer ||
+    isPreparingWorktree ||
+    noProviderAvailable ||
+    projectSelectionRequired ||
+    environmentUnavailable !== null ||
+    composerSubmissionError !== null ||
+    providerInputSubmissionError !== null;
   const isComposerResting = shouldUseRestingComposerLayout({
     isMobileViewport,
-    isFocused: isComposerFocused,
+    isFocused: isComposerFocused && !isComposerScrollCollapsed,
     hasAttachments: composerHasAttachments,
-    hasExpandedChrome:
-      showComposerTopDrawer ||
-      isTasksDrawerOpen ||
-      composerMenuOpen ||
-      isStashMenuOpen ||
-      isComposerModelPickerOpen ||
-      isDragOverComposer ||
-      isPreparingWorktree ||
-      noProviderAvailable ||
-      projectSelectionRequired ||
-      environmentUnavailable !== null ||
-      composerSubmissionError !== null ||
-      providerInputSubmissionError !== null,
+    hasExpandedChrome: composerHasExpandedChrome,
     hasInlineAccessories: showInlineTasksBadge || showInlineStashBadge,
   });
+  const composerMainSurfaceRef = useComposerRestingTransition(isComposerResting);
+  const canScrollCollapseComposer =
+    routeKind === "server" &&
+    activeThreadId !== null &&
+    !isMobileViewport &&
+    !composerHasAttachments &&
+    !composerHasExpandedChrome &&
+    !showInlineTasksBadge &&
+    !showInlineStashBadge;
+
+  useEffect(() => {
+    if (!canScrollCollapseComposer) return;
+
+    const resetAccumulatedScroll = () => {
+      if (composerScrollCollapseTimeoutRef.current !== null) {
+        window.clearTimeout(composerScrollCollapseTimeoutRef.current);
+      }
+      composerScrollCollapseTimeoutRef.current = null;
+      composerScrollCollapseDeltaRef.current = 0;
+    };
+    const handleTimelineWheel = (event: WheelEvent) => {
+      if (!isComposerFocused || event.ctrlKey || !(event.target instanceof Element)) {
+        return;
+      }
+
+      const scrollNode = event.target.closest<HTMLElement>('[data-chat-messages-timeline="true"]');
+      if (!scrollNode) return;
+      const canScrollInGestureDirection =
+        event.deltaY < 0
+          ? scrollNode.scrollTop > 0
+          : scrollNode.scrollTop < scrollNode.scrollHeight - scrollNode.clientHeight;
+      if (!canScrollInGestureDirection) return;
+
+      const deltaPx =
+        Math.abs(event.deltaY) *
+        (event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? 16
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? scrollNode.clientHeight
+            : 1);
+      composerScrollCollapseDeltaRef.current += deltaPx;
+      if (composerScrollCollapseTimeoutRef.current !== null) {
+        window.clearTimeout(composerScrollCollapseTimeoutRef.current);
+      }
+      composerScrollCollapseTimeoutRef.current = window.setTimeout(
+        resetAccumulatedScroll,
+        COMPOSER_SCROLL_GESTURE_RESET_MS,
+      );
+      if (composerScrollCollapseDeltaRef.current < COMPOSER_SCROLL_COLLAPSE_THRESHOLD_PX) {
+        return;
+      }
+
+      resetAccumulatedScroll();
+      setIsComposerScrollCollapsed(true);
+    };
+
+    document.addEventListener("wheel", handleTimelineWheel, { capture: true, passive: true });
+    return () => {
+      document.removeEventListener("wheel", handleTimelineWheel, true);
+      resetAccumulatedScroll();
+    };
+  }, [canScrollCollapseComposer, isComposerFocused]);
   const showShoulderTabs =
     !props.externalDrawerAttached &&
     !showComposerTopDrawer &&
@@ -3198,6 +3341,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (isMobileViewport && mobileComposerExpandInFlightRef.current) {
         return;
       }
+      if (!isMobileViewport && desktopOutsidePointerInFlightRef.current) {
+        return;
+      }
       const composerSurface = composerSurfaceRef.current;
       const composerForm = composerFormRef.current;
       const activeElement = document.activeElement;
@@ -3226,20 +3372,59 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       );
     const handleFocusIn = (event: FocusEvent) => {
       if (!isInsideDesktopComposerFocusScope(event.target)) {
+        if (desktopOutsidePointerInFlightRef.current) {
+          return;
+        }
         setIsComposerFocused(false);
       }
     };
     const handlePointerDown = (event: PointerEvent) => {
       if (!isInsideDesktopComposerFocusScope(event.target)) {
-        scheduleComposerCollapseCheck();
+        desktopOutsidePointerInFlightRef.current = true;
+        if (desktopOutsidePointerReleaseTimeoutRef.current !== null) {
+          window.clearTimeout(desktopOutsidePointerReleaseTimeoutRef.current);
+          desktopOutsidePointerReleaseTimeoutRef.current = null;
+        }
+      }
+    };
+    const finishOutsidePointerInteraction = () => {
+      desktopOutsidePointerInFlightRef.current = false;
+      if (desktopOutsidePointerReleaseTimeoutRef.current !== null) {
+        window.clearTimeout(desktopOutsidePointerReleaseTimeoutRef.current);
+        desktopOutsidePointerReleaseTimeoutRef.current = null;
+      }
+      scheduleComposerCollapseCheck();
+    };
+    const handlePointerUp = () => {
+      if (!desktopOutsidePointerInFlightRef.current) return;
+      desktopOutsidePointerReleaseTimeoutRef.current = window.setTimeout(() => {
+        if (desktopOutsidePointerInFlightRef.current) {
+          finishOutsidePointerInteraction();
+        }
+      }, 0);
+    };
+    const handleClick = () => {
+      if (desktopOutsidePointerInFlightRef.current) {
+        finishOutsidePointerInteraction();
       }
     };
 
     document.addEventListener("focusin", handleFocusIn, true);
     document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("pointerup", handlePointerUp, true);
+    document.addEventListener("pointercancel", handlePointerUp, true);
+    document.addEventListener("click", handleClick);
     return () => {
       document.removeEventListener("focusin", handleFocusIn, true);
       document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("pointerup", handlePointerUp, true);
+      document.removeEventListener("pointercancel", handlePointerUp, true);
+      document.removeEventListener("click", handleClick);
+      if (desktopOutsidePointerReleaseTimeoutRef.current !== null) {
+        window.clearTimeout(desktopOutsidePointerReleaseTimeoutRef.current);
+        desktopOutsidePointerReleaseTimeoutRef.current = null;
+      }
+      desktopOutsidePointerInFlightRef.current = false;
     };
   }, [isComposerFocused, isMobileViewport, scheduleComposerCollapseCheck]);
 
@@ -3404,6 +3589,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     <form
       ref={composerFormRef}
       onSubmit={submitComposer}
+      onKeyDownCapture={() => setIsComposerScrollCollapsed(false)}
+      onPointerDownCapture={(event) => {
+        const target = event.target;
+        if (
+          !(target instanceof Element) ||
+          !target.closest('button, a, input, select, [role="button"], [role="menuitem"]')
+        ) {
+          setIsComposerScrollCollapsed(false);
+        }
+      }}
       onFocusCapture={(event) => {
         const activeElement = event.target;
         if (
@@ -3413,6 +3608,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ) {
           return;
         }
+        setIsComposerScrollCollapsed(false);
         if (composerBlurFrameRef.current !== null) {
           window.cancelAnimationFrame(composerBlurFrameRef.current);
           composerBlurFrameRef.current = null;
@@ -3574,6 +3770,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           />
         ) : null}
         <div
+          ref={composerMainSurfaceRef}
           data-chat-composer-main-surface="true"
           className={cn(
             "group relative z-10 rounded-[22px] p-px transition-colors duration-200",
