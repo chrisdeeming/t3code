@@ -219,6 +219,18 @@ function useComposerRestingTransition(isResting: boolean) {
     previousHeightRef.current = nextHeight;
   }, [isResting]);
 
+  useLayoutEffect(() => {
+    const element = elementRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      if (animationRef.current) return;
+      previousHeightRef.current = element.getBoundingClientRect().height;
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => {
     return () => {
       animationRef.current?.cancel();
@@ -2981,7 +2993,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerScrollCollapseDeltaRef.current = 0;
     };
     const handleTimelineWheel = (event: WheelEvent) => {
-      if (!isComposerFocused || event.ctrlKey || !(event.target instanceof Element)) {
+      const activeElement = document.activeElement;
+      const isPromptEditorFocused =
+        activeElement instanceof HTMLElement &&
+        activeElement.isContentEditable &&
+        composerFormRef.current?.contains(activeElement) === true;
+      if (!isPromptEditorFocused || event.ctrlKey || !(event.target instanceof Element)) {
         return;
       }
 
@@ -3021,7 +3038,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       document.removeEventListener("wheel", handleTimelineWheel, true);
       resetAccumulatedScroll();
     };
-  }, [canScrollCollapseComposer, isComposerFocused]);
+  }, [canScrollCollapseComposer]);
   const showShoulderTabs =
     !props.externalDrawerAttached &&
     !showComposerTopDrawer &&
