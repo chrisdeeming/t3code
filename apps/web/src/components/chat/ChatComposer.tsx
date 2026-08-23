@@ -447,13 +447,75 @@ function isInsideComposerFloatingLayer(element: Element): boolean {
   return element.closest(COMPOSER_FLOATING_LAYER_SELECTOR) !== null;
 }
 
+function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
+  const controlsRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef(host);
+  hostRef.current = host;
+  const [hiddenCount, setHiddenCount] = useState(0);
+
+  const measure = useCallback(() => {
+    const currentHost = hostRef.current;
+    const controls = controlsRef.current;
+    if (!currentHost || !controls || currentHost.clientWidth === 0) return;
+
+    const blocks = Array.from(controls.querySelectorAll<HTMLElement>("[data-resting-block]"));
+    if (blocks.length === 0) return;
+
+    const gap = Number.parseFloat(getComputedStyle(controls).columnGap) || 0;
+    const picker = controls.querySelector<HTMLElement>("[data-chat-provider-model-picker]");
+    const separator = controls.querySelector<HTMLElement>("[data-resting-controls-separator]");
+    const overflow = controls.querySelector<HTMLElement>("[data-resting-controls-overflow]");
+    const fixedWidth =
+      (picker?.getBoundingClientRect().width ?? 0) +
+      (separator ? separator.getBoundingClientRect().width + gap : 0);
+    const blockWidths = blocks.map((block) => block.getBoundingClientRect().width);
+    const overflowWidth = overflow?.getBoundingClientRect().width ?? 0;
+
+    setHiddenCount((current) => {
+      const widthWithHidden = (hidden: number) => {
+        const visibleCount = blockWidths.length - hidden;
+        return (
+          fixedWidth +
+          blockWidths.slice(0, visibleCount).reduce((sum, width) => sum + width, 0) +
+          (hidden > 0 ? overflowWidth : 0) +
+          gap * (visibleCount + (hidden > 0 ? 1 : 0))
+        );
+      };
+
+      let next = Math.min(current, blockWidths.length);
+      while (next < blockWidths.length && widthWithHidden(next) > currentHost.clientWidth)
+        next += 1;
+      while (next > 0 && widthWithHidden(next - 1) <= currentHost.clientWidth - 16) {
+        next -= 1;
+      }
+      return next;
+    });
+  }, []);
+
+  useLayoutEffect(measure);
+  useEffect(() => {
+    if (!host) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    document.fonts.addEventListener("loadingdone", measure);
+    return () => {
+      observer.disconnect();
+      document.fonts.removeEventListener("loadingdone", measure);
+    };
+  }, [host, measure]);
+
+  return { controlsRef, hiddenBlockCount: hiddenCount };
+}
+
 const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
   showInteractionModeToggle: boolean;
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
+  size?: "sm" | "xs";
   onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
+  const size = props.size ?? "sm";
   const runtimeModeOption = runtimeModeConfig[props.runtimeMode];
   const RuntimeModeIcon = runtimeModeOption.icon;
   const interactionModeTooltip =
@@ -463,16 +525,22 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 
   const interactionModeToggle = props.showInteractionModeToggle ? (
     <>
-      <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
+      <Separator
+        orientation="vertical"
+        className={cn("mx-0.5 hidden sm:block", size === "xs" ? "h-3.5!" : "h-4")}
+      />
       <Tooltip>
         <TooltipTrigger
           render={
             <ComposerControl
+              size={size}
               className={cn(
                 "shrink-0 whitespace-nowrap",
                 props.interactionMode === "plan"
                   ? "bg-accent text-accent-foreground hover:bg-accent/80"
-                  : "text-secondary-label hover:text-foreground",
+                  : size === "xs"
+                    ? "font-normal text-muted-foreground/70 hover:text-foreground/80"
+                    : "text-secondary-label hover:text-foreground",
               )}
               type="button"
               onClick={props.onToggleInteractionMode}
@@ -481,9 +549,16 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
           }
         >
           {props.interactionMode === "plan" ? (
-            <ComposerControlIcon icon={PencilRulerIcon} className="text-current opacity-100" />
+            <ComposerControlIcon
+              icon={PencilRulerIcon}
+              className={cn("text-current opacity-100", size === "xs" && "size-3!")}
+            />
           ) : (
-            <ComposerControlIcon icon={BotIcon} opticalSize="large" />
+            <ComposerControlIcon
+              icon={BotIcon}
+              opticalSize={size === "xs" ? "default" : "large"}
+              className={size === "xs" ? "size-3!" : undefined}
+            />
           )}
           <span className="sr-only sm:not-sr-only">
             {props.interactionMode === "plan" ? "Plan" : "Build"}
@@ -496,7 +571,10 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 
   return (
     <>
-      <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
+      <Separator
+        orientation="vertical"
+        className={cn("mx-0.5 hidden sm:block", size === "xs" ? "h-3.5!" : "h-4")}
+      />
 
       <Tooltip>
         <Select
@@ -504,9 +582,22 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
           onValueChange={(value) => props.onRuntimeModeChange(value!)}
         >
           <TooltipTrigger
-            render={<ComposerSelectControl className="font-medium" aria-label="Runtime mode" />}
+            render={
+              <ComposerSelectControl
+                size={size}
+                className={
+                  size === "xs"
+                    ? "font-normal text-muted-foreground/70 hover:text-foreground/80"
+                    : "font-medium"
+                }
+                aria-label="Runtime mode"
+              />
+            }
           >
-            <ComposerControlIcon icon={RuntimeModeIcon} />
+            <ComposerControlIcon
+              icon={RuntimeModeIcon}
+              className={size === "xs" ? "size-3!" : undefined}
+            />
             <SelectValue>{runtimeModeOption.label}</SelectValue>
           </TooltipTrigger>
           <SelectPopup alignItemWithTrigger={false}>
@@ -732,6 +823,7 @@ export interface ChatComposerProps {
   keybindings: ResolvedKeybindingsConfig;
   terminalOpen: boolean;
   gitCwd: string | null;
+  restingControlsHost: HTMLDivElement | null;
 
   // Refs the parent needs kept in sync
   promptRef: React.RefObject<string>;
@@ -826,6 +918,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     keybindings,
     terminalOpen,
     gitCwd,
+    restingControlsHost,
     promptRef,
     composerRef,
     composerImagesRef,
@@ -1542,7 +1635,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onPromptChange: setPromptFromTraits,
     planModeEnabled: settings.planModeEnabled,
   });
-  const providerTraitsPicker = renderProviderTraitsPicker({
+  const providerTraitsPickerInput = {
     provider: selectedProvider,
     instanceId: selectedInstanceId,
     ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
@@ -1553,7 +1646,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     prompt,
     onPromptChange: setPromptFromTraits,
     planModeEnabled: settings.planModeEnabled,
+  } satisfies Parameters<typeof renderProviderTraitsPicker>[0];
+  const providerTraitsPicker = renderProviderTraitsPicker(providerTraitsPickerInput);
+  const restingProviderTraitsPicker = renderProviderTraitsPicker({
+    ...providerTraitsPickerInput,
+    size: "xs",
+    triggerClassName: "font-normal text-muted-foreground/70 hover:text-foreground/80",
   });
+  const {
+    controlsRef: restingComposerControlsRef,
+    hiddenBlockCount: restingControlsHiddenBlockCount,
+  } = useRestingComposerControlsLayout(restingControlsHost);
   const pendingPrimaryAction = useMemo(
     () =>
       activePendingProgress
@@ -3039,6 +3142,146 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       resetAccumulatedScroll();
     };
   }, [canScrollCollapseComposer]);
+
+  const restingHiddenBlockCount = isComposerResting ? restingControlsHiddenBlockCount : 0;
+  const composerControlsCompact = isComposerResting
+    ? restingHiddenBlockCount > 0
+    : isComposerFooterCompact;
+  const restingBlockDefs = [
+    ...(providerTraitsPicker
+      ? [
+          {
+            id: "traits",
+            content: (
+              <>
+                <Separator
+                  orientation="vertical"
+                  className={cn("mx-0.5 hidden sm:block", isComposerResting ? "h-3.5!" : "h-4")}
+                />
+                {isComposerResting ? restingProviderTraitsPicker : providerTraitsPicker}
+              </>
+            ),
+          },
+        ]
+      : []),
+    {
+      id: "mode",
+      content: (
+        <ComposerFooterModeControls
+          showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
+          interactionMode={interactionMode}
+          runtimeMode={runtimeMode}
+          size={isComposerResting ? "xs" : "sm"}
+          onToggleInteractionMode={toggleInteractionMode}
+          onRuntimeModeChange={handleRuntimeModeChange}
+        />
+      ),
+    },
+  ];
+  const hiddenRestingBlockIds = restingBlockDefs
+    .slice(restingBlockDefs.length - restingHiddenBlockCount)
+    .map((def) => def.id);
+  const composerControls = noProviderAvailable ? (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      disabled
+      data-chat-provider-unavailable="true"
+      className="shrink-0 gap-2 px-2 text-secondary-label sm:px-3"
+    >
+      <CircleAlertIcon className="size-4" />
+      No provider available
+    </Button>
+  ) : (
+    <>
+      {isComposerResting ? (
+        <Separator
+          orientation="vertical"
+          className="mx-0.5 hidden h-3.5! sm:block"
+          data-resting-controls-separator="true"
+        />
+      ) : null}
+      <ProviderModelPicker
+        compact={composerControlsCompact}
+        activeInstanceId={selectedInstanceId}
+        model={selectedModelForPickerWithCustomFallback}
+        lockedProvider={lockedProvider}
+        lockedContinuationGroupKey={lockedContinuationGroupKey}
+        instanceEntries={providerInstanceEntries}
+        keybindings={keybindings}
+        modelOptionsByInstance={modelOptionsByInstance}
+        size={isComposerResting ? "xs" : "sm"}
+        triggerClassName={cn(
+          !isComposerResting && "-ms-2.5",
+          isComposerResting && "font-normal text-muted-foreground/70 hover:text-foreground/80",
+          isComposerResting && composerControlsCompact && "max-w-none! shrink!",
+        )}
+        terminalOpen={terminalOpen}
+        open={isComposerModelPickerOpen}
+        {...(composerProviderState.modelPickerIconClassName || isComposerResting
+          ? {
+              activeProviderIconClassName: cn(
+                composerProviderState.modelPickerIconClassName,
+                isComposerResting &&
+                  "fill-muted-foreground/70! text-muted-foreground/70! [&_path]:fill-muted-foreground/70! [&_rect]:fill-muted-foreground/70!",
+              ),
+            }
+          : {})}
+        onOpenChange={setIsComposerModelPickerOpen}
+        getModelDisabledReason={getModelDisabledReason}
+        onInstanceModelChange={onProviderModelSelect}
+      />
+
+      {!isComposerResting && composerControlsCompact ? (
+        <CompactComposerControlsMenu
+          interactionMode={interactionMode}
+          runtimeMode={runtimeMode}
+          showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
+          traitsMenuContent={providerTraitsMenuContent}
+          onToggleInteractionMode={toggleInteractionMode}
+          onRuntimeModeChange={handleRuntimeModeChange}
+        />
+      ) : (
+        <>
+          {restingBlockDefs.map((def, index) => {
+            const hidden = index >= restingBlockDefs.length - restingHiddenBlockCount;
+            return (
+              <div
+                key={`${def.id}:${hidden ? "hidden" : "visible"}`}
+                data-resting-block={def.id}
+                aria-hidden={hidden || undefined}
+                inert={hidden || undefined}
+                className={cn(
+                  "flex min-w-0 items-center",
+                  hidden && "pointer-events-none invisible absolute w-max min-w-max",
+                )}
+              >
+                {def.content}
+              </div>
+            );
+          })}
+          {isComposerResting && hiddenRestingBlockIds.length > 0 ? (
+            <div data-resting-controls-overflow className="min-w-0">
+              <CompactComposerControlsMenu
+                interactionMode={interactionMode}
+                runtimeMode={runtimeMode}
+                showInteractionModeToggle={
+                  composerProviderControls.showInteractionModeToggle &&
+                  hiddenRestingBlockIds.includes("mode")
+                }
+                traitsMenuContent={
+                  hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
+                }
+                onToggleInteractionMode={toggleInteractionMode}
+                onRuntimeModeChange={handleRuntimeModeChange}
+              />
+            </div>
+          ) : null}
+        </>
+      )}
+    </>
+  );
   const showShoulderTabs =
     !props.externalDrawerAttached &&
     !showComposerTopDrawer &&
@@ -3619,6 +3862,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onFocusCapture={(event) => {
         const activeElement = event.target;
         if (
+          isComposerResting &&
+          activeElement instanceof Element &&
+          (activeElement.closest('[data-chat-composer-resting-controls="true"]') ||
+            isInsideComposerFloatingLayer(activeElement))
+        ) {
+          return;
+        }
+        if (
           isComposerCollapsedMobile &&
           activeElement instanceof HTMLElement &&
           activeElement.closest('[data-chat-composer-collapsed-controls="true"]')
@@ -3642,6 +3893,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       className={cn("mx-auto w-full min-w-0 max-w-3xl", hasShoulderTab && "pt-7")}
       data-chat-composer-form="true"
     >
+      {isComposerResting && restingControlsHost
+        ? createPortal(
+            <div
+              ref={restingComposerControlsRef}
+              data-chat-composer-resting-controls="true"
+              className={cn(
+                "relative flex items-center gap-1 font-normal text-muted-foreground/70",
+                restingHiddenBlockCount > 0 ? "w-full min-w-0" : "w-max min-w-max",
+              )}
+            >
+              {composerControls}
+            </div>,
+            restingControlsHost,
+          )
+        : null}
       {showComposerTopDrawer && (!isTasksDrawerOpen || hasBlockingComposerTopDrawer) ? (
         <div
           className="chat-composer-top-drawer"
@@ -4239,7 +4505,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
                   showMobilePendingAnswerActions && "hidden sm:flex",
                   isComposerResting &&
-                    "absolute inset-y-px right-px z-10 w-auto gap-0 px-2 py-0 sm:gap-0 sm:px-2 sm:py-0",
+                    "absolute inset-y-px right-px z-10 w-auto gap-0 py-0 sm:gap-0 sm:py-0",
                 )}
               >
                 <div
@@ -4248,76 +4514,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isComposerResting && "hidden",
                   )}
                 >
-                  {noProviderAvailable ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      disabled
-                      data-chat-provider-unavailable="true"
-                      className="shrink-0 gap-2 px-2 text-secondary-label sm:px-3"
-                    >
-                      <CircleAlertIcon className="size-4" />
-                      No provider available
-                    </Button>
-                  ) : (
-                    <ProviderModelPicker
-                      compact={isComposerFooterCompact}
-                      activeInstanceId={selectedInstanceId}
-                      model={selectedModelForPickerWithCustomFallback}
-                      lockedProvider={lockedProvider}
-                      lockedContinuationGroupKey={lockedContinuationGroupKey}
-                      instanceEntries={providerInstanceEntries}
-                      keybindings={keybindings}
-                      modelOptionsByInstance={modelOptionsByInstance}
-                      triggerClassName="-ms-2.5"
-                      terminalOpen={terminalOpen}
-                      open={isComposerModelPickerOpen}
-                      {...(composerProviderState.modelPickerIconClassName
-                        ? {
-                            activeProviderIconClassName:
-                              composerProviderState.modelPickerIconClassName,
-                          }
-                        : {})}
-                      onOpenChange={(open) => {
-                        setIsComposerModelPickerOpen(open);
-                      }}
-                      getModelDisabledReason={getModelDisabledReason}
-                      onInstanceModelChange={onProviderModelSelect}
-                    />
-                  )}
-
-                  {isComposerFooterCompact ? (
-                    <CompactComposerControlsMenu
-                      interactionMode={interactionMode}
-                      runtimeMode={runtimeMode}
-                      showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
-                      traitsMenuContent={providerTraitsMenuContent}
-                      onToggleInteractionMode={toggleInteractionMode}
-                      onRuntimeModeChange={handleRuntimeModeChange}
-                    />
-                  ) : (
-                    <>
-                      {providerTraitsPicker ? (
-                        <>
-                          <Separator
-                            orientation="vertical"
-                            className="mx-0.5 hidden h-4 sm:block"
-                          />
-                          {providerTraitsPicker}
-                        </>
-                      ) : null}
-                      <ComposerFooterModeControls
-                        showInteractionModeToggle={
-                          composerProviderControls.showInteractionModeToggle
-                        }
-                        interactionMode={interactionMode}
-                        runtimeMode={runtimeMode}
-                        onToggleInteractionMode={toggleInteractionMode}
-                        onRuntimeModeChange={handleRuntimeModeChange}
-                      />
-                    </>
-                  )}
+                  {isComposerResting ? null : composerControls}
                 </div>
 
                 {/* Right side: send / stop button */}

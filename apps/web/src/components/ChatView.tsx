@@ -1437,6 +1437,8 @@ function ChatViewContent(props: ChatViewProps) {
   const composerElementContextsRef = useRef<ElementContextDraft[]>([]);
   const localComposerRef = useRef<ChatComposerHandle | null>(null);
   const composerRef = useComposerHandleContext() ?? localComposerRef;
+  const [restingComposerControlsHost, setRestingComposerControlsHost] =
+    useState<HTMLDivElement | null>(null);
   const [isWorkspaceFileDragActive, setIsWorkspaceFileDragActive] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
@@ -7292,6 +7294,7 @@ function ChatViewContent(props: ChatViewProps) {
                             keybindings={keybindings}
                             terminalOpen={Boolean(terminalUiState.terminalOpen)}
                             gitCwd={gitCwd}
+                            restingControlsHost={restingComposerControlsHost}
                             promptRef={promptRef}
                             composerImagesRef={composerImagesRef}
                             composerFilesRef={composerFilesRef}
@@ -7355,6 +7358,7 @@ function ChatViewContent(props: ChatViewProps) {
                                   : {})}
                                 {...(hasMultipleEnvironments ? { onEnvironmentChange } : {})}
                                 availableEnvironments={logicalProjectEnvironments}
+                                composerControlsHostRef={setRestingComposerControlsHost}
                               />
                             </div>
                           )}

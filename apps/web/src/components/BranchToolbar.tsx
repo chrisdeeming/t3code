@@ -40,6 +40,7 @@ import {
   MenuTrigger,
 } from "./ui/menu";
 import { Separator } from "./ui/separator";
+import { cn } from "~/lib/utils";
 
 interface BranchToolbarProps {
   environmentId: EnvironmentId;
@@ -57,6 +58,7 @@ interface BranchToolbarProps {
   onComposerFocusRequest?: () => void;
   availableEnvironments?: readonly EnvironmentOption[];
   onEnvironmentChange?: (environmentId: EnvironmentId) => void;
+  composerControlsHostRef?: (element: HTMLDivElement | null) => void;
 }
 
 interface MobileRunContextSelectorProps {
@@ -126,7 +128,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
 
   if (isLocked) {
     return (
-      <span className="inline-flex h-7 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] text-sm font-medium text-muted-foreground/70 sm:h-6 md:hidden">
+      <span className="inline-flex h-7 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] text-sm font-normal text-muted-foreground/70 sm:h-6 md:hidden">
         {triggerContent}
       </span>
     );
@@ -136,7 +138,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
     <Menu>
       <MenuTrigger
         render={<Button variant="ghost" size="xs" />}
-        className="min-w-0 max-w-[48%] flex-1 justify-start text-muted-foreground/70 hover:text-foreground/80 md:hidden"
+        className="min-w-0 max-w-[48%] flex-1 justify-start font-normal text-muted-foreground/70 hover:text-foreground/80 md:hidden"
       >
         {triggerContent}
         <ChevronDownIcon className="size-3 shrink-0 opacity-50" />
@@ -265,6 +267,7 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
     let groups = 0;
     for (const child of current.children) {
       if (!(child instanceof HTMLElement) || child.offsetWidth <= 1) continue;
+      if (child.matches('[data-chat-resting-composer-controls-host="true"]')) continue;
       needed += contentWidth(child);
       groups += 1;
     }
@@ -389,6 +392,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   onComposerFocusRequest,
   availableEnvironments,
   onEnvironmentChange,
+  composerControlsHostRef,
 }: BranchToolbarProps) {
   const threadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
@@ -469,7 +473,11 @@ export const BranchToolbar = memo(function BranchToolbar({
     <div
       ref={setStripElement}
       data-compact={labelsOverflow ? "" : undefined}
-      className="chat-composer-context-strip group/composer-context -mt-4 mx-auto flex w-[calc(100%-2.75rem)] max-w-[calc(48rem-2.75rem)] items-center gap-2 overflow-x-clip overflow-y-visible ps-1 pe-2 pt-5 pb-1"
+      className={cn(
+        "chat-composer-context-strip group/composer-context -mt-4 mx-auto flex w-[calc(100%-2.75rem)] max-w-[calc(48rem-2.75rem)] items-center gap-1 overflow-x-clip overflow-y-visible ps-1 pe-2 pt-5 pb-1 text-xs font-normal text-muted-foreground/70",
+        "[&_[data-composer-context-control]]:font-normal",
+        "[&_svg:not([data-composer-control-chevron])]:!text-inherit",
+      )}
     >
       {isMobile && showGitControls ? (
         <MobileRunContextSelector
@@ -487,7 +495,12 @@ export const BranchToolbar = memo(function BranchToolbar({
           onUsePreviousWorktree={onUsePreviousWorktree}
         />
       ) : (
-        <div className="flex min-w-0 flex-1 items-center gap-1">
+        <div
+          className={cn(
+            "flex min-w-0 items-center gap-1",
+            composerControlsHostRef ? "shrink" : "flex-1",
+          )}
+        >
           {showEnvironmentIndicator && availableEnvironments && (
             <>
               <BranchToolbarEnvironmentSelector
@@ -517,6 +530,15 @@ export const BranchToolbar = memo(function BranchToolbar({
           ) : null}
         </div>
       )}
+
+      {composerControlsHostRef ? (
+        <div
+          ref={composerControlsHostRef}
+          data-composer-context-control
+          data-chat-resting-composer-controls-host="true"
+          className="hidden min-w-0 flex-1 items-center justify-start overflow-hidden empty:hidden md:flex"
+        />
+      ) : null}
 
       {showGitControls ? (
         <BranchToolbarBranchSelector

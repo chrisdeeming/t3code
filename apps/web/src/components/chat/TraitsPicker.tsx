@@ -540,8 +540,12 @@ export const TraitsPicker = memo(function TraitsPicker({
   planModeEnabled,
   triggerVariant,
   triggerClassName,
+  size,
   ...persistence
-}: TraitsMenuContentProps & TraitsPersistence) {
+}: TraitsMenuContentProps &
+  TraitsPersistence & {
+    size?: VariantProps<typeof buttonVariants>["size"];
+  }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { descriptors, primarySelectDescriptor, ultrathinkPromptControlled } =
     getTraitsSectionVisibility({
@@ -578,7 +582,7 @@ export const TraitsPicker = memo(function TraitsPicker({
       <ComposerControlIcon
         icon={ZapIcon}
         className={cn(
-          "fill-current opacity-80",
+          size === "xs" ? "size-3!" : "fill-current opacity-80",
           provider === "claudeAgent" ? "text-[#d97757]" : "text-foreground",
         )}
       />
@@ -599,6 +603,7 @@ export const TraitsPicker = memo(function TraitsPicker({
         render={
           <ComposerControl
             variant={triggerVariant ?? "ghost"}
+            size={size ?? "sm"}
             className={cn(
               isCodexStyle
                 ? "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48"
@@ -609,7 +614,12 @@ export const TraitsPicker = memo(function TraitsPicker({
         }
       >
         {isCodexStyle ? (
-          <span className="flex min-w-0 w-full items-center gap-1.5 overflow-hidden">
+          <span
+            className={cn(
+              "flex min-w-0 w-full items-center overflow-hidden",
+              size === "xs" ? "gap-1" : "gap-1.5",
+            )}
+          >
             {fastModeIcon}
             <span className="min-w-0 truncate">{triggerLabel}</span>
             <ComposerControlChevron />

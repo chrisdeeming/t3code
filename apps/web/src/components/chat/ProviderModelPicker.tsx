@@ -34,6 +34,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   keybindings?: ResolvedKeybindingsConfig;
   modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
   activeProviderIconClassName?: string;
+  size?: VariantProps<typeof buttonVariants>["size"];
   compact?: boolean;
   disabled?: boolean;
   terminalOpen?: boolean;
@@ -148,6 +149,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           <ComposerControl
             aria-label={props.triggerAriaLabel}
             variant={props.triggerVariant ?? "ghost"}
+            size={props.size ?? "sm"}
             data-chat-provider-model-picker="true"
             className={cn(
               "min-w-0 justify-between whitespace-nowrap",
@@ -158,15 +160,24 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           />
         }
       >
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span
+          className={cn(
+            "flex min-w-0 flex-1 items-center",
+            props.size === "xs" ? "gap-1" : "gap-1.5",
+          )}
+          data-chat-provider-model-picker-content="true"
+        >
           {activeEntry ? (
             <ProviderInstanceIcon
               driverKind={activeEntry.driverKind}
               displayName={activeEntry.displayName}
               accentColor={activeEntry.accentColor}
               showBadge={showInstanceBadge}
-              className="size-4"
-              iconClassName={cn("size-4", props.activeProviderIconClassName)}
+              className={props.size === "xs" ? "size-3" : "size-4"}
+              iconClassName={cn(
+                props.size === "xs" ? "size-3" : "size-4",
+                props.activeProviderIconClassName,
+              )}
               indicatorBackground="var(--contrast-input)"
               badgeClassName={cn(
                 "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3",
