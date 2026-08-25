@@ -25,6 +25,7 @@ describe("ComposerControl", () => {
     expect(markup).toContain("sm:h-6");
     expect(markup).toContain("font-normal");
     expect(markup).toContain("text-muted-foreground/70");
+    expect(markup).toContain("[--control-icon-color:currentColor]");
     expect(markup).toContain("svg[data-composer-control-chevron]]:ms-0");
     expect(markup).toContain("svg[data-composer-control-chevron]]:-me-1");
     expect(markup).not.toContain("min-h-7");

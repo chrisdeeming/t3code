@@ -476,7 +476,6 @@ export const BranchToolbar = memo(function BranchToolbar({
       className={cn(
         "chat-composer-context-strip group/composer-context -mt-4 mx-auto flex w-[calc(100%-2.75rem)] max-w-[calc(48rem-2.75rem)] items-center gap-1 overflow-x-clip overflow-y-visible ps-1 pe-2 pt-5 pb-1 text-xs font-normal text-muted-foreground/70",
         "[&_[data-composer-context-control]]:font-normal",
-        "[&_svg:not([data-composer-control-chevron])]:!text-inherit",
       )}
     >
       {isMobile && showGitControls ? (
