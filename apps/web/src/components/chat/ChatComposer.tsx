@@ -3072,6 +3072,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     restingControlsHost !== null && !isNarrowRestingComposerViewport;
   const isComposerResting = shouldUseRestingComposerLayout({
     hasControlsHost: hasAvailableRestingControlsHost,
+    isExistingThread: routeKind === "server" && activeThreadId !== null,
     isMobileViewport,
     isFocused: isComposerFocused && !isComposerScrollCollapsed,
     hasAttachments: composerHasAttachments,
@@ -3263,7 +3264,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 aria-hidden={hidden || undefined}
                 inert={hidden || undefined}
                 className={cn(
-                  "flex min-w-0 items-center",
+                  "flex min-w-0 items-center gap-1",
                   hidden && "pointer-events-none invisible absolute w-max min-w-max",
                 )}
               >

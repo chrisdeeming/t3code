@@ -536,7 +536,7 @@ export const BranchToolbar = memo(function BranchToolbar({
           ref={composerControlsHostRef}
           data-composer-context-control
           data-chat-resting-composer-controls-host="true"
-          className="hidden min-w-0 flex-1 items-center justify-start overflow-hidden empty:hidden md:flex"
+          className="hidden min-w-0 flex-1 items-center justify-start overflow-x-clip overflow-y-visible empty:hidden md:flex"
         />
       ) : null}
 

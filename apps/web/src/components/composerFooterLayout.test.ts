@@ -55,6 +55,7 @@ describe("shouldUseCompactComposerPrimaryActions", () => {
 describe("shouldUseRestingComposerLayout", () => {
   const resting = {
     hasControlsHost: true,
+    isExistingThread: true,
     isMobileViewport: false,
     isFocused: false,
     hasAttachments: false,
@@ -68,6 +69,10 @@ describe("shouldUseRestingComposerLayout", () => {
 
   it("stays expanded until the resting controls have a visible host", () => {
     expect(shouldUseRestingComposerLayout({ ...resting, hasControlsHost: false })).toBe(false);
+  });
+
+  it("keeps new-thread composers expanded", () => {
+    expect(shouldUseRestingComposerLayout({ ...resting, isExistingThread: false })).toBe(false);
   });
 
   it("leaves responsive mobile on its existing collapse path", () => {
