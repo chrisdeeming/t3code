@@ -1345,7 +1345,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     active: false,
   });
   const isMobileViewport = useMediaQuery("max-sm");
-  const isNarrowRestingComposerViewport = !useMediaQuery("md");
+  const isNarrowRestingComposerViewport = !useMediaQuery("(min-width: 48rem)");
   const isComposerCollapsedMobile =
     isMobileViewport && !forceExpandedOnMobile && !isComposerFocused;
 
