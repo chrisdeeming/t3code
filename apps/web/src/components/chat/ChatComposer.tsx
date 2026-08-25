@@ -3222,6 +3222,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         )}
         terminalOpen={terminalOpen}
         open={isComposerModelPickerOpen}
+        instanceIndicatorBackground={
+          isComposerResting
+            ? "color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent)"
+            : "var(--contrast-input)"
+        }
         {...(composerProviderState.modelPickerIconClassName || isComposerResting
           ? {
               activeProviderIconClassName: cn(

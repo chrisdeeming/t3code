@@ -18,6 +18,7 @@ import type { ReactNode } from "react";
 import type { buttonVariants } from "../ui/button";
 import type { DraftId } from "../../composerDraftStore";
 import { getProviderModelCapabilities } from "../../providerModels";
+import type { ComposerControlSize } from "./ComposerControl";
 import { shouldRenderTraitsControls, TraitsMenuContent, TraitsPicker } from "./TraitsPicker";
 
 export type ComposerProviderStateInput = {
@@ -51,7 +52,7 @@ type TraitsRenderInput = {
   prompt: string;
   onPromptChange: (prompt: string) => void;
   planModeEnabled: boolean;
-  size?: VariantProps<typeof buttonVariants>["size"];
+  size?: ComposerControlSize;
   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
 };

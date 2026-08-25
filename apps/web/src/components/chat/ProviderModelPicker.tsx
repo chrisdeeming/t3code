@@ -18,7 +18,11 @@ import {
   getTriggerDisplayModelName,
 } from "./providerIconUtils";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
-import { ComposerControl, ComposerControlChevron } from "./ComposerControl";
+import {
+  ComposerControl,
+  ComposerControlChevron,
+  type ComposerControlSize,
+} from "./ComposerControl";
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   /**
@@ -34,7 +38,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   keybindings?: ResolvedKeybindingsConfig;
   modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
   activeProviderIconClassName?: string;
-  size?: VariantProps<typeof buttonVariants>["size"];
+  instanceIndicatorBackground?: string;
+  size?: ComposerControlSize;
   compact?: boolean;
   disabled?: boolean;
   terminalOpen?: boolean;
@@ -48,6 +53,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
 }) {
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
   const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
+  const size = props.size ?? "sm";
 
   // Resolve the active instance entry by exact routing key. The composer
   // resolves fallbacks before rendering this component; if the selected
@@ -149,7 +155,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           <ComposerControl
             aria-label={props.triggerAriaLabel}
             variant={props.triggerVariant ?? "ghost"}
-            size={props.size ?? "sm"}
+            size={size}
             data-chat-provider-model-picker="true"
             className={cn(
               "min-w-0 justify-between whitespace-nowrap",
@@ -161,11 +167,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         }
       >
         <span
-          className={cn(
-            "flex min-w-0 flex-1 items-center",
-            props.size === "xs" ? "gap-1" : "gap-1.5",
-          )}
-          data-chat-provider-model-picker-content="true"
+          className={cn("flex min-w-0 flex-1 items-center", size === "xs" ? "gap-1" : "gap-1.5")}
         >
           {activeEntry ? (
             <ProviderInstanceIcon
@@ -173,18 +175,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               displayName={activeEntry.displayName}
               accentColor={activeEntry.accentColor}
               showBadge={showInstanceBadge}
-              className={props.size === "xs" ? "size-3" : "size-4"}
-              iconClassName={cn(
-                props.size === "xs" ? "size-3" : "size-4",
-                props.activeProviderIconClassName,
-              )}
-              indicatorBackground={
-                props.size === "xs" ? "var(--background)" : "var(--contrast-input)"
-              }
+              className="size-4"
+              iconClassName={cn("size-4", props.activeProviderIconClassName)}
+              indicatorBackground={props.instanceIndicatorBackground ?? "var(--contrast-input)"}
               badgeClassName={cn(
-                props.size === "xs"
-                  ? "-right-px -bottom-px h-2.5 min-w-2.5 px-px text-[6px] shadow-none"
-                  : "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-[7px]",
+                "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-[7px]",
+                size === "xs" && "shadow-none",
               )}
             />
           ) : null}
@@ -201,7 +197,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           ) : null}
         </span>
         <span aria-hidden="true" className="flex items-center">
-          <ComposerControlChevron size={props.size} />
+          <ComposerControlChevron size={size} />
         </span>
       </PopoverTrigger>
       <PopoverPopup

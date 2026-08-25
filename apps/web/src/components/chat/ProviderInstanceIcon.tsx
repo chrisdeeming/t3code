@@ -40,7 +40,6 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
         props.className,
       )}
       style={accentStyle}
-      data-provider-instance-icon="true"
       data-provider-accent-color={props.accentColor}
     >
       {Icon ? (

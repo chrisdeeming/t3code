@@ -5,6 +5,16 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { SelectTrigger } from "../ui/select";
 
+export type ComposerControlSize = "sm" | "xs";
+
+type ComposerControlProps = Omit<ComponentProps<typeof Button>, "size"> & {
+  size?: ComposerControlSize;
+};
+
+type ComposerSelectControlProps = Omit<ComponentProps<typeof SelectTrigger>, "size"> & {
+  size?: ComposerControlSize;
+};
+
 const composerControlClassName =
   "rounded-[var(--control-radius)] text-secondary-label transition-none hover:text-foreground [&_svg[data-composer-control-chevron]]:-mx-0.5 [&_svg[data-composer-control-icon]]:mx-0";
 const expandedComposerControlClassName = "h-7 min-h-7 gap-1.5 px-2.5";
@@ -16,7 +26,7 @@ export function ComposerControl({
   size = "sm",
   variant = "ghost",
   ...props
-}: ComponentProps<typeof Button>) {
+}: ComposerControlProps) {
   return (
     <Button
       className={cn(
@@ -40,7 +50,7 @@ export function ComposerControlIcon({
   icon: LucideIcon;
   className?: string | undefined;
   opticalSize?: "default" | "large";
-  size?: ComponentProps<typeof Button>["size"];
+  size?: ComposerControlSize;
 }) {
   return (
     <Icon
@@ -60,7 +70,7 @@ export function ComposerControlChevron({
   size = "sm",
 }: {
   className?: string;
-  size?: ComponentProps<typeof Button>["size"];
+  size?: ComposerControlSize;
 } = {}) {
   return (
     <ChevronDownIcon
@@ -81,7 +91,7 @@ export function ComposerSelectControl({
   size = "sm",
   variant = "ghost",
   ...props
-}: ComponentProps<typeof SelectTrigger>) {
+}: ComposerSelectControlProps) {
   return (
     <SelectTrigger
       className={cn(

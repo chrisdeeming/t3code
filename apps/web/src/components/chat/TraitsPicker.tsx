@@ -32,7 +32,12 @@ import { useComposerDraftStore, DraftId } from "../../composerDraftStore";
 import { getProviderModelCapabilities } from "../../providerModels";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
-import { ComposerControl, ComposerControlChevron, ComposerControlIcon } from "./ComposerControl";
+import {
+  ComposerControl,
+  ComposerControlChevron,
+  ComposerControlIcon,
+  type ComposerControlSize,
+} from "./ComposerControl";
 
 type ProviderOptions = ReadonlyArray<ProviderOptionSelection>;
 
@@ -540,11 +545,11 @@ export const TraitsPicker = memo(function TraitsPicker({
   planModeEnabled,
   triggerVariant,
   triggerClassName,
-  size,
+  size = "sm",
   ...persistence
 }: TraitsMenuContentProps &
   TraitsPersistence & {
-    size?: VariantProps<typeof buttonVariants>["size"];
+    size?: ComposerControlSize;
   }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { descriptors, primarySelectDescriptor, ultrathinkPromptControlled } =
@@ -604,7 +609,7 @@ export const TraitsPicker = memo(function TraitsPicker({
         render={
           <ComposerControl
             variant={triggerVariant ?? "ghost"}
-            size={size ?? "sm"}
+            size={size}
             className={cn(
               isCodexStyle
                 ? "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48"

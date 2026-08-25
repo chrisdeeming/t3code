@@ -115,7 +115,8 @@ describe("ProviderModelPicker", () => {
     );
 
     expect(markup).toContain(">CP</span>");
-    expect(markup).toContain("h-2.5");
-    expect(markup).toContain("text-[6px]");
+    expect(markup).toContain("size-4");
+    expect(markup).toContain("h-3");
+    expect(markup).toContain("text-[7px]");
   });
 });
