@@ -267,9 +267,10 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
     let groups = 0;
     for (const child of current.children) {
       if (!(child instanceof HTMLElement) || child.offsetWidth <= 1) continue;
-      if (child.matches('[data-chat-resting-composer-controls-host="true"]')) continue;
-      needed += contentWidth(child);
       groups += 1;
+      if (!child.matches('[data-chat-resting-composer-controls-host="true"]')) {
+        needed += contentWidth(child);
+      }
     }
     needed += stripGap * Math.max(0, groups - 1);
     for (const label of current.querySelectorAll<HTMLElement>("[data-composer-label]")) {

@@ -159,6 +159,12 @@ import {
   submitComposerDraft,
 } from "./composerSubmission";
 import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation";
+import {
+  createComposerScrollGestureState,
+  recordComposerScrollGestureEvent,
+  resetComposerScrollGesture,
+  suppressActiveComposerScrollGesture,
+} from "./composerScrollGesture";
 
 type ComposerCommandMenuPosition = {
   bottom: number;
@@ -174,80 +180,225 @@ const COMPOSER_RESTING_TRANSITION_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
 
 function useComposerRestingTransition(isResting: boolean) {
   const elementRef = useRef<HTMLDivElement>(null);
+  const isRestingRef = useRef(isResting);
   const previousRestingRef = useRef(isResting);
   const previousHeightRef = useRef<number | null>(null);
+  const previousContentOffsetsRef = useRef<{
+    promptFromTop: number | null;
+    actionFromBottom: number | null;
+  }>({ promptFromTop: null, actionFromBottom: null });
   const animationRef = useRef<Animation | null>(null);
+  const animationTargetHeightRef = useRef<number | null>(null);
+  const contentAnimationsRef = useRef<Animation[]>([]);
+
+  const clearTransitionStyles = useCallback(() => {
+    const element = elementRef.current;
+    const footer = element?.querySelector<HTMLElement>('[data-chat-composer-footer="true"]');
+    element?.style.removeProperty("overflow");
+    element
+      ?.querySelector<HTMLElement>('[data-chat-composer-surface="true"]')
+      ?.style.removeProperty("height");
+    footer?.style.removeProperty("position");
+    footer?.style.removeProperty("top");
+    footer?.style.removeProperty("bottom");
+    footer?.style.removeProperty("left");
+    footer?.style.removeProperty("right");
+    footer?.style.removeProperty("height");
+  }, []);
+
+  isRestingRef.current = isResting;
+
+  const transitionToCurrentGeometry = useCallback(
+    (stateChanged: boolean) => {
+      const element = elementRef.current;
+      const surface = element?.querySelector<HTMLElement>('[data-chat-composer-surface="true"]');
+      if (!element || !surface) return;
+
+      const nextIsResting = isRestingRef.current;
+
+      const prompt = element.querySelector<HTMLElement>('[data-testid="composer-editor"]');
+      const action = element.querySelector<HTMLElement>('[data-chat-composer-actions="right"]');
+      const footer = element.querySelector<HTMLElement>('[data-chat-composer-footer="true"]');
+      const interruptedAnimation = animationRef.current;
+      const interruptedPromptTop = interruptedAnimation
+        ? (prompt?.getBoundingClientRect().top ?? null)
+        : null;
+      const interruptedActionTop = interruptedAnimation
+        ? (action?.getBoundingClientRect().top ?? null)
+        : null;
+      const interruptedHeight = interruptedAnimation
+        ? element.getBoundingClientRect().height
+        : null;
+      const interruptedTargetHeight = animationTargetHeightRef.current;
+      const interruptedCurrentTime =
+        typeof interruptedAnimation?.currentTime === "number"
+          ? interruptedAnimation.currentTime
+          : null;
+      const interruptedDuration = interruptedAnimation?.effect?.getComputedTiming().duration;
+      interruptedAnimation?.cancel();
+      animationRef.current = null;
+      for (const animation of contentAnimationsRef.current) animation.cancel();
+      contentAnimationsRef.current = [];
+      clearTransitionStyles();
+
+      const nextRect = element.getBoundingClientRect();
+      const nextHeight = nextRect.height;
+      const nextPromptTop = prompt?.getBoundingClientRect().top ?? null;
+      const nextActionTop = action?.getBoundingClientRect().top ?? null;
+      const previousHeight = interruptedHeight ?? previousHeightRef.current;
+      const targetChanged =
+        interruptedTargetHeight === null || Math.abs(interruptedTargetHeight - nextHeight) >= 0.5;
+      const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      const shouldAnimate = stateChanged || interruptedHeight !== null;
+
+      if (
+        shouldAnimate &&
+        !prefersReducedMotion &&
+        previousHeight !== null &&
+        Math.abs(previousHeight - nextHeight) >= 0.5
+      ) {
+        const remainingDuration =
+          typeof interruptedDuration === "number" && interruptedCurrentTime !== null
+            ? Math.max(1, interruptedDuration - interruptedCurrentTime)
+            : COMPOSER_RESTING_TRANSITION_DURATION_MS;
+        const duration =
+          interruptedHeight !== null && !targetChanged
+            ? remainingDuration
+            : COMPOSER_RESTING_TRANSITION_DURATION_MS;
+        element.style.overflow = "clip";
+        surface.style.height = "100%";
+
+        // Keep the footer attached to the stable bottom edge while the outer
+        // height changes. Its resting absolute layout otherwise spans the old
+        // height on collapse, while its expanded flow layout falls below the
+        // clipped surface on expansion.
+        if (footer) {
+          footer.style.position = "absolute";
+          footer.style.top = "auto";
+          footer.style.bottom = "1px";
+          footer.style.height = "3rem";
+          if (nextIsResting) {
+            footer.style.left = "auto";
+            footer.style.right = "1px";
+          } else {
+            footer.style.left = "1px";
+            footer.style.right = "1px";
+          }
+        }
+
+        const animation = element.animate(
+          [{ height: `${previousHeight}px` }, { height: `${nextHeight}px` }],
+          {
+            duration,
+            easing: COMPOSER_RESTING_TRANSITION_EASING,
+          },
+        );
+        animation.id = "t3-composer-resting-transition";
+        animationRef.current = animation;
+        animationTargetHeightRef.current = nextHeight;
+
+        const animatedRect = element.getBoundingClientRect();
+        const previousPromptTop =
+          interruptedPromptTop ??
+          (previousContentOffsetsRef.current.promptFromTop === null
+            ? null
+            : animatedRect.top + previousContentOffsetsRef.current.promptFromTop);
+        const previousActionTop =
+          interruptedActionTop ??
+          (previousContentOffsetsRef.current.actionFromBottom === null
+            ? null
+            : animatedRect.bottom - previousContentOffsetsRef.current.actionFromBottom);
+        const contentAnimations: Animation[] = [];
+        const animateContentPosition = (
+          content: HTMLElement | null,
+          previousTop: number | null,
+        ) => {
+          if (!content || previousTop === null) return;
+          const offset = previousTop - content.getBoundingClientRect().top;
+          if (Math.abs(offset) < 0.5) return;
+          contentAnimations.push(
+            content.animate(
+              [{ transform: `translateY(${String(offset)}px)` }, { transform: "none" }],
+              {
+                duration,
+                easing: COMPOSER_RESTING_TRANSITION_EASING,
+              },
+            ),
+          );
+        };
+        animateContentPosition(prompt, previousPromptTop);
+        animateContentPosition(action, previousActionTop);
+        contentAnimationsRef.current = contentAnimations;
+        void animation.finished
+          .catch(() => undefined)
+          .then(() => {
+            if (animationRef.current !== animation) return;
+            animationRef.current = null;
+            animationTargetHeightRef.current = null;
+            contentAnimationsRef.current = [];
+            clearTransitionStyles();
+          });
+      } else {
+        animationTargetHeightRef.current = null;
+      }
+
+      previousRestingRef.current = nextIsResting;
+      previousHeightRef.current = nextHeight;
+      previousContentOffsetsRef.current = {
+        promptFromTop: nextPromptTop === null ? null : nextPromptTop - nextRect.top,
+        actionFromBottom: nextActionTop === null ? null : nextRect.bottom - nextActionTop,
+      };
+    },
+    [clearTransitionStyles],
+  );
 
   useLayoutEffect(() => {
-    const element = elementRef.current;
-    const surface = element?.querySelector<HTMLElement>('[data-chat-composer-surface="true"]');
-    if (!element || !surface) return;
-
-    const interruptedHeight = animationRef.current ? element.getBoundingClientRect().height : null;
-    animationRef.current?.cancel();
-    animationRef.current = null;
-    element.style.removeProperty("overflow");
-    surface.style.removeProperty("height");
-
-    const nextHeight = element.getBoundingClientRect().height;
-    const previousHeight = interruptedHeight ?? previousHeightRef.current;
     const stateChanged = previousRestingRef.current !== isResting;
-    const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-
-    if (
-      stateChanged &&
-      !prefersReducedMotion &&
-      previousHeight !== null &&
-      Math.abs(previousHeight - nextHeight) >= 0.5
-    ) {
-      element.style.overflow = "clip";
-      surface.style.height = "100%";
-      const animation = element.animate(
-        [{ height: `${previousHeight}px` }, { height: `${nextHeight}px` }],
-        {
-          duration: COMPOSER_RESTING_TRANSITION_DURATION_MS,
-          easing: COMPOSER_RESTING_TRANSITION_EASING,
-        },
-      );
-      animation.id = "t3-composer-resting-transition";
-      animationRef.current = animation;
-      void animation.finished
-        .catch(() => undefined)
-        .then(() => {
-          if (animationRef.current !== animation) return;
-          animationRef.current = null;
-          element.style.removeProperty("overflow");
-          surface.style.removeProperty("height");
-        });
-    }
-
-    previousRestingRef.current = isResting;
-    previousHeightRef.current = nextHeight;
-  }, [isResting]);
+    transitionToCurrentGeometry(stateChanged);
+  }, [isResting, transitionToCurrentGeometry]);
 
   useLayoutEffect(() => {
     const element = elementRef.current;
     if (!element || typeof ResizeObserver === "undefined") return;
 
-    const observer = new ResizeObserver(() => {
-      if (animationRef.current) return;
-      previousHeightRef.current = element.getBoundingClientRect().height;
+    const body = element.querySelector<HTMLElement>('[data-chat-composer-body="true"]');
+    const observer = new ResizeObserver((entries) => {
+      if (animationRef.current) {
+        if (body && entries.some((entry) => entry.target === body)) {
+          transitionToCurrentGeometry(false);
+        }
+        return;
+      }
+      const elementRect = element.getBoundingClientRect();
+      const promptTop =
+        element
+          .querySelector<HTMLElement>('[data-testid="composer-editor"]')
+          ?.getBoundingClientRect().top ?? null;
+      const actionTop =
+        element
+          .querySelector<HTMLElement>('[data-chat-composer-actions="right"]')
+          ?.getBoundingClientRect().top ?? null;
+      previousHeightRef.current = elementRect.height;
+      previousContentOffsetsRef.current = {
+        promptFromTop: promptTop === null ? null : promptTop - elementRect.top,
+        actionFromBottom: actionTop === null ? null : elementRect.bottom - actionTop,
+      };
     });
     observer.observe(element);
+    if (body) observer.observe(body);
     return () => observer.disconnect();
-  }, []);
+  }, [transitionToCurrentGeometry]);
 
   useEffect(() => {
     return () => {
       animationRef.current?.cancel();
       animationRef.current = null;
-      const element = elementRef.current;
-      element?.style.removeProperty("overflow");
-      element
-        ?.querySelector<HTMLElement>('[data-chat-composer-surface="true"]')
-        ?.style.removeProperty("height");
+      animationTargetHeightRef.current = null;
+      for (const animation of contentAnimationsRef.current) animation.cancel();
+      contentAnimationsRef.current = [];
+      clearTransitionStyles();
     };
-  }, []);
+  }, [clearTransitionStyles]);
 
   return elementRef;
 }
@@ -1391,8 +1542,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const mobileComposerExpandInFlightRef = useRef(false);
   const desktopOutsidePointerInFlightRef = useRef(false);
   const desktopOutsidePointerReleaseTimeoutRef = useRef<number | null>(null);
-  const composerScrollCollapseDeltaRef = useRef(0);
   const composerScrollCollapseTimeoutRef = useRef<number | null>(null);
+  const composerScrollCollapseEligibleRef = useRef(false);
+  const composerScrollGestureRef = useRef(createComposerScrollGestureState());
   const stashPulseKeyRef = useRef(0);
   const stashPulseTimeoutRef = useRef<number | null>(null);
   /**
@@ -2028,6 +2180,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Callbacks: prompt change
   // ------------------------------------------------------------------
+  const expandComposerForEditorChange = useCallback(() => {
+    // Editor changes win over the momentum tail of the active scroll gesture.
+    suppressActiveComposerScrollGesture(
+      composerScrollGestureRef.current,
+      window.performance.now(),
+      COMPOSER_SCROLL_GESTURE_RESET_MS,
+    );
+    setIsComposerScrollCollapsed(false);
+  }, []);
+
   const onPromptChange = useCallback(
     (
       nextPrompt: string,
@@ -2036,7 +2198,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       cursorAdjacentToMention: boolean,
       terminalContextIds: string[],
     ) => {
-      setIsComposerScrollCollapsed(false);
+      expandComposerForEditorChange();
       if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
         setComposerCursor(nextCursor);
         setComposerTrigger(
@@ -2066,6 +2228,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     },
     [
       activePendingProgress?.activeQuestion,
+      expandComposerForEditorChange,
       pendingUserInputs.length,
       onChangeActivePendingUserInputCustomAnswer,
       promptRef,
@@ -3099,15 +3262,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     hasInlineAccessories: showInlineTasksBadge || showInlineStashBadge,
   });
   const composerMainSurfaceRef = useComposerRestingTransition(isComposerResting);
+  const canTrackComposerScrollGesture =
+    routeKind === "server" && activeThreadId !== null && !isMobileViewport;
   const canScrollCollapseComposer =
-    routeKind === "server" &&
-    activeThreadId !== null &&
+    canTrackComposerScrollGesture &&
     hasAvailableRestingControlsHost &&
-    !isMobileViewport &&
     !composerHasAttachments &&
     !composerHasExpandedChrome &&
     !showInlineTasksBadge &&
     !showInlineStashBadge;
+  composerScrollCollapseEligibleRef.current = canScrollCollapseComposer;
 
   useEffect(() => {
     if (!hasAvailableRestingControlsHost) {
@@ -3116,14 +3280,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [hasAvailableRestingControlsHost]);
 
   useEffect(() => {
-    if (!canScrollCollapseComposer) return;
+    if (!canTrackComposerScrollGesture) return;
 
-    const resetAccumulatedScroll = () => {
+    const finishScrollGesture = () => {
       if (composerScrollCollapseTimeoutRef.current !== null) {
         window.clearTimeout(composerScrollCollapseTimeoutRef.current);
       }
       composerScrollCollapseTimeoutRef.current = null;
-      composerScrollCollapseDeltaRef.current = 0;
+      resetComposerScrollGesture(composerScrollGestureRef.current);
     };
     const handleTimelineWheel = (event: WheelEvent) => {
       const activeElement = document.activeElement;
@@ -3131,18 +3295,28 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         activeElement instanceof HTMLElement &&
         activeElement.isContentEditable &&
         composerFormRef.current?.contains(activeElement) === true;
-      if (!isPromptEditorFocused || event.ctrlKey || !(event.target instanceof Element)) {
+      if (event.ctrlKey || !(event.target instanceof Element)) {
         return;
       }
 
       const scrollNode = getTimelineScrollableNode();
-      if (!scrollNode || !scrollNode.contains(event.target)) return;
-      const canScrollInGestureDirection =
-        event.deltaY < 0
-          ? scrollNode.scrollTop > 0
-          : scrollNode.scrollTop < scrollNode.scrollHeight - scrollNode.clientHeight;
-      if (!canScrollInGestureDirection) return;
+      if (!scrollNode) return;
+      const targetsTimeline = scrollNode.contains(event.target);
+      if (!targetsTimeline && !composerScrollGestureRef.current.collapseSuppressed) return;
 
+      if (composerScrollCollapseTimeoutRef.current !== null) {
+        window.clearTimeout(composerScrollCollapseTimeoutRef.current);
+      }
+      composerScrollCollapseTimeoutRef.current = window.setTimeout(
+        finishScrollGesture,
+        COMPOSER_SCROLL_GESTURE_RESET_MS,
+      );
+
+      const canScrollInGestureDirection =
+        targetsTimeline &&
+        (event.deltaY < 0
+          ? scrollNode.scrollTop > 0
+          : scrollNode.scrollTop < scrollNode.scrollHeight - scrollNode.clientHeight);
       const deltaPx =
         Math.abs(event.deltaY) *
         (event.deltaMode === WheelEvent.DOM_DELTA_LINE
@@ -3150,28 +3324,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
             ? scrollNode.clientHeight
             : 1);
-      composerScrollCollapseDeltaRef.current += deltaPx;
-      if (composerScrollCollapseTimeoutRef.current !== null) {
-        window.clearTimeout(composerScrollCollapseTimeoutRef.current);
-      }
-      composerScrollCollapseTimeoutRef.current = window.setTimeout(
-        resetAccumulatedScroll,
-        COMPOSER_SCROLL_GESTURE_RESET_MS,
-      );
-      if (composerScrollCollapseDeltaRef.current < COMPOSER_SCROLL_COLLAPSE_THRESHOLD_PX) {
+      const shouldCollapse = recordComposerScrollGestureEvent(composerScrollGestureRef.current, {
+        now: window.performance.now(),
+        deltaPx,
+        collapseThresholdPx: COMPOSER_SCROLL_COLLAPSE_THRESHOLD_PX,
+        collapseEligible:
+          targetsTimeline && composerScrollCollapseEligibleRef.current && isPromptEditorFocused,
+        canScrollInGestureDirection,
+      });
+      if (!shouldCollapse) {
         return;
       }
 
-      resetAccumulatedScroll();
       setIsComposerScrollCollapsed(true);
     };
 
     document.addEventListener("wheel", handleTimelineWheel, { capture: true, passive: true });
     return () => {
       document.removeEventListener("wheel", handleTimelineWheel, true);
-      resetAccumulatedScroll();
+      finishScrollGesture();
     };
-  }, [canScrollCollapseComposer, getTimelineScrollableNode]);
+  }, [canTrackComposerScrollGesture, getTimelineScrollableNode]);
 
   const restingHiddenBlockCount = isComposerResting ? restingControlsHiddenBlockCount : 0;
   const composerControlsCompact = isComposerResting
@@ -3880,11 +4053,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     <form
       ref={composerFormRef}
       onSubmit={submitComposer}
-      onKeyDownCapture={(event) => {
-        const target = event.target;
-        if (target instanceof Element && isInsideRestingComposerControlScope(target)) return;
-        setIsComposerScrollCollapsed(false);
-      }}
       onPointerDownCapture={(event) => {
         const target = event.target;
         if (target instanceof Element && isInsideRestingComposerControlScope(target)) return;
@@ -4155,6 +4323,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
             <div
               ref={setComposerMenuAnchor}
+              data-chat-composer-body="true"
               className={cn(
                 "relative px-3 pb-2 sm:px-4",
                 "pt-3.5 sm:pt-4",
@@ -4472,6 +4641,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   )}
                   onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
                   onChange={onPromptChange}
+                  onVisibleSelectionChange={expandComposerForEditorChange}
                   onCommandKeyDown={onComposerCommandKey}
                   onPaste={onComposerPaste}
                   placeholder={
