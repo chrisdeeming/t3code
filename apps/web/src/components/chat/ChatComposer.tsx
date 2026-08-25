@@ -22,6 +22,7 @@ import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import {
+  Fragment,
   memo,
   type ReactNode,
   useCallback,
@@ -3271,6 +3272,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ) : (
         <>
           {restingBlockDefs.map((def, index) => {
+            if (!isComposerResting) {
+              return <Fragment key={def.id}>{def.content}</Fragment>;
+            }
             const hidden = index >= restingBlockDefs.length - restingHiddenBlockCount;
             return (
               <div
