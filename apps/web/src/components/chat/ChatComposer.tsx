@@ -451,12 +451,15 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
   const controlsRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef(host);
   hostRef.current = host;
+  const [hasLayoutSpace, setHasLayoutSpace] = useState(false);
   const [hiddenCount, setHiddenCount] = useState(0);
 
   const measure = useCallback(() => {
     const currentHost = hostRef.current;
     const controls = controlsRef.current;
-    if (!currentHost || !controls || currentHost.clientWidth === 0) return;
+    const nextHasLayoutSpace = currentHost !== null && currentHost.clientWidth > 0;
+    setHasLayoutSpace((current) => (current === nextHasLayoutSpace ? current : nextHasLayoutSpace));
+    if (!nextHasLayoutSpace || !controls) return;
 
     const blocks = Array.from(controls.querySelectorAll<HTMLElement>("[data-resting-block]"));
     if (blocks.length === 0) return;
@@ -504,7 +507,7 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
     };
   }, [host, measure]);
 
-  return { controlsRef, hiddenBlockCount: hiddenCount };
+  return { controlsRef, hasLayoutSpace, hiddenBlockCount: hiddenCount };
 }
 
 const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
@@ -1345,7 +1348,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     active: false,
   });
   const isMobileViewport = useMediaQuery("max-sm");
-  const isNarrowRestingComposerViewport = !useMediaQuery("(min-width: 48rem)");
   const isComposerCollapsedMobile =
     isMobileViewport && !forceExpandedOnMobile && !isComposerFocused;
 
@@ -1649,6 +1651,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   });
   const {
     controlsRef: restingComposerControlsRef,
+    hasLayoutSpace: restingControlsHostHasLayoutSpace,
     hiddenBlockCount: restingControlsHiddenBlockCount,
   } = useRestingComposerControlsLayout(restingControlsHost);
   const pendingPrimaryAction = useMemo(
@@ -3062,7 +3065,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerSubmissionError !== null ||
     providerInputSubmissionError !== null;
   const hasAvailableRestingControlsHost =
-    restingControlsHost !== null && !isNarrowRestingComposerViewport;
+    restingControlsHost !== null && restingControlsHostHasLayoutSpace;
   const isComposerResting = shouldUseRestingComposerLayout({
     hasControlsHost: hasAvailableRestingControlsHost,
     isExistingThread: routeKind === "server" && activeThreadId !== null,
