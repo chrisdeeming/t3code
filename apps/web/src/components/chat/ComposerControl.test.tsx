@@ -2,7 +2,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { BotIcon } from "lucide-react";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ComposerControl, ComposerControlChevron, ComposerControlIcon } from "./ComposerControl";
+import {
+  ComposerControl,
+  ComposerControlChevron,
+  ComposerControlIcon,
+  ComposerControlSeparator,
+} from "./ComposerControl";
 
 describe("ComposerControl", () => {
   it("preserves the expanded composer geometry by default", () => {
@@ -54,5 +59,18 @@ describe("ComposerControl", () => {
     expect(expanded).toContain("size-4");
     expect(resting).toContain("size-3");
     expect(resting).not.toContain("size-4");
+  });
+
+  it("owns separator geometry for both composer sizes", () => {
+    const expanded = renderToStaticMarkup(<ComposerControlSeparator />);
+    const resting = renderToStaticMarkup(
+      <ComposerControlSeparator size="xs" data-resting-controls-separator="true" />,
+    );
+
+    expect(expanded).toContain("h-4");
+    expect(expanded).not.toContain("h-3.5!");
+    expect(resting).toContain("h-3.5!");
+    expect(resting).not.toContain("h-4");
+    expect(resting).toContain('data-resting-controls-separator="true"');
   });
 });

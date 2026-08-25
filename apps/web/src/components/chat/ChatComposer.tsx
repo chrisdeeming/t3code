@@ -133,7 +133,12 @@ import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
-import { ComposerControl, ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
+import {
+  ComposerControl,
+  ComposerControlIcon,
+  ComposerControlSeparator,
+  ComposerSelectControl,
+} from "./ComposerControl";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import {
@@ -147,7 +152,6 @@ import { resolveContextWindowModelDisplayName } from "./ContextWindowMeter.logic
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { basenameOfPath } from "../../pierre-icons";
 import { cn, randomUUID } from "~/lib/utils";
-import { Separator } from "../ui/separator";
 import {
   getComposerPromptLengthValidationMessage,
   getComposerSubmissionValidationMessage,
@@ -549,10 +553,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 
   const interactionModeToggle = props.showInteractionModeToggle ? (
     <>
-      <Separator
-        orientation="vertical"
-        className={cn("mx-0.5 hidden sm:block", size === "xs" ? "h-3.5!" : "h-4")}
-      />
+      <ComposerControlSeparator size={size} />
       <Tooltip>
         <TooltipTrigger
           render={
@@ -596,10 +597,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 
   return (
     <>
-      <Separator
-        orientation="vertical"
-        className={cn("mx-0.5 hidden sm:block", size === "xs" ? "h-3.5!" : "h-4")}
-      />
+      <ComposerControlSeparator size={size} />
 
       <Tooltip>
         <Select
@@ -842,6 +840,7 @@ export interface ChatComposerProps {
   terminalOpen: boolean;
   gitCwd: string | null;
   restingControlsHost: HTMLDivElement | null;
+  getTimelineScrollableNode: () => HTMLElement | null;
 
   // Refs the parent needs kept in sync
   promptRef: React.RefObject<string>;
@@ -937,6 +936,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     terminalOpen,
     gitCwd,
     restingControlsHost,
+    getTimelineScrollableNode,
     promptRef,
     composerRef,
     composerImagesRef,
@@ -3133,8 +3133,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
 
-      const scrollNode = event.target.closest<HTMLElement>('[data-chat-messages-timeline="true"]');
-      if (!scrollNode) return;
+      const scrollNode = getTimelineScrollableNode();
+      if (!scrollNode || !scrollNode.contains(event.target)) return;
       const canScrollInGestureDirection =
         event.deltaY < 0
           ? scrollNode.scrollTop > 0
@@ -3169,7 +3169,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       document.removeEventListener("wheel", handleTimelineWheel, true);
       resetAccumulatedScroll();
     };
-  }, [canScrollCollapseComposer]);
+  }, [canScrollCollapseComposer, getTimelineScrollableNode]);
 
   const restingHiddenBlockCount = isComposerResting ? restingControlsHiddenBlockCount : 0;
   const composerControlsCompact = isComposerResting
@@ -3182,10 +3182,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             id: "traits",
             content: (
               <>
-                <Separator
-                  orientation="vertical"
-                  className={cn("mx-0.5 hidden sm:block", isComposerResting ? "h-3.5!" : "h-4")}
-                />
+                <ComposerControlSeparator size={isComposerResting ? "xs" : "sm"} />
                 {isComposerResting ? restingProviderTraitsPicker : providerTraitsPicker}
               </>
             ),
@@ -3224,11 +3221,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ) : (
     <>
       {isComposerResting ? (
-        <Separator
-          orientation="vertical"
-          className="mx-0.5 hidden h-3.5! sm:block"
-          data-resting-controls-separator="true"
-        />
+        <ComposerControlSeparator size="xs" data-resting-controls-separator="true" />
       ) : null}
       <ProviderModelPicker
         compact={composerControlsCompact}

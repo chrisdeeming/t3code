@@ -599,7 +599,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         <div ref={setTimelineViewportElement} className="relative h-full min-h-0">
           <LegendList<MessagesTimelineRow>
             ref={listRef}
-            data-chat-messages-timeline="true"
             data={rows}
             keyExtractor={keyExtractor}
             getItemType={getItemType}

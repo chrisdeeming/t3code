@@ -128,7 +128,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
 
   if (isLocked) {
     return (
-      <span className="inline-flex h-7 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] text-sm font-normal text-muted-foreground/70 sm:h-6 md:hidden">
+      <span className="inline-flex h-7 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] text-sm font-normal text-muted-foreground/70 sm:h-6 sm:text-xs md:hidden">
         {triggerContent}
       </span>
     );
@@ -473,10 +473,7 @@ export const BranchToolbar = memo(function BranchToolbar({
     <div
       ref={setStripElement}
       data-compact={labelsOverflow ? "" : undefined}
-      className={cn(
-        "chat-composer-context-strip group/composer-context -mt-4 mx-auto flex w-[calc(100%-2.75rem)] max-w-[calc(48rem-2.75rem)] items-center gap-1 overflow-x-clip overflow-y-visible ps-1 pe-2 pt-5 pb-1 text-xs font-normal text-muted-foreground/70",
-        "[&_[data-composer-context-control]]:font-normal",
-      )}
+      className="chat-composer-context-strip group/composer-context -mt-4 mx-auto flex w-[calc(100%-2.75rem)] max-w-[calc(48rem-2.75rem)] items-center gap-1 overflow-x-clip overflow-y-visible ps-1 pe-2 pt-5 pb-1 text-xs font-normal text-muted-foreground/70"
     >
       {isMobile && showGitControls ? (
         <MobileRunContextSelector

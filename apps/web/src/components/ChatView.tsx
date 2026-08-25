@@ -1508,6 +1508,10 @@ function ChatViewContent(props: ChatViewProps) {
     LastInvokedScriptByProjectSchema,
   );
   const legendListRef = useRef<LegendListRef | null>(null);
+  const getTimelineScrollableNode = useCallback(
+    () => legendListRef.current?.getScrollableNode() ?? null,
+    [],
+  );
   const [composerOverlayElement, setComposerOverlayElement] = useState<HTMLDivElement | null>(null);
   const [composerOverlayHeight, setComposerOverlayHeight] = useState(0);
   const [scrollToEndClearance, setScrollToEndClearance] = useState(0);
@@ -7295,6 +7299,7 @@ function ChatViewContent(props: ChatViewProps) {
                             terminalOpen={Boolean(terminalUiState.terminalOpen)}
                             gitCwd={gitCwd}
                             restingControlsHost={restingComposerControlsHost}
+                            getTimelineScrollableNode={getTimelineScrollableNode}
                             promptRef={promptRef}
                             composerImagesRef={composerImagesRef}
                             composerFilesRef={composerFilesRef}
