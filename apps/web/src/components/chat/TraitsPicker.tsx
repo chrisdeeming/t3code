@@ -581,9 +581,9 @@ export const TraitsPicker = memo(function TraitsPicker({
     <>
       <ComposerControlIcon
         icon={ZapIcon}
+        size={size}
         className={cn(
           "fill-current opacity-80",
-          size === "xs" && "size-3!",
           provider === "claudeAgent" ? "text-[#d97757]" : "text-foreground",
         )}
       />

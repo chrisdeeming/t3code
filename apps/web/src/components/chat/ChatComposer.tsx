@@ -551,13 +551,14 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
           {props.interactionMode === "plan" ? (
             <ComposerControlIcon
               icon={PencilRulerIcon}
-              className={cn("text-current opacity-100", size === "xs" && "size-3!")}
+              size={size}
+              className="text-current opacity-100"
             />
           ) : (
             <ComposerControlIcon
               icon={BotIcon}
+              size={size}
               opticalSize={size === "xs" ? "default" : "large"}
-              className={size === "xs" ? "size-3!" : undefined}
             />
           )}
           <span className="sr-only sm:not-sr-only">
@@ -590,10 +591,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
               />
             }
           >
-            <ComposerControlIcon
-              icon={RuntimeModeIcon}
-              className={size === "xs" ? "size-3!" : undefined}
-            />
+            <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
             <SelectValue>{runtimeModeOption.label}</SelectValue>
           </TooltipTrigger>
           <SelectPopup alignItemWithTrigger={false}>

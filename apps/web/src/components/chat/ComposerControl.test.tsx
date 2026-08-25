@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { BotIcon } from "lucide-react";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ComposerControl, ComposerControlChevron } from "./ComposerControl";
+import { ComposerControl, ComposerControlChevron, ComposerControlIcon } from "./ComposerControl";
 
 describe("ComposerControl", () => {
   it("preserves the expanded composer geometry by default", () => {
@@ -14,11 +15,18 @@ describe("ComposerControl", () => {
   });
 
   it("uses the shared xs geometry for resting controls", () => {
-    const markup = renderToStaticMarkup(<ComposerControl size="xs">Model</ComposerControl>);
+    const markup = renderToStaticMarkup(
+      <ComposerControl size="xs">
+        Model
+        <ComposerControlChevron size="xs" />
+      </ComposerControl>,
+    );
 
     expect(markup).toContain("sm:h-6");
     expect(markup).toContain("font-normal");
     expect(markup).toContain("text-muted-foreground/70");
+    expect(markup).toContain("svg[data-composer-control-chevron]]:ms-0");
+    expect(markup).toContain("svg[data-composer-control-chevron]]:-me-1");
     expect(markup).not.toContain("min-h-7");
     expect(markup).not.toContain("gap-1.5");
     expect(markup).not.toContain("px-2.5");
@@ -34,8 +42,16 @@ describe("ComposerControl", () => {
     expect(resting).toContain("size-3");
     expect(resting).toContain("text-current");
     expect(resting).toContain("opacity-50");
-    expect(resting).toContain("-me-1");
     expect(resting).not.toContain("size-3.5");
     expect(resting).not.toContain("text-icon-muted");
+  });
+
+  it("owns resting icon geometry", () => {
+    const expanded = renderToStaticMarkup(<ComposerControlIcon icon={BotIcon} />);
+    const resting = renderToStaticMarkup(<ComposerControlIcon icon={BotIcon} size="xs" />);
+
+    expect(expanded).toContain("size-4");
+    expect(resting).toContain("size-3");
+    expect(resting).not.toContain("size-4");
   });
 });
