@@ -539,7 +539,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
                 props.interactionMode === "plan"
                   ? "bg-accent text-accent-foreground hover:bg-accent/80"
                   : size === "xs"
-                    ? "font-normal text-muted-foreground/70 hover:text-foreground/80"
+                    ? undefined
                     : "text-secondary-label hover:text-foreground",
               )}
               type="button"
@@ -585,11 +585,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
             render={
               <ComposerSelectControl
                 size={size}
-                className={
-                  size === "xs"
-                    ? "font-normal text-muted-foreground/70 hover:text-foreground/80"
-                    : "font-medium"
-                }
+                className={size === "xs" ? undefined : "font-medium"}
                 aria-label="Runtime mode"
               />
             }
@@ -1652,7 +1648,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const restingProviderTraitsPicker = renderProviderTraitsPicker({
     ...providerTraitsPickerInput,
     size: "xs",
-    triggerClassName: "font-normal text-muted-foreground/70 hover:text-foreground/80",
   });
   const {
     controlsRef: restingComposerControlsRef,
@@ -3225,7 +3220,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         size={isComposerResting ? "xs" : "sm"}
         triggerClassName={cn(
           !isComposerResting && "-ms-2.5",
-          isComposerResting && "font-normal text-muted-foreground/70 hover:text-foreground/80",
           isComposerResting && composerControlsCompact && "max-w-none! shrink!",
         )}
         terminalOpen={terminalOpen}

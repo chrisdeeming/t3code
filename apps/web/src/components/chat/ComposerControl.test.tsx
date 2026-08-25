@@ -17,6 +17,8 @@ describe("ComposerControl", () => {
     const markup = renderToStaticMarkup(<ComposerControl size="xs">Model</ComposerControl>);
 
     expect(markup).toContain("sm:h-6");
+    expect(markup).toContain("font-normal");
+    expect(markup).toContain("text-muted-foreground/70");
     expect(markup).not.toContain("min-h-7");
     expect(markup).not.toContain("gap-1.5");
     expect(markup).not.toContain("px-2.5");
@@ -24,9 +26,7 @@ describe("ComposerControl", () => {
 
   it("keeps the expanded chevron treatment unless resting overrides it", () => {
     const expanded = renderToStaticMarkup(<ComposerControlChevron />);
-    const resting = renderToStaticMarkup(
-      <ComposerControlChevron className="size-3 text-current opacity-50" />,
-    );
+    const resting = renderToStaticMarkup(<ComposerControlChevron size="xs" />);
 
     expect(expanded).toContain("size-3.5");
     expect(expanded).toContain("text-icon-muted");
@@ -34,6 +34,7 @@ describe("ComposerControl", () => {
     expect(resting).toContain("size-3");
     expect(resting).toContain("text-current");
     expect(resting).toContain("opacity-50");
+    expect(resting).toContain("-me-1");
     expect(resting).not.toContain("size-3.5");
     expect(resting).not.toContain("text-icon-muted");
   });

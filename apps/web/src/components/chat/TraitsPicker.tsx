@@ -582,7 +582,8 @@ export const TraitsPicker = memo(function TraitsPicker({
       <ComposerControlIcon
         icon={ZapIcon}
         className={cn(
-          size === "xs" ? "size-3!" : "fill-current opacity-80",
+          "fill-current opacity-80",
+          size === "xs" && "size-3!",
           provider === "claudeAgent" ? "text-[#d97757]" : "text-foreground",
         )}
       />
@@ -622,17 +623,13 @@ export const TraitsPicker = memo(function TraitsPicker({
           >
             {fastModeIcon}
             <span className="min-w-0 truncate">{triggerLabel}</span>
-            <ComposerControlChevron
-              {...(size === "xs" ? { className: "size-3 text-current opacity-50" } : {})}
-            />
+            <ComposerControlChevron size={size} />
           </span>
         ) : (
           <>
             {fastModeIcon}
             <span>{triggerLabel}</span>
-            <ComposerControlChevron
-              {...(size === "xs" ? { className: "size-3 text-current opacity-50" } : {})}
-            />
+            <ComposerControlChevron size={size} />
           </>
         )}
       </MenuTrigger>
