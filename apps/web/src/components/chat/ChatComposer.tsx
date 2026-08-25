@@ -3269,6 +3269,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               <CompactComposerControlsMenu
                 interactionMode={interactionMode}
                 runtimeMode={runtimeMode}
+                size="xs"
                 showInteractionModeToggle={
                   composerProviderControls.showInteractionModeToggle &&
                   hiddenRestingBlockIds.includes("mode")
