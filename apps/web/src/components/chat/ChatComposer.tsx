@@ -119,6 +119,7 @@ import { ComposerPendingElementContexts } from "./ComposerPendingElementContexts
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
 import { ComposerPreviewAnnotationCards } from "./ComposerPreviewAnnotationCards";
 import {
+  hasRestingComposerControlsSpace,
   shouldUseCompactComposerPrimaryActions,
   shouldUseCompactComposerFooter,
   shouldUseRestingComposerLayout,
@@ -454,6 +455,15 @@ function isInsideRestingComposerControlScope(element: Element): boolean {
   );
 }
 
+function elementOuterWidth(element: HTMLElement): number {
+  const style = getComputedStyle(element);
+  return (
+    element.getBoundingClientRect().width +
+    (Number.parseFloat(style.marginInlineStart) || 0) +
+    (Number.parseFloat(style.marginInlineEnd) || 0)
+  );
+}
+
 function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
   const controlsRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef(host);
@@ -464,7 +474,11 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
   const measure = useCallback(() => {
     const currentHost = hostRef.current;
     const controls = controlsRef.current;
-    const nextHasLayoutSpace = currentHost !== null && currentHost.clientWidth > 0;
+    const rootFontSize =
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const nextHasLayoutSpace =
+      currentHost !== null &&
+      hasRestingComposerControlsSpace(currentHost.clientWidth, rootFontSize);
     setHasLayoutSpace((current) => (current === nextHasLayoutSpace ? current : nextHasLayoutSpace));
     if (!nextHasLayoutSpace || !controls) return;
 
@@ -476,10 +490,10 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
     const separator = controls.querySelector<HTMLElement>("[data-resting-controls-separator]");
     const overflow = controls.querySelector<HTMLElement>("[data-resting-controls-overflow]");
     const fixedWidth =
-      (picker?.getBoundingClientRect().width ?? 0) +
-      (separator ? separator.getBoundingClientRect().width + gap : 0);
-    const blockWidths = blocks.map((block) => block.getBoundingClientRect().width);
-    const overflowWidth = overflow?.getBoundingClientRect().width ?? 0;
+      (picker ? elementOuterWidth(picker) : 0) +
+      (separator ? elementOuterWidth(separator) + gap : 0);
+    const blockWidths = blocks.map(elementOuterWidth);
+    const overflowWidth = overflow ? elementOuterWidth(overflow) : 0;
 
     setHiddenCount((current) => {
       const widthWithHidden = (hidden: number) => {
@@ -3271,8 +3285,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 aria-hidden={hidden || undefined}
                 inert={hidden || undefined}
                 className={cn(
-                  "flex min-w-0 items-center gap-1",
-                  hidden && "pointer-events-none invisible absolute w-max min-w-max",
+                  "flex w-max min-w-max shrink-0 items-center gap-1",
+                  hidden && "pointer-events-none invisible absolute",
                 )}
               >
                 {def.content}
@@ -3280,7 +3294,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             );
           })}
           {isComposerResting && hiddenRestingBlockIds.length > 0 ? (
-            <div data-resting-controls-overflow className="min-w-0">
+            <div data-resting-controls-overflow className="min-w-0 shrink-0">
               <CompactComposerControlsMenu
                 interactionMode={interactionMode}
                 runtimeMode={runtimeMode}

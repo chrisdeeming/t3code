@@ -1,5 +1,10 @@
 export const COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX = 620;
 export const COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX = 780;
+export const COMPOSER_RESTING_CONTROLS_MIN_WIDTH_REM = 6;
+
+export function hasRestingComposerControlsSpace(width: number, rootFontSize: number): boolean {
+  return width >= COMPOSER_RESTING_CONTROLS_MIN_WIDTH_REM * rootFontSize;
+}
 
 export function shouldUseCompactComposerFooter(
   width: number | null,
