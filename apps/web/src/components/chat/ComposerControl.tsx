@@ -7,6 +7,7 @@ import { SelectTrigger } from "../ui/select";
 
 const composerControlClassName =
   "rounded-[var(--control-radius)] text-secondary-label transition-none hover:text-foreground [&_svg[data-composer-control-icon]]:mx-0 [&_svg[data-composer-control-chevron]]:-mx-0.5";
+const expandedComposerControlClassName = "h-7 min-h-7 gap-1.5 px-2.5";
 
 export function ComposerControl({
   className,
@@ -16,7 +17,11 @@ export function ComposerControl({
 }: ComponentProps<typeof Button>) {
   return (
     <Button
-      className={cn(composerControlClassName, className)}
+      className={cn(
+        composerControlClassName,
+        size === "xs" ? undefined : expandedComposerControlClassName,
+        className,
+      )}
       size={size}
       variant={variant}
       {...props}
@@ -46,8 +51,9 @@ export function ComposerControlChevron({ className }: { className?: string } = {
   return (
     <ChevronDownIcon
       aria-hidden="true"
-      className={cn("-mx-0.5 size-3 shrink-0 opacity-50", className)}
+      className={cn("-mx-0.5 size-3.5 shrink-0 text-icon-muted", className)}
       data-composer-control-chevron
+      strokeWidth={2.25}
     />
   );
 }
@@ -60,8 +66,16 @@ export function ComposerSelectControl({
 }: ComponentProps<typeof SelectTrigger>) {
   return (
     <SelectTrigger
-      className={cn(composerControlClassName, className)}
-      icon={<ComposerControlChevron />}
+      className={cn(
+        composerControlClassName,
+        size === "xs" ? undefined : expandedComposerControlClassName,
+        className,
+      )}
+      icon={
+        <ComposerControlChevron
+          {...(size === "xs" ? { className: "size-3 text-current opacity-50" } : {})}
+        />
+      }
       size={size}
       variant={variant}
       {...props}

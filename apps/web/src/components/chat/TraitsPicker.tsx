@@ -622,13 +622,17 @@ export const TraitsPicker = memo(function TraitsPicker({
           >
             {fastModeIcon}
             <span className="min-w-0 truncate">{triggerLabel}</span>
-            <ComposerControlChevron />
+            <ComposerControlChevron
+              {...(size === "xs" ? { className: "size-3 text-current opacity-50" } : {})}
+            />
           </span>
         ) : (
           <>
             {fastModeIcon}
             <span>{triggerLabel}</span>
-            <ComposerControlChevron />
+            <ComposerControlChevron
+              {...(size === "xs" ? { className: "size-3 text-current opacity-50" } : {})}
+            />
           </>
         )}
       </MenuTrigger>

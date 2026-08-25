@@ -54,6 +54,7 @@ describe("shouldUseCompactComposerPrimaryActions", () => {
 
 describe("shouldUseRestingComposerLayout", () => {
   const resting = {
+    hasControlsHost: true,
     isMobileViewport: false,
     isFocused: false,
     hasAttachments: false,
@@ -63,6 +64,10 @@ describe("shouldUseRestingComposerLayout", () => {
 
   it("uses the resting layout for an unfocused desktop composer", () => {
     expect(shouldUseRestingComposerLayout(resting)).toBe(true);
+  });
+
+  it("stays expanded until the resting controls have a visible host", () => {
+    expect(shouldUseRestingComposerLayout({ ...resting, hasControlsHost: false })).toBe(false);
   });
 
   it("leaves responsive mobile on its existing collapse path", () => {

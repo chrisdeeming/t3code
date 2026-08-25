@@ -1,0 +1,40 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vite-plus/test";
+
+import { ComposerControl, ComposerControlChevron } from "./ComposerControl";
+
+describe("ComposerControl", () => {
+  it("preserves the expanded composer geometry by default", () => {
+    const markup = renderToStaticMarkup(<ComposerControl>Model</ComposerControl>);
+
+    expect(markup).toContain("h-7");
+    expect(markup).toContain("min-h-7");
+    expect(markup).toContain("gap-1.5");
+    expect(markup).toContain("px-2.5");
+  });
+
+  it("uses the shared xs geometry for resting controls", () => {
+    const markup = renderToStaticMarkup(<ComposerControl size="xs">Model</ComposerControl>);
+
+    expect(markup).toContain("sm:h-6");
+    expect(markup).not.toContain("min-h-7");
+    expect(markup).not.toContain("gap-1.5");
+    expect(markup).not.toContain("px-2.5");
+  });
+
+  it("keeps the expanded chevron treatment unless resting overrides it", () => {
+    const expanded = renderToStaticMarkup(<ComposerControlChevron />);
+    const resting = renderToStaticMarkup(
+      <ComposerControlChevron className="size-3 text-current opacity-50" />,
+    );
+
+    expect(expanded).toContain("size-3.5");
+    expect(expanded).toContain("text-icon-muted");
+    expect(expanded).toContain('stroke-width="2.25"');
+    expect(resting).toContain("size-3");
+    expect(resting).toContain("text-current");
+    expect(resting).toContain("opacity-50");
+    expect(resting).not.toContain("size-3.5");
+    expect(resting).not.toContain("text-icon-muted");
+  });
+});

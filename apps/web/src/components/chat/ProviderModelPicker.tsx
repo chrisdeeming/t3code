@@ -198,7 +198,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           ) : null}
         </span>
         <span aria-hidden="true" className="flex items-center">
-          <ComposerControlChevron />
+          <ComposerControlChevron
+            {...(props.size === "xs" ? { className: "size-3 text-current opacity-50" } : {})}
+          />
         </span>
       </PopoverTrigger>
       <PopoverPopup

@@ -12,6 +12,7 @@ export function shouldUseCompactComposerFooter(
 }
 
 export function shouldUseRestingComposerLayout(input: {
+  hasControlsHost: boolean;
   isMobileViewport: boolean;
   isFocused: boolean;
   hasAttachments: boolean;
@@ -19,6 +20,7 @@ export function shouldUseRestingComposerLayout(input: {
   hasInlineAccessories: boolean;
 }): boolean {
   return (
+    input.hasControlsHost &&
     !input.isMobileViewport &&
     !input.isFocused &&
     !input.hasAttachments &&

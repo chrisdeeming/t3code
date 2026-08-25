@@ -1351,6 +1351,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     active: false,
   });
   const isMobileViewport = useMediaQuery("max-sm");
+  const isNarrowRestingComposerViewport = useMediaQuery("max-md");
   const isComposerCollapsedMobile =
     isMobileViewport && !forceExpandedOnMobile && !isComposerFocused;
 
@@ -3060,7 +3061,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isTasksDrawerOpen ||
     composerMenuOpen ||
     isStashMenuOpen ||
-    isComposerModelPickerOpen ||
     isDragOverComposer ||
     isPreparingWorktree ||
     noProviderAvailable ||
@@ -3068,7 +3068,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     environmentUnavailable !== null ||
     composerSubmissionError !== null ||
     providerInputSubmissionError !== null;
+  const hasAvailableRestingControlsHost =
+    restingControlsHost !== null && !isNarrowRestingComposerViewport;
   const isComposerResting = shouldUseRestingComposerLayout({
+    hasControlsHost: hasAvailableRestingControlsHost,
     isMobileViewport,
     isFocused: isComposerFocused && !isComposerScrollCollapsed,
     hasAttachments: composerHasAttachments,
@@ -3079,11 +3082,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const canScrollCollapseComposer =
     routeKind === "server" &&
     activeThreadId !== null &&
+    hasAvailableRestingControlsHost &&
     !isMobileViewport &&
     !composerHasAttachments &&
     !composerHasExpandedChrome &&
     !showInlineTasksBadge &&
     !showInlineStashBadge;
+
+  useEffect(() => {
+    if (!hasAvailableRestingControlsHost) {
+      setIsComposerScrollCollapsed(false);
+    }
+  }, [hasAvailableRestingControlsHost]);
 
   useEffect(() => {
     if (!canScrollCollapseComposer) return;
