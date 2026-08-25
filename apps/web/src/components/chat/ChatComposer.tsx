@@ -447,6 +447,13 @@ function isInsideComposerFloatingLayer(element: Element): boolean {
   return element.closest(COMPOSER_FLOATING_LAYER_SELECTOR) !== null;
 }
 
+function isInsideRestingComposerControlScope(element: Element): boolean {
+  return (
+    element.closest('[data-chat-composer-resting-controls="true"]') !== null ||
+    isInsideComposerFloatingLayer(element)
+  );
+}
+
 function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
   const controlsRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef(host);
@@ -3861,9 +3868,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     <form
       ref={composerFormRef}
       onSubmit={submitComposer}
-      onKeyDownCapture={() => setIsComposerScrollCollapsed(false)}
+      onKeyDownCapture={(event) => {
+        const target = event.target;
+        if (target instanceof Element && isInsideRestingComposerControlScope(target)) return;
+        setIsComposerScrollCollapsed(false);
+      }}
       onPointerDownCapture={(event) => {
         const target = event.target;
+        if (target instanceof Element && isInsideRestingComposerControlScope(target)) return;
         if (
           !(target instanceof Element) ||
           !target.closest('button, a, input, select, [role="button"], [role="menuitem"]')
@@ -3876,8 +3888,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (
           isComposerResting &&
           activeElement instanceof Element &&
-          (activeElement.closest('[data-chat-composer-resting-controls="true"]') ||
-            isInsideComposerFloatingLayer(activeElement))
+          isInsideRestingComposerControlScope(activeElement)
         ) {
           return;
         }
