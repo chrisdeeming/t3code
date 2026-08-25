@@ -22,8 +22,8 @@ the composer or paste them into a message.
 On wider web and desktop windows, an existing thread with a visible thread-context strip settles its
 composer into a single-line resting state when the composer loses focus or you scroll the
 conversation. Model and mode controls remain available beside the thread context. Focus the composer
-or start typing to expand it again. Threads without a context strip, new-thread layouts, and narrow
-layouts keep the full composer.
+or start typing to expand it again. Threads without a context strip and new-thread layouts keep the
+full composer; narrow layouts retain their existing mobile collapse behavior.
 
 On mobile, the model picker shows each OpenCode model's upstream provider, such as Anthropic,
 GitHub Copilot, or OpenCode Zen, beneath its name. Search by that provider name to narrow the list

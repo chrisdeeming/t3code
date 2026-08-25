@@ -3344,7 +3344,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       document.removeEventListener("wheel", handleTimelineWheel, true);
       finishScrollGesture();
     };
-  }, [canTrackComposerScrollGesture, getTimelineScrollableNode]);
+  }, [activeThreadId, canTrackComposerScrollGesture, getTimelineScrollableNode]);
 
   const restingHiddenBlockCount = isComposerResting ? restingControlsHiddenBlockCount : 0;
   const composerControlsCompact = isComposerResting

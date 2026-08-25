@@ -61,7 +61,7 @@ describe("composer scroll gesture", () => {
     expect(record(state, 160)).toBe(false);
   });
 
-  it("allows a fresh gesture after the previous gesture is reset", () => {
+  it("does not carry gesture state into a new thread after reset", () => {
     const state = createComposerScrollGestureState();
 
     record(state, 0);
