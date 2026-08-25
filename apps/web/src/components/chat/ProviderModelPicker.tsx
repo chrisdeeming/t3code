@@ -178,13 +178,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 props.size === "xs" ? "size-3" : "size-4",
                 props.activeProviderIconClassName,
               )}
-              {...(props.size === "xs" ? { badgeContent: "none" as const } : {})}
               indicatorBackground={
                 props.size === "xs" ? "var(--background)" : "var(--contrast-input)"
               }
               badgeClassName={cn(
                 props.size === "xs"
-                  ? "-right-px -bottom-px h-1.5 min-w-1.5 px-0 shadow-none"
+                  ? "-right-px -bottom-px h-2.5 min-w-2.5 px-px text-[6px] shadow-none"
                   : "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-[7px]",
               )}
             />
