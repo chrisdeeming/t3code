@@ -130,15 +130,16 @@ describe("Tiptap composer Markdown", () => {
   );
 
   /**
-   * Underscores are punctuation in code. Bold and italic each ship an underscore
-   * input rule, so typing `__init__` turned a Python identifier into bold text
-   * and ate the underscores as the user typed. The asterisk rules stay, since
-   * `*` is far rarer inside identifiers.
+   * Stock Markdown emphasis, underscores included, so what the composer shows
+   * matches what the chat renderer does with the same text. The cost is that
+   * typing `__init__` or `MAX_SIZE` formats mid-word; the fix for code is to
+   * put it in inline code or a fence. Under review — see
+   * `.t3/tiptap-composer/TODO.md`.
    *
    * Input rules only fire against a live view, so this asserts the registration
    * that drives them; the typed behavior is checked in the browser.
    */
-  it("registers no underscore input rule for bold or italic", () => {
+  it("keeps the stock underscore input rules for bold and italic", () => {
     const editor = createComposerEditor("x");
     const underscorePatterns = editor.extensionManager.extensions
       .filter((extension) => extension.name === "bold" || extension.name === "italic")
@@ -157,7 +158,7 @@ describe("Tiptap composer Markdown", () => {
       })
       .filter((pattern) => pattern instanceof RegExp && pattern.source.includes("_"));
 
-    expect(underscorePatterns).toEqual([]);
+    expect(underscorePatterns.length).toBeGreaterThan(0);
   });
 
   it("leaves ordinary Markdown links and scoped packages alone", () => {
