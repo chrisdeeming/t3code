@@ -3553,16 +3553,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 )}
               >
                 <div className="-m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {/* Placement: moving this line moves the control. */}
-                  {sourceViewAvailable ? (
-                    <ComposerSourceToggle
-                      open={isSourceViewOpen}
-                      shortcutLabel={shortcutLabelForCommand(keybindings, "composer.toggleSource")}
-                      onToggle={() => {
-                        setIsSourceViewOpen((open) => !open);
-                      }}
-                    />
-                  ) : null}
                   {noProviderAvailable ? (
                     <Button
                       type="button"
@@ -3633,6 +3623,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       />
                     </>
                   )}
+                  {/* Placement: the model controls come first because they are
+                      the ones reached for most; this trails them. Moving this
+                      block moves the control. */}
+                  {sourceViewAvailable ? (
+                    <>
+                      <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
+                      <ComposerSourceToggle
+                        open={isSourceViewOpen}
+                        shortcutLabel={shortcutLabelForCommand(keybindings, "composer.toggleSource")}
+                        onToggle={() => {
+                          setIsSourceViewOpen((open) => !open);
+                        }}
+                      />
+                    </>
+                  ) : null}
                 </div>
 
                 {/* Right side: send / stop button */}
