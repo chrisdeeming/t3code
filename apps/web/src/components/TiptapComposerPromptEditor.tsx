@@ -34,6 +34,10 @@ import {
   stampComposerTerminalContextIds,
   tiptapComposerExtensions,
 } from "./tiptapComposerExtensions";
+import {
+  indentCodeBlock,
+  indentedNewlineInCodeBlock,
+} from "./tiptapComposerCodeBlockIndent";
 import { composerTokenNodeView } from "./tiptapComposerNodeViews";
 import { ComposerTokenMetadataProvider } from "./TiptapComposerTokenView";
 
@@ -348,6 +352,27 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
           event.preventDefault();
           return true;
         }
+        // Tab indents inside a fence, where there is no other way to type one:
+        // the browser would move focus out of the editor instead. The command
+        // menu gets first refusal so picking a file with Tab still works when
+        // the menu is open over a code block.
+        if (event.key === "Tab" && view.state.selection.$from.parent.type.spec.code === true) {
+          if (commandKeyDown("Tab", event)) {
+            event.preventDefault();
+            event.stopPropagation();
+            return true;
+          }
+          const indented = indentCodeBlock(
+            view.state,
+            event.shiftKey ? "out" : "in",
+            (transaction) => view.dispatch(transaction),
+          );
+          if (indented) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+          return indented;
+        }
         if (
           event.key === "Enter" &&
           !event.shiftKey &&
@@ -376,6 +401,20 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
             event.stopPropagation();
           }
           return applied;
+        }
+        // A plain Enter inside a fence carries the current line's indentation
+        // onto the new line. Checked after Mod+Enter below would be too late,
+        // so the modifier is excluded here rather than ordered around.
+        if (
+          event.key === "Enter" &&
+          !event.shiftKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          indentedNewlineInCodeBlock(view.state, (transaction) => view.dispatch(transaction))
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
         }
         // Structural Enter is contextual, so a list, quote or fence otherwise
         // has no keyboard route to send at all. Mod+Enter always submits, and
