@@ -3,65 +3,133 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   clampCollapsedComposerCursor,
   collapseExpandedComposerCursor,
+  composerSubmissionIntentForEnter,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
   isCollapsedCursorAdjacentToInlineToken,
   parseStandaloneComposerSlashCommand,
   replaceTextRange,
-  shouldSubmitComposerOnEnter,
 } from "./composer-logic";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
-describe("shouldSubmitComposerOnEnter", () => {
+describe("composerSubmissionIntentForEnter", () => {
   it("submits plain Enter on desktop", () => {
-    expect(shouldSubmitComposerOnEnter({ isMobileViewport: false, shiftKey: false })).toBe(true);
+    expect(
+      composerSubmissionIntentForEnter({
+        isMobileViewport: false,
+        shiftKey: false,
+        modifierKey: false,
+        isDraftThread: true,
+      }),
+    ).toBe("foreground");
   });
 
   it("inserts a newline for plain Enter on mobile", () => {
-    expect(shouldSubmitComposerOnEnter({ isMobileViewport: true, shiftKey: false })).toBe(false);
+    expect(
+      composerSubmissionIntentForEnter({
+        isMobileViewport: true,
+        shiftKey: false,
+        modifierKey: false,
+        isDraftThread: true,
+      }),
+    ).toBeNull();
   });
 
   it("inserts a newline for Shift+Enter", () => {
-    expect(shouldSubmitComposerOnEnter({ isMobileViewport: false, shiftKey: true })).toBe(false);
+    expect(
+      composerSubmissionIntentForEnter({
+        isMobileViewport: false,
+        shiftKey: true,
+        modifierKey: false,
+        isDraftThread: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("submits a new thread in the background with Mod+Enter", () => {
+    expect(
+      composerSubmissionIntentForEnter({
+        isMobileViewport: false,
+        shiftKey: false,
+        modifierKey: true,
+        isDraftThread: true,
+      }),
+    ).toBe("background");
+  });
+
+  it("keeps Mod+Enter in the foreground for an active thread", () => {
+    expect(
+      composerSubmissionIntentForEnter({
+        isMobileViewport: false,
+        shiftKey: false,
+        modifierKey: true,
+        isDraftThread: false,
+      }),
+    ).toBe("foreground");
   });
 
   /**
-   * The "newline" mode moves sending to Cmd/Ctrl+Enter, which the editor routes
-   * separately, so plain Enter never submits here however it is pressed.
+   * The "newline" mode moves sending to Cmd/Ctrl+Enter, so a bare Enter never
+   * submits here however it is pressed.
    */
   it("never submits plain Enter when Enter is set to add a newline", () => {
     expect(
-      shouldSubmitComposerOnEnter({
+      composerSubmissionIntentForEnter({
         isMobileViewport: false,
         shiftKey: false,
+        modifierKey: false,
+        isDraftThread: false,
         enterBehavior: "newline",
       }),
-    ).toBe(false);
+    ).toBeNull();
     expect(
-      shouldSubmitComposerOnEnter({
+      composerSubmissionIntentForEnter({
         isMobileViewport: false,
         shiftKey: true,
+        modifierKey: false,
+        isDraftThread: false,
         enterBehavior: "newline",
       }),
-    ).toBe(false);
+    ).toBeNull();
+  });
+
+  /** Sending moves to the modifier, so Mod+Enter still submits in newline mode. */
+  it("still submits Mod+Enter when Enter is set to add a newline", () => {
+    expect(
+      composerSubmissionIntentForEnter({
+        isMobileViewport: false,
+        shiftKey: false,
+        modifierKey: true,
+        isDraftThread: false,
+        enterBehavior: "newline",
+      }),
+    ).toBe("foreground");
   });
 
   it("still submits plain Enter when Enter is set to send", () => {
     expect(
-      shouldSubmitComposerOnEnter({
+      composerSubmissionIntentForEnter({
         isMobileViewport: false,
         shiftKey: false,
+        modifierKey: false,
+        isDraftThread: false,
         enterBehavior: "send",
       }),
-    ).toBe(true);
+    ).toBe("foreground");
   });
 
   /** A narrow viewport wins regardless: there is no comfortable modifier there. */
   it("keeps Enter as a newline on a narrow viewport in either mode", () => {
     for (const enterBehavior of ["send", "newline"] as const) {
       expect(
-        shouldSubmitComposerOnEnter({ isMobileViewport: true, shiftKey: false, enterBehavior }),
-      ).toBe(false);
+        composerSubmissionIntentForEnter({
+          isMobileViewport: true,
+          shiftKey: false,
+          modifierKey: false,
+          isDraftThread: false,
+          enterBehavior,
+        }),
+      ).toBeNull();
     }
   });
 });

@@ -4,12 +4,12 @@ import { createContext, use, useMemo } from "react";
 
 import type { TerminalContextDraft } from "~/lib/terminalContext";
 import { basenameOfPath } from "~/pierre-icons";
-import { formatProviderSkillDisplayName } from "~/providerSkillPresentation";
+import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/providerSkills";
 
 import {
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_SKILL_CHIP_CLASS_NAME,
-  COMPOSER_INLINE_SKILL_CHIP_LABEL_CLASS_NAME,
+  COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
   SKILL_CHIP_ICON_SVG,
 } from "./composerInlineChip";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
@@ -89,7 +89,7 @@ function ComposerSkillChip(props: { name: string }) {
         className={COMPOSER_INLINE_CHIP_ICON_CLASS_NAME}
         dangerouslySetInnerHTML={{ __html: SKILL_CHIP_ICON_SVG }}
       />
-      <span className={COMPOSER_INLINE_SKILL_CHIP_LABEL_CLASS_NAME}>{label}</span>
+      <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{label}</span>
     </span>
   );
 

@@ -3,6 +3,7 @@ import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 export type ComposerTriggerKind = "path" | "slash-command" | "skill";
 export type ComposerSlashCommand = "model" | "plan" | "default";
+export type ComposerSubmissionIntent = "foreground" | "background";
 
 export interface ComposerTrigger {
   kind: ComposerTriggerKind;
@@ -17,17 +18,25 @@ export interface ComposerTrigger {
  */
 export type ComposerEnterBehavior = "send" | "newline";
 
-export function shouldSubmitComposerOnEnter(input: {
+export function composerSubmissionIntentForEnter(input: {
   isMobileViewport: boolean;
   shiftKey: boolean;
+  modifierKey: boolean;
+  isDraftThread: boolean;
   /** Defaults to sending, which is the behavior the composer has always had. */
   enterBehavior?: ComposerEnterBehavior;
-}): boolean {
+}): ComposerSubmissionIntent | null {
   // A narrow viewport is the phone-shaped case: Enter has to write a newline
   // there, because there is no comfortable modifier to reach for.
-  if (input.isMobileViewport) return false;
-  if (input.enterBehavior === "newline") return false;
-  return !input.shiftKey;
+  if (input.isMobileViewport || input.shiftKey) {
+    return null;
+  }
+  // When Enter writes a newline, sending moves to the modifier, so a bare Enter
+  // is no longer a submission at all.
+  if (input.enterBehavior === "newline" && !input.modifierKey) {
+    return null;
+  }
+  return input.modifierKey && input.isDraftThread ? "background" : "foreground";
 }
 
 const isInlineTokenSegment = (
