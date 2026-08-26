@@ -143,11 +143,11 @@ function selectionEatsTokenBoundaryWhitespace(
 export const composerSurroundKey = new PluginKey("composerSurroundSelection");
 
 /**
- * Known gap: macOS dead keys (Option+` then Space) deliver the backtick through
- * composition, and prosemirror-view's keypress handler bails out near a
- * composition before `handleTextInput` runs, so that route does not wrap. The
- * Lexical plugin carried a separate `beforeinput`/`compositionend` state machine
- * for it. Ordinary typed delimiters are unaffected.
+ * `handleTextInput` covers delimiters typed as ordinary keypresses, which is
+ * every direct key on every layout. Characters delivered through IME
+ * composition instead — a macOS dead key such as Option+` then Space — arrive
+ * on a path prosemirror-view deliberately keeps clear of text-input handling,
+ * and insert literally rather than wrapping the selection.
  */
 export const TiptapComposerSurround = Extension.create({
   name: "composerSurroundSelection",
