@@ -302,11 +302,16 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
     const adjacentToToken =
       isCollapsedCursorAdjacentToInlineToken(snapshot.value, snapshot.cursor, "left") ||
       isCollapsedCursorAdjacentToInlineToken(snapshot.value, snapshot.cursor, "right");
+    // The trigger runs on the flat prompt text, where a fence's first line and
+    // a paragraph look alike, so it would offer commands for a `/` that is
+    // simply code. The editor is the only place that still knows the caret is
+    // inside a code block.
+    const insideCodeBlock = editor.state.selection.$from.parent.type.spec.code === true;
     emitChange(
       snapshot.value,
       snapshot.cursor,
       snapshot.expandedCursor,
-      adjacentToToken,
+      adjacentToToken || insideCodeBlock,
       snapshot.terminalContextIds,
     );
   }, []);

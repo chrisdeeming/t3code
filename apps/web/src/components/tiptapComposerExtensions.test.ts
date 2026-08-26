@@ -336,4 +336,26 @@ describe("Tiptap composer Markdown", () => {
 
     expect(getTiptapComposerMarkdown(editor)).toBe("> quoted");
   });
+
+  /**
+   * The composer suppresses its trigger menu inside a fence by asking the
+   * editor whether the caret's parent is a code block — the flat prompt text
+   * cannot tell a fence's first line from a paragraph, so a `/` that is simply
+   * code would otherwise offer commands.
+   */
+  it("marks a code block as code so the trigger menu can be suppressed there", () => {
+    const editor = createComposerEditor("```js\nconst x = 1;\n```");
+    editor.commands.setTextSelection(3);
+
+    expect(editor.state.selection.$from.parent.type.spec.code).toBe(true);
+  });
+
+  it("leaves a paragraph and a list item unmarked, so the menu still opens", () => {
+    for (const markdown of ["plain text", "- list item"]) {
+      const editor = createComposerEditor(markdown);
+      editor.commands.setTextSelection(3);
+
+      expect(editor.state.selection.$from.parent.type.spec.code).not.toBe(true);
+    }
+  });
 });

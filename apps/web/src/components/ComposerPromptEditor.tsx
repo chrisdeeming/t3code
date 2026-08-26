@@ -37,7 +37,13 @@ export interface ComposerPromptEditorProps {
     nextValue: string,
     nextCursor: number,
     expandedCursor: number,
-    cursorAdjacentToMention: boolean,
+    /**
+     * Whether the composer should skip opening a trigger menu for this change.
+     * Set when the caret sits somewhere a menu would be wrong: beside a mention
+     * chip, where the `@` belongs to the chip rather than a new query, or inside
+     * a code fence, where every character is content.
+     */
+    suppressTrigger: boolean,
     terminalContextIds: string[],
   ) => void;
   onCommandKeyDown?: (

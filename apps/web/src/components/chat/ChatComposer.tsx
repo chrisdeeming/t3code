@@ -656,7 +656,7 @@ export interface ChatComposerProps {
     value: string,
     nextCursor: number,
     expandedCursor: number,
-    cursorAdjacentToMention: boolean,
+    suppressTrigger: boolean,
   ) => void;
 
   onProviderModelSelect: (instanceId: ProviderInstanceId, model: string) => void;
@@ -1674,20 +1674,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       nextPrompt: string,
       nextCursor: number,
       expandedCursor: number,
-      cursorAdjacentToMention: boolean,
+      suppressTrigger: boolean,
       terminalContextIds: string[],
     ) => {
       if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
         setComposerCursor(nextCursor);
         setComposerTrigger(
-          cursorAdjacentToMention ? null : detectComposerTrigger(nextPrompt, expandedCursor),
+          suppressTrigger ? null : detectComposerTrigger(nextPrompt, expandedCursor),
         );
         onChangeActivePendingUserInputCustomAnswer(
           activePendingProgress.activeQuestion.id,
           nextPrompt,
           nextCursor,
           expandedCursor,
-          cursorAdjacentToMention,
+          suppressTrigger,
         );
         return;
       }
@@ -1701,7 +1701,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       setComposerCursor(nextCursor);
       setComposerTrigger(
-        cursorAdjacentToMention ? null : detectComposerTrigger(nextPrompt, expandedCursor),
+        suppressTrigger ? null : detectComposerTrigger(nextPrompt, expandedCursor),
       );
     },
     [
