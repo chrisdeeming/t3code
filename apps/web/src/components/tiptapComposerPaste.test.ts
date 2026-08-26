@@ -7,6 +7,7 @@ import {
   composerPasteAppliesTo,
   composerPasteContent,
   pasteAbutsNonWhitespace,
+  pasteAbutsNonWhitespaceAfter,
   pastedTextLooksLikeMarkdown,
   plainTextContent,
 } from "./tiptapComposerPaste";
@@ -221,5 +222,49 @@ describe("Tiptap composer paste", () => {
     editor.commands.setTextSelection(editor.state.doc.content.size - 1);
 
     expect(pasteAbutsNonWhitespace(editor.state.selection.$from)).toBe(true);
+  });
+
+  /**
+   * Pasting a mention over a selected chip left the spaces that surrounded the
+   * chip in place, so the trailing space the grammar adds became a second one
+   * and the prompt grew a space on every such paste.
+   */
+  it("omits the trailing space when whitespace already follows the paste", () => {
+    const content = composerPasteContent("[a.ts](src/a.ts)", false, false);
+
+    expect(content?.at(-1)).toEqual({
+      type: "composerToken",
+      attrs: { kind: "mention", value: "src/a.ts" },
+    });
+  });
+
+  it("keeps the trailing space when real text follows the paste", () => {
+    const content = composerPasteContent("[a.ts](src/a.ts)", false, true);
+
+    expect(content?.at(-1)).toEqual({ type: "text", text: " " });
+  });
+
+  it("reads whitespace from the node after the selection", () => {
+    const editor = createComposerEditor("lead [a.ts](src/a.ts) tail");
+    const { doc } = editor.state;
+    let chipPos = -1;
+    doc.descendants((node, pos) => {
+      if (node.type.name === "composerToken") chipPos = pos;
+    });
+
+    // Replacing the chip: " tail" follows it, so no separator is needed.
+    expect(pasteAbutsNonWhitespaceAfter(TextSelection.create(doc, chipPos, chipPos + 1).$to)).toBe(
+      false,
+    );
+    // A caret at the start sits against "lead", which does need one.
+    expect(pasteAbutsNonWhitespaceAfter(TextSelection.create(doc, 1, 1).$to)).toBe(true);
+  });
+
+  /** Nothing after the caret means nothing to fuse with. */
+  it("treats the end of a block as whitespace", () => {
+    const editor = createComposerEditor("lead ");
+    const end = TextSelection.create(editor.state.doc, editor.state.doc.content.size - 1);
+
+    expect(pasteAbutsNonWhitespaceAfter(end.$to)).toBe(false);
   });
 });

@@ -17,6 +17,7 @@ import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineToken
 export function composerPasteContent(
   text: string,
   abutsNonWhitespace: boolean,
+  abutsNonWhitespaceAfter = true,
 ): JSONContent[] | null {
   // Token grammar requires trailing whitespace; a virtual newline lets a
   // mention at the very end of the pasted text still parse.
@@ -51,7 +52,9 @@ export function composerPasteContent(
 
   if (cursor < text.length) {
     appendText(text.slice(cursor));
-  } else {
+  } else if (abutsNonWhitespaceAfter) {
+    // The paste ends on a mention, whose grammar needs whitespace after it —
+    // but only when the document does not already supply some.
     content.push({ type: "text", text: " " });
   }
 
@@ -166,7 +169,11 @@ export const TiptapComposerPaste = Extension.create({
               return true;
             }
 
-            const mentions = composerPasteContent(text, pasteAbutsNonWhitespace($from));
+            const mentions = composerPasteContent(
+              text,
+              pasteAbutsNonWhitespace($from),
+              pasteAbutsNonWhitespaceAfter(view.state.selection.$to),
+            );
             if (mentions) {
               editor.commands.insertContent(mentions);
               return true;
@@ -195,5 +202,24 @@ export function pasteAbutsNonWhitespace($from: ResolvedPos): boolean {
   if (before.type.name === "composerToken") return true;
   if (!before.isText) return false;
   const character = before.text?.slice(-1) ?? "";
+  return character.length > 0 && !/\s/.test(character);
+}
+
+/**
+ * The mirror of `pasteAbutsNonWhitespace` for the other end of the paste: true
+ * when the text after the insertion point starts with something the mention
+ * grammar would need a space against.
+ *
+ * The end of a block counts as whitespace, because there is nothing there to
+ * fuse with. Without this a mention pasted before existing text — or over a
+ * selected chip, where the replaced range leaves its surrounding spaces intact
+ * — gained a space it did not need and the prompt grew one every time.
+ */
+export function pasteAbutsNonWhitespaceAfter($to: ResolvedPos): boolean {
+  const after = $to.nodeAfter;
+  if (!after) return false;
+  if (after.type.name === "composerToken") return true;
+  if (!after.isText) return false;
+  const character = after.text?.slice(0, 1) ?? "";
   return character.length > 0 && !/\s/.test(character);
 }
