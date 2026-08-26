@@ -90,7 +90,7 @@ import {
 } from "../../lib/attachmentUploadState";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { getTerminalFocusOwner } from "../../lib/terminalFocus";
-import { resolveShortcutCommand } from "../../keybindings";
+import { resolveShortcutCommand, shortcutLabelForCommand } from "../../keybindings";
 import {
   type TerminalContextDraft,
   type TerminalContextSelection,
@@ -114,6 +114,7 @@ import {
 } from "../ComposerPromptEditor";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
+import { ComposerSourceEditor, ComposerSourceToggle } from "./ComposerSourceView";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
@@ -1051,6 +1052,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const [composerMenuAnchor, setComposerMenuAnchor] = useState<HTMLDivElement | null>(null);
   const [isStashMenuOpen, setIsStashMenuOpen] = useState(false);
+  const [isSourceViewOpen, setIsSourceViewOpen] = useState(false);
   const [isTasksDrawerOpen, setIsTasksDrawerOpen] = useState(false);
   const [dismissedTasksTurnId, setDismissedTasksTurnId] = useState<TurnId | null>(null);
   const [stashPulse, setStashPulse] = useState<{ key: number; active: boolean }>({
@@ -2595,6 +2597,37 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     terminalOpen,
   ]);
 
+  // Source view is a rich-composer affordance: the Lexical editor already shows
+  // its own Markdown, so there is nothing to reveal there.
+  const sourceViewAvailable =
+    settings.tiptapComposerEnabled &&
+    !isComposerApprovalState &&
+    !projectSelectionRequired &&
+    activePendingProgress === null;
+
+  useEffect(() => {
+    if (!sourceViewAvailable && isSourceViewOpen) setIsSourceViewOpen(false);
+  }, [sourceViewAvailable, isSourceViewOpen]);
+
+  useEffect(() => {
+    const handler = (event: globalThis.KeyboardEvent) => {
+      const command = resolveShortcutCommand(event, keybindings, {
+        context: {
+          terminalFocus: getTerminalFocusOwner() !== null,
+          terminalOpen,
+          modelPickerOpen: isComposerModelPickerOpen,
+        },
+      });
+      if (command !== "composer.toggleSource") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (isCommandPaletteOpen() || !sourceViewAvailable) return;
+      setIsSourceViewOpen((open) => !open);
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [isComposerModelPickerOpen, keybindings, sourceViewAvailable, terminalOpen]);
+
   // ------------------------------------------------------------------
   // Callbacks: images
   // ------------------------------------------------------------------
@@ -3402,6 +3435,28 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 )}
 
               <div className="relative">
+                {isSourceViewOpen ? (
+                  <ComposerSourceEditor
+                    value={prompt}
+                    placeholder="Markdown source"
+                    disabled={isConnecting}
+                    {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
+                    onChange={(next) => {
+                      promptRef.current = next;
+                      setPrompt(next);
+                      // Autocomplete is off in source view, so any live trigger
+                      // from the rich editor has to be cleared rather than left
+                      // pointing at offsets the user can now edit freely.
+                      setComposerTrigger(null);
+                    }}
+                    onSubmit={() => {
+                      submitComposer();
+                    }}
+                    onClose={() => {
+                      setIsSourceViewOpen(false);
+                    }}
+                  />
+                ) : (
                 <ComposerPromptEditor
                   editorRef={composerEditorRef}
                   useTiptapComposer={settings.tiptapComposerEnabled}
@@ -3447,6 +3502,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   }
                   disabled={isConnecting || isComposerApprovalState || projectSelectionRequired}
                 />
+                )}
                 {showMobilePendingAnswerActions ? (
                   <div
                     data-chat-composer-mobile-pending-actions="true"
@@ -3497,6 +3553,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 )}
               >
                 <div className="-m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {/* Placement: moving this line moves the control. */}
+                  {sourceViewAvailable ? (
+                    <ComposerSourceToggle
+                      open={isSourceViewOpen}
+                      shortcutLabel={shortcutLabelForCommand(keybindings, "composer.toggleSource")}
+                      onToggle={() => {
+                        setIsSourceViewOpen((open) => !open);
+                      }}
+                    />
+                  ) : null}
                   {noProviderAvailable ? (
                     <Button
                       type="button"
