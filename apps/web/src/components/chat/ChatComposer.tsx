@@ -114,7 +114,11 @@ import {
 } from "../ComposerPromptEditor";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
-import { ComposerSourceEditor, ComposerSourceToggle } from "./ComposerSourceView";
+import {
+  ComposerSourceEditor,
+  ComposerSourceToggle,
+  reconcileSourceTerminalContexts,
+} from "./ComposerSourceView";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
@@ -3441,67 +3445,97 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     placeholder="Markdown source"
                     disabled={isConnecting}
                     {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
-                    onChange={(next) => {
-                      promptRef.current = next;
-                      setPrompt(next);
+                    onChange={(next, cursor) => {
+                      const reconciled = reconcileSourceTerminalContexts({
+                        currentPrompt: promptRef.current,
+                        nextPrompt: next,
+                        nextCursor: cursor,
+                        terminalContextIds: composerTerminalContexts.map((context) => context.id),
+                      });
+                      promptRef.current = reconciled.prompt;
+                      setPrompt(reconciled.prompt);
+                      setComposerCursor(
+                        collapseExpandedComposerCursor(reconciled.prompt, reconciled.cursor),
+                      );
+                      if (
+                        !terminalContextIdListsEqual(
+                          composerTerminalContexts,
+                          reconciled.terminalContextIds,
+                        )
+                      ) {
+                        setComposerDraftTerminalContexts(
+                          composerDraftTarget,
+                          syncTerminalContextsByIds(
+                            composerTerminalContexts,
+                            reconciled.terminalContextIds,
+                          ),
+                        );
+                      }
                       // Autocomplete is off in source view, so any live trigger
                       // from the rich editor has to be cleared rather than left
                       // pointing at offsets the user can now edit freely.
                       setComposerTrigger(null);
                     }}
                     onSubmit={() => {
-                      submitComposer();
+                      const intent = composerSubmissionIntentForEnter({
+                        isMobileViewport,
+                        shiftKey: false,
+                        modifierKey: true,
+                        isDraftThread: routeKind === "draft",
+                        enterBehavior: settings.composerEnterBehavior,
+                      });
+                      submitComposer(undefined, intent ?? "foreground");
                     }}
                     onClose={() => {
                       setIsSourceViewOpen(false);
                     }}
                   />
                 ) : (
-                <ComposerPromptEditor
-                  editorRef={composerEditorRef}
-                  useTiptapComposer={settings.tiptapComposerEnabled}
-                  value={
-                    isComposerApprovalState
-                      ? ""
-                      : activePendingProgress
-                        ? activePendingProgress.customAnswer
-                        : prompt
-                  }
-                  cursor={composerCursor}
-                  terminalContexts={
-                    !isComposerApprovalState && pendingUserInputs.length === 0
-                      ? composerTerminalContexts
-                      : []
-                  }
-                  skills={selectedProviderStatus?.skills ?? []}
-                  {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
-                  onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
-                  onChange={onPromptChange}
-                  onCommandKeyDown={onComposerCommandKey}
-                  onPaste={onComposerPaste}
-                  {...(props.onDebugSnapshotChange &&
-                  settings.tiptapComposerEnabled &&
-                  settings.tiptapComposerDebugPanelEnabled
-                    ? { onDebugSnapshotChange: props.onDebugSnapshotChange }
-                    : {})}
-                  placeholder={
-                    isComposerApprovalState
-                      ? (activePendingApproval?.detail ??
-                        "Resolve this approval request to continue")
-                      : activePendingProgress
-                        ? "Type your own answer, or leave this blank to use the selected option"
-                        : showPlanFollowUpPrompt && activeProposedPlan
-                          ? "Add feedback to refine the plan, or leave this blank to implement it"
-                          : projectSelectionRequired
-                            ? "Choose a project above to start a thread"
-                            : noProviderAvailable
-                              ? "Enable a provider in Settings to send a message"
-                              : phase === "disconnected"
-                                ? DISCONNECTED_COMPOSER_PLACEHOLDER
-                                : "Ask anything, @tag files/folders, $use skills, or / for commands"
-                  }
-                  disabled={isConnecting || isComposerApprovalState || projectSelectionRequired}
-                />
+                  <ComposerPromptEditor
+                    editorRef={composerEditorRef}
+                    useTiptapComposer={settings.tiptapComposerEnabled}
+                    value={
+                      isComposerApprovalState
+                        ? ""
+                        : activePendingProgress
+                          ? activePendingProgress.customAnswer
+                          : prompt
+                    }
+                    cursor={composerCursor}
+                    terminalContexts={
+                      !isComposerApprovalState && pendingUserInputs.length === 0
+                        ? composerTerminalContexts
+                        : []
+                    }
+                    skills={selectedProviderStatus?.skills ?? []}
+                    {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
+                    onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
+                    onChange={onPromptChange}
+                    onCommandKeyDown={onComposerCommandKey}
+                    onPaste={onComposerPaste}
+                    {...(props.onDebugSnapshotChange &&
+                    settings.tiptapComposerEnabled &&
+                    settings.tiptapComposerDebugPanelEnabled
+                      ? { onDebugSnapshotChange: props.onDebugSnapshotChange }
+                      : {})}
+                    placeholder={
+                      isComposerApprovalState
+                        ? (activePendingApproval?.detail ??
+                          "Resolve this approval request to continue")
+                        : activePendingProgress
+                          ? "Type your own answer, or leave this blank to use the selected option"
+                          : showPlanFollowUpPrompt && activeProposedPlan
+                            ? "Add feedback to refine the plan, or leave this blank to implement it"
+                            : projectSelectionRequired
+                              ? "Choose a project above to start a thread"
+                              : noProviderAvailable
+                                ? "Enable a provider in Settings to send a message"
+                                : phase === "disconnected"
+                                  ? DISCONNECTED_COMPOSER_PLACEHOLDER
+                                  : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                    }
+                    disabled={isConnecting || isComposerApprovalState || projectSelectionRequired}
+                  />
                 )}
                 {showMobilePendingAnswerActions ? (
                   <div
@@ -3631,7 +3665,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
                       <ComposerSourceToggle
                         open={isSourceViewOpen}
-                        shortcutLabel={shortcutLabelForCommand(keybindings, "composer.toggleSource")}
+                        shortcutLabel={shortcutLabelForCommand(
+                          keybindings,
+                          "composer.toggleSource",
+                        )}
                         onToggle={() => {
                           setIsSourceViewOpen((open) => !open);
                         }}

@@ -1806,7 +1806,7 @@ function BetaFeaturesSection() {
             />
             <SettingsRow
               {...searchableSetting("beta-tiptap-composer")}
-              description="Writes prompts in a rich Markdown editor: headings, lists and quotes format as you type, and fenced code is highlighted. Drafts are stored as Markdown either way, so you can switch back at any time without losing work."
+              description="Writes prompts in a rich Markdown editor: headings, lists and quotes format as you type, and fenced code is highlighted. Drafts remain compatible with the standard composer, although equivalent Markdown syntax may be normalized."
               control={
                 <Switch
                   checked={settings.tiptapComposerEnabled}

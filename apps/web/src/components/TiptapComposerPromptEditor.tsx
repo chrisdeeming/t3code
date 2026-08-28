@@ -34,10 +34,7 @@ import {
   stampComposerTerminalContextIds,
   tiptapComposerExtensions,
 } from "./tiptapComposerExtensions";
-import {
-  indentCodeBlock,
-  indentedNewlineInCodeBlock,
-} from "./tiptapComposerCodeBlockIndent";
+import { indentCodeBlock, indentedNewlineInCodeBlock } from "./tiptapComposerCodeBlockIndent";
 import { composerTokenNodeView } from "./tiptapComposerNodeViews";
 import { ComposerTokenMetadataProvider } from "./TiptapComposerTokenView";
 
@@ -72,6 +69,12 @@ export function convertTiptapCodeFenceOnEnter(
   transaction.scrollIntoView();
   dispatch(transaction);
   return true;
+}
+
+export function shouldConvertTiptapCodeFenceForEnter(
+  event: Pick<KeyboardEvent, "key" | "shiftKey" | "metaKey" | "ctrlKey">,
+): boolean {
+  return event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey;
 }
 
 export function serializeTiptapComposerWithCursor(
@@ -379,8 +382,7 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
           return indented;
         }
         if (
-          event.key === "Enter" &&
-          !event.shiftKey &&
+          shouldConvertTiptapCodeFenceForEnter(event) &&
           convertTiptapCodeFenceOnEnter(view.state, (transaction) => view.dispatch(transaction))
         ) {
           event.preventDefault();

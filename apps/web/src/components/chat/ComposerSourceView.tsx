@@ -2,6 +2,7 @@ import { CodeIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { cn } from "~/lib/utils";
+import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
 
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -54,11 +55,63 @@ export interface ComposerSourceEditorProps {
   placeholder: string;
   disabled: boolean;
   className?: string;
-  onChange: (next: string) => void;
+  onChange: (next: string, cursor: number) => void;
   /** Cmd/Ctrl+Enter, matching the editor's own escape hatch to send. */
   onSubmit: () => void;
   /** Escape returns to the rich editor without sending. */
   onClose: () => void;
+}
+
+const countTerminalContextPlaceholders = (value: string): number =>
+  value.split(INLINE_TERMINAL_CONTEXT_PLACEHOLDER).length - 1;
+
+/**
+ * Keeps identity-bearing terminal contexts aligned while their identity-free
+ * placeholders are edited in the source textarea. Context placeholders that
+ * survive in the unchanged prefix or suffix retain their ids. Placeholders in
+ * the replaced span are removals; newly typed or pasted placeholders are
+ * stripped because source text cannot invent a matching context draft.
+ */
+export function reconcileSourceTerminalContexts(input: {
+  currentPrompt: string;
+  nextPrompt: string;
+  nextCursor: number;
+  terminalContextIds: ReadonlyArray<string>;
+}): { prompt: string; cursor: number; terminalContextIds: string[] } {
+  const { currentPrompt, nextPrompt, terminalContextIds } = input;
+  let prefix = 0;
+  const maxPrefix = Math.min(currentPrompt.length, nextPrompt.length);
+  while (prefix < maxPrefix && currentPrompt[prefix] === nextPrompt[prefix]) prefix += 1;
+
+  let suffix = 0;
+  const maxSuffix = Math.min(currentPrompt.length - prefix, nextPrompt.length - prefix);
+  while (
+    suffix < maxSuffix &&
+    currentPrompt[currentPrompt.length - 1 - suffix] === nextPrompt[nextPrompt.length - 1 - suffix]
+  ) {
+    suffix += 1;
+  }
+
+  const prefixContextCount = countTerminalContextPlaceholders(currentPrompt.slice(0, prefix));
+  const suffixContextCount = countTerminalContextPlaceholders(
+    currentPrompt.slice(currentPrompt.length - suffix),
+  );
+  const changedEnd = nextPrompt.length - suffix;
+  const changed = nextPrompt.slice(prefix, changedEnd);
+  const sanitizedChanged = changed.replaceAll(INLINE_TERMINAL_CONTEXT_PLACEHOLDER, "");
+  const prompt = `${nextPrompt.slice(0, prefix)}${sanitizedChanged}${nextPrompt.slice(changedEnd)}`;
+  const removedBeforeCursor = countTerminalContextPlaceholders(
+    changed.slice(0, Math.max(0, input.nextCursor - prefix)),
+  );
+
+  return {
+    prompt,
+    cursor: Math.max(0, input.nextCursor - removedBeforeCursor),
+    terminalContextIds: [
+      ...terminalContextIds.slice(0, prefixContextCount),
+      ...(suffixContextCount > 0 ? terminalContextIds.slice(-suffixContextCount) : []),
+    ],
+  };
 }
 
 /**
@@ -107,7 +160,7 @@ export function ComposerSourceEditor(props: ComposerSourceEditorProps) {
       disabled={props.disabled}
       aria-label="Markdown source"
       onChange={(event) => {
-        props.onChange(event.target.value);
+        props.onChange(event.target.value, event.target.selectionStart);
       }}
       onKeyDown={(event) => {
         if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {

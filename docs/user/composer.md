@@ -4,6 +4,21 @@ Messages can contain up to 120,000 characters. If a draft is longer, T3 Code kee
 composer and shows how many characters need to be removed. Shorten the draft or split it into
 multiple messages, then send again in the same thread.
 
+On web and desktop, **Settings → General → Beta features** includes an optional rich Markdown
+composer. It formats headings, lists, quotes, and code fences while you type and highlights fenced
+code. Drafts remain compatible with the standard composer, but switching editors may normalize
+equivalent Markdown syntax, such as emphasis delimiters or backslash escapes. The mobile composer
+continues to edit the same draft as plain text and does not currently render the rich editor.
+
+When the rich composer is enabled, use the source button or `Cmd+/` on macOS and `Ctrl+/` on
+Windows and Linux to edit its Markdown directly. Enter inserts a line break in source view;
+`Cmd+Enter` or `Ctrl+Enter` sends. Terminal-context markers shown in source are tied to their
+captured contexts: deleting one removes that context, and copied markers do not create contexts.
+
+The **Enter key behavior** setting chooses whether Enter sends or inserts a new paragraph. In the
+latter mode, use `Cmd+Enter` or `Ctrl+Enter` to send. Inside lists, quotes, and code fences, Enter
+continues the current structure; the modifier shortcut sends from anywhere.
+
 On servers that support direct uploads, images upload as soon as you add them. The send button
 becomes available after every upload finishes. Failed uploads can be retried or removed.
 

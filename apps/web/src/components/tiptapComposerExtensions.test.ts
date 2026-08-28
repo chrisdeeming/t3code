@@ -6,6 +6,7 @@ import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
 import {
   convertTiptapCodeFenceOnEnter,
   serializeTiptapComposerWithCursor,
+  shouldConvertTiptapCodeFenceForEnter,
   tiptapComposerPositionForExpandedCursor,
 } from "./TiptapComposerPromptEditor";
 import { getTiptapComposerMarkdown, tiptapComposerExtensions } from "./tiptapComposerExtensions";
@@ -296,6 +297,25 @@ describe("Tiptap composer Markdown", () => {
       ),
     ).toBe(true);
     expect(editor.getJSON().content).toEqual([{ type: "codeBlock", attrs: { language } }]);
+  });
+
+  it("reserves modifier-Enter for submission instead of converting a fence", () => {
+    expect(
+      shouldConvertTiptapCodeFenceForEnter({
+        key: "Enter",
+        shiftKey: false,
+        metaKey: true,
+        ctrlKey: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldConvertTiptapCodeFenceForEnter({
+        key: "Enter",
+        shiftKey: false,
+        metaKey: false,
+        ctrlKey: true,
+      }),
+    ).toBe(false);
   });
 
   it("keeps a trailing code-block escape paragraph out of Markdown", () => {

@@ -1,7 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ComposerSourceEditor, ComposerSourceToggle } from "./ComposerSourceView";
+import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
+
+import {
+  ComposerSourceEditor,
+  ComposerSourceToggle,
+  reconcileSourceTerminalContexts,
+} from "./ComposerSourceView";
 
 describe("ComposerSourceToggle", () => {
   it("advertises the shortcut and its pressed state when open", () => {
@@ -15,9 +21,7 @@ describe("ComposerSourceToggle", () => {
   });
 
   it("reads as closed and offers to show the source", () => {
-    const markup = renderToStaticMarkup(
-      <ComposerSourceToggle open={false} onToggle={() => {}} />,
-    );
+    const markup = renderToStaticMarkup(<ComposerSourceToggle open={false} onToggle={() => {}} />);
 
     expect(markup).toContain('data-composer-source-toggle="closed"');
     expect(markup).toContain('aria-pressed="false"');
@@ -94,5 +98,45 @@ describe("ComposerSourceEditor", () => {
     expect(markup).toContain('spellCheck="false"');
     expect(markup).toContain('autoCorrect="off"');
     expect(markup).toContain('autoCapitalize="off"');
+  });
+});
+
+describe("reconcileSourceTerminalContexts", () => {
+  const placeholder = INLINE_TERMINAL_CONTEXT_PLACEHOLDER;
+
+  it("removes the context whose middle placeholder was deleted", () => {
+    const result = reconcileSourceTerminalContexts({
+      currentPrompt: `one ${placeholder} two ${placeholder} three ${placeholder}`,
+      nextPrompt: `one ${placeholder} two  three ${placeholder}`,
+      nextCursor: 11,
+      terminalContextIds: ["one", "two", "three"],
+    });
+
+    expect(result.prompt).toBe(`one ${placeholder} two  three ${placeholder}`);
+    expect(result.terminalContextIds).toEqual(["one", "three"]);
+  });
+
+  it("does not let pasted source placeholders invent or shift contexts", () => {
+    const result = reconcileSourceTerminalContexts({
+      currentPrompt: `before ${placeholder} after`,
+      nextPrompt: `copied ${placeholder} before ${placeholder} after`,
+      nextCursor: 9,
+      terminalContextIds: ["existing"],
+    });
+
+    expect(result.prompt).toBe(`copied  before ${placeholder} after`);
+    expect(result.cursor).toBe(8);
+    expect(result.terminalContextIds).toEqual(["existing"]);
+  });
+
+  it("keeps all contexts when ordinary source text changes", () => {
+    const result = reconcileSourceTerminalContexts({
+      currentPrompt: `${placeholder} explain old ${placeholder}`,
+      nextPrompt: `${placeholder} explain new ${placeholder}`,
+      nextCursor: 13,
+      terminalContextIds: ["first", "second"],
+    });
+
+    expect(result.terminalContextIds).toEqual(["first", "second"]);
   });
 });
