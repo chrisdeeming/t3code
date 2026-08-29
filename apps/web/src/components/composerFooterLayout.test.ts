@@ -74,7 +74,6 @@ describe("shouldUseRestingComposerLayout", () => {
     isExistingThread: true,
     isMobileViewport: false,
     isFocused: false,
-    hasAttachments: false,
     hasExpandedChrome: false,
     hasInlineAccessories: false,
   };
@@ -97,10 +96,6 @@ describe("shouldUseRestingComposerLayout", () => {
 
   it("expands when focus is anywhere in the composer", () => {
     expect(shouldUseRestingComposerLayout({ ...resting, isFocused: true })).toBe(false);
-  });
-
-  it("keeps attachments at their full editing height", () => {
-    expect(shouldUseRestingComposerLayout({ ...resting, hasAttachments: true })).toBe(false);
   });
 
   it("keeps drawers and composer-owned menus expanded", () => {

@@ -21,16 +21,17 @@ export function shouldUseRestingComposerLayout(input: {
   isExistingThread: boolean;
   isMobileViewport: boolean;
   isFocused: boolean;
-  hasAttachments: boolean;
   hasExpandedChrome: boolean;
   hasInlineAccessories: boolean;
 }): boolean {
+  // Passive draft content is deliberately absent here. Resting only clamps
+  // the prompt row and overlays its actions; attachment and context rows keep
+  // their natural height above it.
   return (
     input.hasControlsHost &&
     input.isExistingThread &&
     !input.isMobileViewport &&
     !input.isFocused &&
-    !input.hasAttachments &&
     !input.hasExpandedChrome &&
     !input.hasInlineAccessories
   );

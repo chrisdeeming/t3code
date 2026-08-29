@@ -176,6 +176,7 @@ type ComposerCommandMenuPosition = {
 const COMPOSER_SCROLL_COLLAPSE_THRESHOLD_PX = 24;
 const COMPOSER_SCROLL_GESTURE_RESET_MS = 120;
 const COMPOSER_RESTING_TRANSITION_DURATION_MS = 180;
+const COMPOSER_RESTING_TRANSITION_CLEANUP_BUFFER_MS = 50;
 const COMPOSER_RESTING_TRANSITION_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
 
 function useComposerRestingTransition(isResting: boolean) {
@@ -190,6 +191,7 @@ function useComposerRestingTransition(isResting: boolean) {
   const animationRef = useRef<Animation | null>(null);
   const animationTargetHeightRef = useRef<number | null>(null);
   const contentAnimationsRef = useRef<Animation[]>([]);
+  const transitionCleanupTimeoutRef = useRef<number | null>(null);
 
   const clearTransitionStyles = useCallback(() => {
     const element = elementRef.current;
@@ -235,6 +237,10 @@ function useComposerRestingTransition(isResting: boolean) {
           ? interruptedAnimation.currentTime
           : null;
       const interruptedDuration = interruptedAnimation?.effect?.getComputedTiming().duration;
+      if (transitionCleanupTimeoutRef.current !== null) {
+        window.clearTimeout(transitionCleanupTimeoutRef.current);
+        transitionCleanupTimeoutRef.current = null;
+      }
       interruptedAnimation?.cancel();
       animationRef.current = null;
       for (const animation of contentAnimationsRef.current) animation.cancel();
@@ -329,15 +335,32 @@ function useComposerRestingTransition(isResting: boolean) {
         animateContentPosition(prompt, previousPromptTop);
         animateContentPosition(action, previousActionTop);
         contentAnimationsRef.current = contentAnimations;
-        void animation.finished
-          .catch(() => undefined)
-          .then(() => {
-            if (animationRef.current !== animation) return;
-            animationRef.current = null;
-            animationTargetHeightRef.current = null;
-            contentAnimationsRef.current = [];
-            clearTransitionStyles();
-          });
+
+        const finishTransition = (cancelAnimations: boolean) => {
+          if (animationRef.current !== animation) return;
+          if (transitionCleanupTimeoutRef.current !== null) {
+            window.clearTimeout(transitionCleanupTimeoutRef.current);
+            transitionCleanupTimeoutRef.current = null;
+          }
+          if (cancelAnimations) {
+            animation.cancel();
+            for (const contentAnimation of contentAnimationsRef.current) {
+              contentAnimation.cancel();
+            }
+          }
+          animationRef.current = null;
+          animationTargetHeightRef.current = null;
+          contentAnimationsRef.current = [];
+          clearTransitionStyles();
+        };
+        void animation.finished.catch(() => undefined).then(() => finishTransition(false));
+        // A suspended document timeline can leave `finished` pending while
+        // these measurement styles remain active. Wall-clock cleanup makes
+        // the natural layout the eventual source of truth in that case.
+        transitionCleanupTimeoutRef.current = window.setTimeout(
+          () => finishTransition(true),
+          duration + COMPOSER_RESTING_TRANSITION_CLEANUP_BUFFER_MS,
+        );
       } else {
         animationTargetHeightRef.current = null;
       }
@@ -391,6 +414,10 @@ function useComposerRestingTransition(isResting: boolean) {
 
   useEffect(() => {
     return () => {
+      if (transitionCleanupTimeoutRef.current !== null) {
+        window.clearTimeout(transitionCleanupTimeoutRef.current);
+        transitionCleanupTimeoutRef.current = null;
+      }
       animationRef.current?.cancel();
       animationRef.current = null;
       animationTargetHeightRef.current = null;
@@ -1734,14 +1761,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const showCollapsedMobilePromptRow =
     isComposerCollapsedMobile && !isComposerApprovalState && pendingUserInputs.length === 0;
   const showComposerAttachAction = fileStagingLimit !== null && pendingUserInputs.length === 0;
-  const composerHasAttachments =
-    composerImages.length > 0 ||
-    composerFiles.length > 0 ||
-    composerTerminalContexts.length > 0 ||
-    composerElementContexts.length > 0 ||
-    composerPreviewAnnotations.length > 0 ||
-    composerReviewComments.length > 0;
-
   const composerFooterHasWideActions = showPlanFollowUpPrompt || activePendingProgress !== null;
   const composerFooterActionLayoutKey = useMemo(() => {
     if (activePendingProgress) {
@@ -3259,7 +3278,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isExistingThread: routeKind === "server" && activeThreadId !== null,
     isMobileViewport,
     isFocused: isComposerFocused && !isComposerScrollCollapsed,
-    hasAttachments: composerHasAttachments,
     hasExpandedChrome: composerHasExpandedChrome,
     hasInlineAccessories: showInlineTasksBadge || showInlineStashBadge,
   });
@@ -3269,7 +3287,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const canScrollCollapseComposer =
     canTrackComposerScrollGesture &&
     hasAvailableRestingControlsHost &&
-    !composerHasAttachments &&
     !composerHasExpandedChrome &&
     !showInlineTasksBadge &&
     !showInlineStashBadge;
@@ -4717,7 +4734,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
                   showMobilePendingAnswerActions && "hidden sm:flex",
                   isComposerResting &&
-                    "absolute inset-y-px right-px z-10 w-auto gap-0 py-0 sm:gap-0 sm:py-0",
+                    "absolute bottom-px right-px z-10 h-12 w-auto gap-0 py-0 sm:gap-0 sm:py-0",
                 )}
               >
                 <div
