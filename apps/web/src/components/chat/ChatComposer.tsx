@@ -51,6 +51,10 @@ import {
   makeComposerMentionDragHandlers,
 } from "./composerMentionDrag";
 import {
+  isInsideComposerFloatingLayer,
+  isInsideRestingComposerControlScope,
+} from "./composerEventScope";
+import {
   type ComposerFileAttachment,
   type ComposerImageAttachment,
   type DraftId,
@@ -121,6 +125,7 @@ import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
 import { ComposerPreviewAnnotationCards } from "./ComposerPreviewAnnotationCards";
 import {
   hasRestingComposerControlsSpace,
+  shouldAnimateComposerRestingTransition,
   shouldUseCompactComposerPrimaryActions,
   shouldUseCompactComposerFooter,
   shouldUseRestingComposerLayout,
@@ -192,6 +197,7 @@ function useComposerRestingTransition(isResting: boolean) {
   const animationTargetHeightRef = useRef<number | null>(null);
   const contentAnimationsRef = useRef<Animation[]>([]);
   const transitionCleanupTimeoutRef = useRef<number | null>(null);
+  const hasCompletedInitialLayoutRef = useRef(false);
 
   const clearTransitionStyles = useCallback(() => {
     const element = elementRef.current;
@@ -255,7 +261,11 @@ function useComposerRestingTransition(isResting: boolean) {
       const targetChanged =
         interruptedTargetHeight === null || Math.abs(interruptedTargetHeight - nextHeight) >= 0.5;
       const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      const shouldAnimate = stateChanged || interruptedHeight !== null;
+      const shouldAnimate = shouldAnimateComposerRestingTransition({
+        hasCompletedInitialLayout: hasCompletedInitialLayoutRef.current,
+        stateChanged,
+        hasInterruptedAnimation: interruptedHeight !== null,
+      });
 
       if (
         shouldAnimate &&
@@ -413,6 +423,10 @@ function useComposerRestingTransition(isResting: boolean) {
   }, [transitionToCurrentGeometry]);
 
   useEffect(() => {
+    // Host discovery and width measurement settle through layout updates on
+    // mount. Treat that bootstrap as initial geometry so an existing thread
+    // paints at rest instead of visibly collapsing from the expanded height.
+    hasCompletedInitialLayoutRef.current = true;
     return () => {
       if (transitionCleanupTimeoutRef.current !== null) {
         window.clearTimeout(transitionCleanupTimeoutRef.current);
@@ -590,15 +604,6 @@ const runtimeModeConfig: Record<
 };
 
 const runtimeModeOptions = Object.keys(runtimeModeConfig) as RuntimeMode[];
-const COMPOSER_FLOATING_LAYER_SELECTOR = [
-  '[data-composer-drawer-layer="true"]',
-  '[data-slot="popover-popup"]',
-  '[data-slot="menu-popup"]',
-  '[data-slot="select-popup"]',
-  '[data-slot="combobox-popup"]',
-  '[data-slot="autocomplete-popup"]',
-].join(",");
-
 const extendReplacementRangeForTrailingSpace = (
   text: string,
   rangeEnd: number,
@@ -626,17 +631,6 @@ const terminalContextIdListsEqual = (
   ids: ReadonlyArray<string>,
 ): boolean =>
   contexts.length === ids.length && contexts.every((context, index) => context.id === ids[index]);
-
-function isInsideComposerFloatingLayer(element: Element): boolean {
-  return element.closest(COMPOSER_FLOATING_LAYER_SELECTOR) !== null;
-}
-
-function isInsideRestingComposerControlScope(element: Element): boolean {
-  return (
-    element.closest('[data-chat-composer-resting-controls="true"]') !== null ||
-    isInsideComposerFloatingLayer(element)
-  );
-}
 
 function elementOuterWidth(element: HTMLElement): number {
   const style = getComputedStyle(element);
@@ -4074,7 +4068,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onSubmit={submitComposer}
       onPointerDownCapture={(event) => {
         const target = event.target;
-        if (target instanceof Element && isInsideRestingComposerControlScope(target)) return;
+        if (isInsideRestingComposerControlScope(target)) return;
         if (
           !(target instanceof Element) ||
           !target.closest('button, a, input, select, [role="button"], [role="menuitem"]')
@@ -4084,11 +4078,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }}
       onFocusCapture={(event) => {
         const activeElement = event.target;
-        if (
-          isComposerResting &&
-          activeElement instanceof Element &&
-          isInsideRestingComposerControlScope(activeElement)
-        ) {
+        if (isComposerResting && isInsideRestingComposerControlScope(activeElement)) {
           return;
         }
         if (
@@ -4108,10 +4098,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onBlurCapture={() => {
         scheduleComposerCollapseCheck();
       }}
-      onDragEnterCapture={composerMentionDragHandlers.onDragEnter}
-      onDragOverCapture={composerMentionDragHandlers.onDragOver}
-      onDragLeaveCapture={onComposerMentionDragLeaveCapture}
-      onDropCapture={composerMentionDragHandlers.onDrop}
+      onDragEnterCapture={(event) => {
+        if (isInsideRestingComposerControlScope(event.target)) return;
+        composerMentionDragHandlers.onDragEnter(event);
+      }}
+      onDragOverCapture={(event) => {
+        if (isInsideRestingComposerControlScope(event.target)) return;
+        composerMentionDragHandlers.onDragOver(event);
+      }}
+      onDragLeaveCapture={(event) => {
+        if (isInsideRestingComposerControlScope(event.target)) return;
+        onComposerMentionDragLeaveCapture(event);
+      }}
+      onDropCapture={(event) => {
+        if (isInsideRestingComposerControlScope(event.target)) return;
+        composerMentionDragHandlers.onDrop(event);
+      }}
       className={cn("mx-auto w-full min-w-0 max-w-3xl", hasShoulderTab && "pt-7")}
       data-chat-composer-form="true"
     >

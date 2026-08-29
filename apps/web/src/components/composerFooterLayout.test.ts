@@ -5,6 +5,7 @@ import {
   COMPOSER_RESTING_CONTROLS_MIN_WIDTH_REM,
   COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX,
   hasRestingComposerControlsSpace,
+  shouldAnimateComposerRestingTransition,
   shouldUseCompactComposerPrimaryActions,
   shouldUseCompactComposerFooter,
   shouldUseRestingComposerLayout,
@@ -104,5 +105,34 @@ describe("shouldUseRestingComposerLayout", () => {
 
   it("keeps inline task and stash accessories at full height", () => {
     expect(shouldUseRestingComposerLayout({ ...resting, hasInlineAccessories: true })).toBe(false);
+  });
+});
+
+describe("shouldAnimateComposerRestingTransition", () => {
+  it("does not animate layout measurements that settle during initial mount", () => {
+    expect(
+      shouldAnimateComposerRestingTransition({
+        hasCompletedInitialLayout: false,
+        stateChanged: true,
+        hasInterruptedAnimation: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("animates later resting-state changes and interrupted transitions", () => {
+    expect(
+      shouldAnimateComposerRestingTransition({
+        hasCompletedInitialLayout: true,
+        stateChanged: true,
+        hasInterruptedAnimation: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAnimateComposerRestingTransition({
+        hasCompletedInitialLayout: true,
+        stateChanged: false,
+        hasInterruptedAnimation: true,
+      }),
+    ).toBe(true);
   });
 });
