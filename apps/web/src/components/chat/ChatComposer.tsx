@@ -1733,6 +1733,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     (!isComposerCollapsedMobile && showPlanFollowUpPrompt && activeProposedPlan !== null);
   const showCollapsedMobilePromptRow =
     isComposerCollapsedMobile && !isComposerApprovalState && pendingUserInputs.length === 0;
+  const showComposerAttachAction = fileStagingLimit !== null && pendingUserInputs.length === 0;
   const composerHasAttachments =
     composerImages.length > 0 ||
     composerFiles.length > 0 ||
@@ -4614,7 +4615,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   </div>
                 )}
 
-              <div className={cn("relative", isComposerResting && "pr-12")}>
+              <div
+                className={cn(
+                  "relative",
+                  isComposerResting && (showComposerAttachAction ? "pr-20" : "pr-12"),
+                )}
+              >
                 <ComposerPromptEditor
                   editorRef={composerEditorRef}
                   value={
@@ -4731,7 +4737,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   }
                   className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                 >
-                  {fileStagingLimit !== null && pendingUserInputs.length === 0 ? (
+                  {showComposerAttachAction ? (
                     <>
                       <input
                         ref={attachmentInputRef}
