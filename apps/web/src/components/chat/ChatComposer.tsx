@@ -1735,6 +1735,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isComposerCollapsedMobile && !isComposerApprovalState && pendingUserInputs.length === 0;
   const composerHasAttachments =
     composerImages.length > 0 ||
+    composerFiles.length > 0 ||
     composerTerminalContexts.length > 0 ||
     composerElementContexts.length > 0 ||
     composerPreviewAnnotations.length > 0 ||
