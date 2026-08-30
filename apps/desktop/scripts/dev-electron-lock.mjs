@@ -1,14 +1,34 @@
+import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-function defaultIsProcessRunning(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error?.code === "EPERM";
+// oxlint-disable-next-line t3code/no-global-process-runtime -- Standalone dev script has no Effect runtime.
+const hostPlatform = NodeOS.platform();
+
+function defaultGetProcessIdentity(pid) {
+  const result =
+    hostPlatform === "win32"
+      ? NodeChildProcess.spawnSync(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            `(Get-Process -Id ${String(pid)} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`,
+          ],
+          { encoding: "utf8", windowsHide: true },
+        )
+      : NodeChildProcess.spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], {
+          encoding: "utf8",
+        });
+
+  if (result.status !== 0) {
+    return null;
   }
+
+  return result.stdout.trim() || null;
 }
 
 function readLock(lockPath) {
@@ -22,15 +42,24 @@ function readLock(lockPath) {
 export function acquireSupervisorLock({
   lockPath,
   pid = process.pid,
-  isProcessRunning = defaultIsProcessRunning,
+  getProcessIdentity = defaultGetProcessIdentity,
+  processIdentity = getProcessIdentity(pid),
   token = `${String(pid)}:${NodeCrypto.randomUUID()}`,
 }) {
+  if (!processIdentity) {
+    throw new Error(
+      `Could not determine the desktop development supervisor identity for PID ${String(pid)}.`,
+    );
+  }
+
   NodeFS.mkdirSync(NodePath.dirname(lockPath), { recursive: true });
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const candidatePath = `${lockPath}.${NodeCrypto.randomUUID()}.candidate`;
     try {
-      NodeFS.writeFileSync(candidatePath, JSON.stringify({ pid, token }), { flag: "wx" });
+      NodeFS.writeFileSync(candidatePath, JSON.stringify({ pid, processIdentity, token }), {
+        flag: "wx",
+      });
       NodeFS.linkSync(candidatePath, lockPath);
 
       return () => {
@@ -45,7 +74,11 @@ export function acquireSupervisorLock({
       }
 
       const owner = readLock(lockPath);
-      if (Number.isInteger(owner?.pid) && isProcessRunning(owner.pid)) {
+      if (
+        Number.isInteger(owner?.pid) &&
+        typeof owner?.processIdentity === "string" &&
+        getProcessIdentity(owner.pid) === owner.processIdentity
+      ) {
         throw new Error(
           `A desktop development supervisor is already running for this worktree (PID ${String(owner.pid)}).`,
           { cause: error },

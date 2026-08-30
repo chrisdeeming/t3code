@@ -18,7 +18,12 @@ function withTemporaryLock(run) {
 describe("desktop development supervisor lock", () => {
   it("rejects a second live supervisor", () =>
     withTemporaryLock((lockPath) => {
-      const release = acquireSupervisorLock({ lockPath, pid: 101, token: "first" });
+      const release = acquireSupervisorLock({
+        lockPath,
+        pid: 101,
+        processIdentity: "first-start",
+        token: "first",
+      });
       assert.deepEqual(NodeFS.readdirSync(NodePath.dirname(lockPath)), ["supervisor.lock"]);
 
       assert.throws(
@@ -26,8 +31,9 @@ describe("desktop development supervisor lock", () => {
           acquireSupervisorLock({
             lockPath,
             pid: 202,
+            processIdentity: "second-start",
             token: "second",
-            isProcessRunning: (pid) => pid === 101,
+            getProcessIdentity: (pid) => (pid === 101 ? "first-start" : "second-start"),
           }),
         /already running.*PID 101/,
       );
@@ -42,29 +48,36 @@ describe("desktop development supervisor lock", () => {
       const release = acquireSupervisorLock({
         lockPath,
         pid: 202,
+        processIdentity: "current-start",
         token: "current",
       });
       assert.deepEqual(JSON.parse(NodeFS.readFileSync(lockPath, "utf8")), {
         pid: 202,
+        processIdentity: "current-start",
         token: "current",
       });
 
       release();
     }));
 
-  it("replaces a stale lock and only lets its current owner release it", () =>
+  it("replaces a stale lock after its PID is reused and only lets its current owner release it", () =>
     withTemporaryLock((lockPath) => {
       NodeFS.mkdirSync(NodePath.dirname(lockPath), { recursive: true });
-      NodeFS.writeFileSync(lockPath, JSON.stringify({ pid: 101, token: "stale" }));
+      NodeFS.writeFileSync(
+        lockPath,
+        JSON.stringify({ pid: 101, processIdentity: "old-start", token: "stale" }),
+      );
 
       const release = acquireSupervisorLock({
         lockPath,
         pid: 202,
+        processIdentity: "current-start",
         token: "current",
-        isProcessRunning: () => false,
+        getProcessIdentity: (pid) => (pid === 101 ? "reused-start" : "current-start"),
       });
       assert.deepEqual(JSON.parse(NodeFS.readFileSync(lockPath, "utf8")), {
         pid: 202,
+        processIdentity: "current-start",
         token: "current",
       });
 
