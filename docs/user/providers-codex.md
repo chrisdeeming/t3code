@@ -34,6 +34,13 @@ In an existing Codex thread, send `/feedback` or `/feedback` followed by a descr
 issue. T3 Code uploads the thread and Codex logs to OpenAI and shows a thread ID that you can copy
 and share with OpenAI employees.
 
+## Reconnect MCP servers
+
+In an idle Codex thread, send `/reconnect-mcp` to disconnect that thread's MCP servers. They
+restart with fresh tool definitions when you send the next message. The command preserves the
+conversation and workspace, but it reconnects every MCP server used by that thread. Wait for an
+active turn to finish before running it.
+
 ## Sub-agent models
 
 The web and desktop Agents panel shows each sub-agent's model and reasoning effort when Codex

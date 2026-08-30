@@ -94,6 +94,17 @@ export function useComposerCommandMenu({
           label: "/default",
           description: "Switch to default mode",
         },
+        ...(hasThread && selectedProviderStatus?.driver === "codex"
+          ? [
+              {
+                id: "cmd:reconnect-mcp",
+                type: "slash-command" as const,
+                command: "reconnect-mcp",
+                label: "/reconnect-mcp",
+                description: "Reconnect MCP servers before the next turn",
+              },
+            ]
+          : []),
       ];
       const builtIn = allBuiltIn.filter(
         (item) =>

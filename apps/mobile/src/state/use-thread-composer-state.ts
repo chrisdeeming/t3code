@@ -15,6 +15,7 @@ import {
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import {
   codexFeedbackMessage,
+  isReconnectMcpCommand,
   parseCodexFeedbackCommand,
   submitCodexFeedback,
   type CodexFeedbackSubmission,
@@ -96,6 +97,9 @@ export function useThreadComposerState() {
   const uploadThreadFeedback = useAtomCommand(threadEnvironment.uploadFeedback, {
     reportFailure: false,
   });
+  const stopThreadSession = useAtomCommand(threadEnvironment.stopSession, {
+    reportFailure: false,
+  });
 
   useEffect(() => {
     ensureComposerDraftsLoaded();
@@ -173,8 +177,52 @@ export function useThreadComposerState() {
     }
 
     const provider = selectedEnvironmentRuntime?.serverConfig?.providers.find(
-      (entry) => entry.instanceId === thread.modelSelection.instanceId,
+      (entry) => entry.instanceId === (draft.modelSelection ?? thread.modelSelection).instanceId,
     );
+    const reconnectMcpCommand =
+      attachments.length === 0 &&
+      (provider?.driver === "codex" || thread.session?.providerName === "codex") &&
+      isReconnectMcpCommand(text);
+    if (reconnectMcpCommand) {
+      if (thread.session === null || thread.session.providerName !== "codex") {
+        Alert.alert(
+          "Start a Codex thread first",
+          "Send a message before reconnecting its MCP servers.",
+        );
+        return null;
+      }
+      if (thread.session.status === "starting" || thread.session.status === "running") {
+        Alert.alert(
+          "Codex is still working",
+          "Wait for the current turn to finish, then reconnect MCP servers.",
+        );
+        return null;
+      }
+      clearComposerDraftContent(threadKey);
+      const result = await stopThreadSession({
+        environmentId: selectedThreadShell.environmentId,
+        input: { threadId: selectedThreadShell.id, onlyIfIdle: true },
+      });
+      if (result._tag === "Failure") {
+        const currentDraft = getComposerDraftSnapshot(threadKey);
+        if (currentDraft.text.length === 0 && currentDraft.attachments.length === 0) {
+          setComposerDraftText(threadKey, text);
+        }
+        if (!isAtomCommandInterrupted(result)) {
+          const error = Cause.squash(result.cause);
+          Alert.alert(
+            "Could not reconnect MCP servers",
+            error instanceof Error ? error.message : "An error occurred.",
+          );
+        }
+        return null;
+      }
+      Alert.alert(
+        "MCP servers disconnected",
+        "They will reconnect with fresh tool schemas on your next message.",
+      );
+      return null;
+    }
     const feedbackCommand =
       attachments.length === 0 &&
       (provider?.driver === "codex" || thread.session?.providerName === "codex")
@@ -272,6 +320,7 @@ export function useThreadComposerState() {
     selectedEnvironmentRuntime?.serverConfig?.providers,
     selectedThreadDetail,
     selectedThreadShell,
+    stopThreadSession,
     uploadThreadFeedback,
   ]);
 
