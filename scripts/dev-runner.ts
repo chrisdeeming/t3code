@@ -828,10 +828,9 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
             env,
             extendEnv: false,
             shell: spawnCommand.shell,
-            // Keep Vite+ in the same process group so terminal signals (Ctrl+C)
-            // reach it directly. Effect defaults to detached: true on non-Windows,
-            // which would put the runner in a new group and require manual forwarding.
-            detached: false,
+            // Give each Vite+ task its own process group. Closing this scoped
+            // child then terminates the task and its complete descendant tree.
+            detached: true,
             forceKillAfter: "1500 millis",
           }).pipe(
             Effect.mapError(
