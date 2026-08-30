@@ -8,7 +8,6 @@ import {
   resolveDevProtocolClient,
   resolveElectronLaunchCommand,
 } from "./electron-launcher.mjs";
-import { acquireSupervisorLock } from "./dev-electron-lock.mjs";
 import { waitForResources } from "./wait-for-resources.mjs";
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL?.trim();
@@ -37,10 +36,6 @@ const childTreeGracePeriodMs = 1_200;
 const remoteDebuggingPort = process.env.T3CODE_DESKTOP_REMOTE_DEBUGGING_PORT?.trim();
 // oxlint-disable-next-line t3code/no-global-process-runtime -- Standalone dev script has no Effect runtime.
 const hostPlatform = NodeOS.platform();
-const releaseSupervisorLock = acquireSupervisorLock({
-  lockPath: NodePath.join(desktopDir, ".electron-runtime", "dev-electron.lock"),
-});
-process.once("exit", releaseSupervisorLock);
 
 NodeChildProcess.execFileSync(
   process.execPath,
@@ -228,7 +223,6 @@ async function shutdown(exitCode) {
   });
   killChildTree("KILL");
 
-  releaseSupervisorLock();
   process.exit(exitCode);
 }
 
