@@ -59,6 +59,10 @@ shortcut is `mod+shift+s`, and it does not run while the terminal has focus.
 source views. It defaults to `mod+/`, does not run while the terminal has focus, and is available on
 web and desktop while the rich-composer beta is enabled.
 
+`thread.pin` pins the active thread to the pinned section of the sidebar, or unpins it when it is
+already pinned. Its default shortcut is `mod+shift+p`, and it does not run while the terminal has
+focus. See [Organizing threads](./thread-sidebar.md) for how pinned threads are ordered.
+
 The command palette searches active thread titles, projects, branches, user messages, and final
 agent responses across connected environments. Message matches show one labeled excerpt while
 keeping the thread's project, branch, and machine context visible. Message search begins after two
