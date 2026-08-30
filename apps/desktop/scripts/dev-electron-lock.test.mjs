@@ -19,6 +19,7 @@ describe("desktop development supervisor lock", () => {
   it("rejects a second live supervisor", () =>
     withTemporaryLock((lockPath) => {
       const release = acquireSupervisorLock({ lockPath, pid: 101, token: "first" });
+      assert.deepEqual(NodeFS.readdirSync(NodePath.dirname(lockPath)), ["supervisor.lock"]);
 
       assert.throws(
         () =>
@@ -30,6 +31,23 @@ describe("desktop development supervisor lock", () => {
           }),
         /already running.*PID 101/,
       );
+
+      release();
+    }));
+
+  it("replaces a fully published but invalid stale lock", () =>
+    withTemporaryLock((lockPath) => {
+      NodeFS.writeFileSync(lockPath, "invalid");
+
+      const release = acquireSupervisorLock({
+        lockPath,
+        pid: 202,
+        token: "current",
+      });
+      assert.deepEqual(JSON.parse(NodeFS.readFileSync(lockPath, "utf8")), {
+        pid: 202,
+        token: "current",
+      });
 
       release();
     }));

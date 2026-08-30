@@ -28,13 +28,10 @@ export function acquireSupervisorLock({
   NodeFS.mkdirSync(NodePath.dirname(lockPath), { recursive: true });
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    const candidatePath = `${lockPath}.${NodeCrypto.randomUUID()}.candidate`;
     try {
-      const descriptor = NodeFS.openSync(lockPath, "wx");
-      try {
-        NodeFS.writeFileSync(descriptor, JSON.stringify({ pid, token }));
-      } finally {
-        NodeFS.closeSync(descriptor);
-      }
+      NodeFS.writeFileSync(candidatePath, JSON.stringify({ pid, token }), { flag: "wx" });
+      NodeFS.linkSync(candidatePath, lockPath);
 
       return () => {
         const current = readLock(lockPath);
@@ -62,6 +59,8 @@ export function acquireSupervisorLock({
           throw removeError;
         }
       }
+    } finally {
+      NodeFS.rmSync(candidatePath, { force: true });
     }
   }
 
