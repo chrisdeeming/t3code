@@ -71,21 +71,27 @@ export const DEFAULT_T3_HOME = Effect.map(Effect.service(Path.Path), (path) =>
   path.join(NodeOS.homedir(), ".t3"),
 );
 
-const MODE_ARGS = {
+const MODE_COMMANDS = {
   dev: [
-    "run",
-    "--filter=@t3tools/contracts",
-    "--filter=@t3tools/web",
-    "--filter=t3",
-    "--parallel",
-    "dev",
+    [
+      "run",
+      "--filter=@t3tools/contracts",
+      "--filter=@t3tools/web",
+      "--filter=t3",
+      "--parallel",
+      "dev",
+    ],
   ],
-  "dev:server": ["run", "--filter=t3", "dev"],
-  "dev:web": ["run", "--filter=@t3tools/web", "dev"],
-  "dev:desktop": ["run", "--filter=@t3tools/desktop", "--filter=@t3tools/web", "dev"],
-} as const satisfies Record<string, ReadonlyArray<string>>;
+  "dev:server": [["run", "--filter=t3", "dev"]],
+  "dev:web": [["run", "--filter=@t3tools/web", "dev"]],
+  "dev:desktop": [
+    ["run", "--filter=@t3tools/web", "dev"],
+    ["run", "--filter=@t3tools/desktop", "dev:bundle"],
+    ["run", "--filter=@t3tools/desktop", "dev:electron"],
+  ],
+} as const satisfies Record<string, ReadonlyArray<ReadonlyArray<string>>>;
 
-type DevMode = keyof typeof MODE_ARGS;
+type DevMode = keyof typeof MODE_COMMANDS;
 /**
  * `role` matters because only the backend honours `--host`/`T3CODE_HOST`; the
  * web port is always loopback. Passed explicitly rather than inferred from the
@@ -96,10 +102,10 @@ type PortAvailabilityCheck<R = never> = (
   role?: "server" | "web",
 ) => Effect.Effect<boolean, never, R>;
 
-const DEV_RUNNER_MODES = Object.keys(MODE_ARGS) as Array<DevMode>;
+const DEV_RUNNER_MODES = Object.keys(MODE_COMMANDS) as Array<DevMode>;
 
-export function getDevRunnerModeArgs(mode: DevMode): ReadonlyArray<string> {
-  return MODE_ARGS[mode];
+export function getDevRunnerModeCommands(mode: DevMode): ReadonlyArray<ReadonlyArray<string>> {
+  return MODE_COMMANDS[mode];
 }
 
 export function isBrowserAllowedPort(port: number): boolean {
@@ -801,56 +807,64 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       }
     }
 
-    const spawnCommand = yield* resolveSpawnCommand(
-      "vp",
-      [...MODE_ARGS[input.mode], ...input.runArgs],
-      { env },
-    );
-    const processContext = {
-      mode: input.mode,
-      executable: "vp" as const,
-      argumentCount: spawnCommand.args.length,
-      shell: spawnCommand.shell,
-    } as const;
-    const child = yield* ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-      stdin: "inherit",
-      stdout: "inherit",
-      stderr: "inherit",
-      env,
-      extendEnv: false,
-      shell: spawnCommand.shell,
-      // Keep Vite+ in the same process group so terminal signals (Ctrl+C)
-      // reach it directly. Effect defaults to detached: true on non-Windows,
-      // which would put the runner in a new group and require manual forwarding.
-      detached: false,
-      forceKillAfter: "1500 millis",
-    }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new DevRunnerProcessError({
-            ...processContext,
-            operation: "spawn",
-            cause,
-          }),
-      ),
-    );
+    const modeCommands = MODE_COMMANDS[input.mode];
+    const exitIsTerminal = modeCommands.length > 1;
+    yield* Effect.all(
+      modeCommands.map((modeArgs) =>
+        Effect.gen(function* () {
+          const spawnCommand = yield* resolveSpawnCommand("vp", [...modeArgs, ...input.runArgs], {
+            env,
+          });
+          const processContext = {
+            mode: input.mode,
+            executable: "vp" as const,
+            argumentCount: spawnCommand.args.length,
+            shell: spawnCommand.shell,
+          } as const;
+          const child = yield* ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+            stdin: "inherit",
+            stdout: "inherit",
+            stderr: "inherit",
+            env,
+            extendEnv: false,
+            shell: spawnCommand.shell,
+            // Keep Vite+ in the same process group so terminal signals (Ctrl+C)
+            // reach it directly. Effect defaults to detached: true on non-Windows,
+            // which would put the runner in a new group and require manual forwarding.
+            detached: false,
+            forceKillAfter: "1500 millis",
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new DevRunnerProcessError({
+                  ...processContext,
+                  operation: "spawn",
+                  cause,
+                }),
+            ),
+          );
+          yield* Effect.addFinalizer(() => child.kill().pipe(Effect.ignore));
 
-    const exitCode = yield* child.exitCode.pipe(
-      Effect.mapError(
-        (cause) =>
-          new DevRunnerProcessError({
-            ...processContext,
-            operation: "wait-for-exit",
-            cause,
-          }),
+          const exitCode = yield* child.exitCode.pipe(
+            Effect.mapError(
+              (cause) =>
+                new DevRunnerProcessError({
+                  ...processContext,
+                  operation: "wait-for-exit",
+                  cause,
+                }),
+            ),
+          );
+          if (exitIsTerminal || exitCode !== 0) {
+            return yield* new DevRunnerProcessExitError({
+              ...processContext,
+              exitCode,
+            });
+          }
+        }),
       ),
-    );
-    if (exitCode !== 0) {
-      return yield* new DevRunnerProcessExitError({
-        ...processContext,
-        exitCode,
-      });
-    }
+      { concurrency: "unbounded", discard: true },
+    ).pipe(Effect.scoped);
   });
 }
 
