@@ -19,12 +19,13 @@ again** next to it. Attach the file again or remove it, then send.
 On web and desktop, HEIC and HEIF photos are automatically converted to JPEG when you drag them into
 the composer or paste them into a message.
 
-On wider web and desktop windows, an existing thread with a visible thread-context strip settles its
-composer into a single-line resting state when the composer loses focus or you scroll the
-conversation. Model and mode controls remain available beside the thread context. Focus the composer
-or start typing to expand it again. Threads without a context strip and new-thread layouts keep the
-full composer; narrow layouts retain their existing mobile collapse behavior. Attachments and other
-draft context remain visible at their natural height while the prompt itself is resting.
+On web and desktop, an existing thread settles its composer into a single-line resting state when
+the composer loses focus or you scroll the conversation. When the thread-context strip has room, the
+model and mode controls stay available beside the thread context; in narrower windows they return
+when the composer is focused. Focus the composer or start typing to expand it again. New-thread
+layouts keep the full composer, and phone-sized layouts retain their existing mobile collapse
+behavior. Attachments and other draft context remain visible at their natural height while the
+prompt itself is resting.
 
 On mobile, the model picker shows each OpenCode model's upstream provider, such as Anthropic,
 GitHub Copilot, or OpenCode Zen, beneath its name. Search by that provider name to narrow the list

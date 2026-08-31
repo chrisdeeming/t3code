@@ -1,10 +1,5 @@
 export const COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX = 620;
 export const COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX = 780;
-export const COMPOSER_RESTING_CONTROLS_MIN_WIDTH_REM = 6;
-
-export function hasRestingComposerControlsSpace(width: number, rootFontSize: number): boolean {
-  return width >= COMPOSER_RESTING_CONTROLS_MIN_WIDTH_REM * rootFontSize;
-}
 
 export function shouldUseCompactComposerFooter(
   width: number | null,
@@ -17,7 +12,6 @@ export function shouldUseCompactComposerFooter(
 }
 
 export function shouldUseRestingComposerLayout(input: {
-  hasControlsHost: boolean;
   isExistingThread: boolean;
   isMobileViewport: boolean;
   isFocused: boolean;
@@ -26,9 +20,11 @@ export function shouldUseRestingComposerLayout(input: {
 }): boolean {
   // Passive draft content is deliberately absent here. Resting only clamps
   // the prompt row and overlays its actions; attachment and context rows keep
-  // their natural height above it.
+  // their natural height above it. Resting is also deliberately independent
+  // of whether the context strip can show the relocated controls: where the
+  // strip lacks the room, the controls are simply not shown until the
+  // composer is focused again.
   return (
-    input.hasControlsHost &&
     input.isExistingThread &&
     !input.isMobileViewport &&
     !input.isFocused &&
