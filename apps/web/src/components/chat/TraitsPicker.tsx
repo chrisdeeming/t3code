@@ -38,6 +38,7 @@ import {
   ComposerControlIcon,
   type ComposerControlSize,
 } from "./ComposerControl";
+import { composerFloatingLayerProps } from "./composerEventScope";
 
 type ProviderOptions = ReadonlyArray<ProviderOptionSelection>;
 
@@ -279,6 +280,7 @@ export interface TraitsMenuContentProps {
   planModeEnabled: boolean;
   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
+  isComposerOwned?: boolean;
 }
 
 export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
@@ -545,6 +547,7 @@ export const TraitsPicker = memo(function TraitsPicker({
   planModeEnabled,
   triggerVariant,
   triggerClassName,
+  isComposerOwned,
   size = "sm",
   ...persistence
 }: TraitsMenuContentProps &
@@ -638,7 +641,7 @@ export const TraitsPicker = memo(function TraitsPicker({
           </>
         )}
       </MenuTrigger>
-      <MenuPopup align="start">
+      <MenuPopup align="start" {...(isComposerOwned ? composerFloatingLayerProps : {})}>
         <TraitsMenuContent
           provider={provider}
           {...(instanceId ? { instanceId } : {})}

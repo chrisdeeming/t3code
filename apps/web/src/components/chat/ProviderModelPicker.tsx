@@ -23,6 +23,7 @@ import {
   ComposerControlChevron,
   type ComposerControlSize,
 } from "./ComposerControl";
+import { composerFloatingLayerProps } from "./composerEventScope";
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   /**
@@ -41,6 +42,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   instanceIndicatorBackground?: string;
   size?: ComposerControlSize;
   compact?: boolean;
+  isComposerOwned?: boolean;
   disabled?: boolean;
   terminalOpen?: boolean;
   open?: boolean;
@@ -201,6 +203,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         </span>
       </PopoverTrigger>
       <PopoverPopup
+        {...(props.isComposerOwned ? composerFloatingLayerProps : {})}
         align="start"
         className="before:hidden [--viewport-inline-padding:0]"
         viewportClassName="overflow-hidden! rounded-[calc(var(--radius-lg)-1px)] p-0 [clip-path:inset(0_round_calc(var(--radius-lg)-1px))]"

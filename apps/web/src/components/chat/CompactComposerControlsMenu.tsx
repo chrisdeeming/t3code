@@ -10,6 +10,7 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
+import { composerFloatingLayerProps } from "./composerEventScope";
 
 export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
   interactionMode: ProviderInteractionMode;
@@ -36,7 +37,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
       >
         <ComposerControlIcon icon={EllipsisIcon} size={size} />
       </MenuTrigger>
-      <MenuPopup align="start">
+      <MenuPopup align="start" {...composerFloatingLayerProps}>
         {props.traitsMenuContent ? (
           <>
             {props.traitsMenuContent}

@@ -28,9 +28,17 @@ describe("composer event scopes", () => {
   it("includes composer-owned floating layers in the resting control scope", () => {
     vi.stubGlobal("Element", FakeElement);
 
-    const target = new FakeElement('data-slot="popover-popup"');
+    const target = new FakeElement('data-chat-composer-floating-layer="true"');
     expect(isInsideComposerFloatingLayer(target as unknown as EventTarget)).toBe(true);
     expect(isInsideRestingComposerControlScope(target as unknown as EventTarget)).toBe(true);
+  });
+
+  it("leaves unrelated floating layers outside the composer scope", () => {
+    vi.stubGlobal("Element", FakeElement);
+
+    const target = new FakeElement('data-slot="popover-popup"');
+    expect(isInsideComposerFloatingLayer(target as unknown as EventTarget)).toBe(false);
+    expect(isInsideRestingComposerControlScope(target as unknown as EventTarget)).toBe(false);
   });
 
   it("leaves ordinary composer targets outside the portaled control scope", () => {

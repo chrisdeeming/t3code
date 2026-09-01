@@ -1,11 +1,11 @@
 const COMPOSER_FLOATING_LAYER_SELECTOR = [
   '[data-composer-drawer-layer="true"]',
-  '[data-slot="popover-popup"]',
-  '[data-slot="menu-popup"]',
-  '[data-slot="select-popup"]',
-  '[data-slot="combobox-popup"]',
-  '[data-slot="autocomplete-popup"]',
+  '[data-chat-composer-floating-layer="true"]',
 ].join(",");
+
+export const composerFloatingLayerProps = {
+  "data-chat-composer-floating-layer": "true",
+} as const;
 
 export function isInsideComposerFloatingLayer(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(COMPOSER_FLOATING_LAYER_SELECTOR) !== null;

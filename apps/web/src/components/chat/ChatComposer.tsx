@@ -51,6 +51,7 @@ import {
   makeComposerMentionDragHandlers,
 } from "./composerMentionDrag";
 import {
+  composerFloatingLayerProps,
   isInsideComposerFloatingLayer,
   isInsideRestingComposerControlScope,
 } from "./composerEventScope";
@@ -950,7 +951,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
             <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
             <SelectValue>{runtimeModeOption.label}</SelectValue>
           </TooltipTrigger>
-          <SelectPopup alignItemWithTrigger={false}>
+          <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
             {runtimeModeOptions.map((mode) => {
               const option = runtimeModeConfig[mode];
               const OptionIcon = option.icon;
@@ -2003,6 +2004,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     prompt,
     onPromptChange: setPromptFromTraits,
     planModeEnabled: settings.planModeEnabled,
+    isComposerOwned: true,
   } satisfies Parameters<typeof renderProviderTraitsPicker>[0];
   const providerTraitsPicker = renderProviderTraitsPicker(providerTraitsPickerInput);
   const restingProviderTraitsPicker = renderProviderTraitsPicker({
@@ -3552,6 +3554,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         <ComposerControlSeparator size="xs" data-resting-controls-separator="true" />
       ) : null}
       <ProviderModelPicker
+        isComposerOwned
         compact={composerControlsCompact}
         activeInstanceId={selectedInstanceId}
         model={selectedModelForPickerWithCustomFallback}

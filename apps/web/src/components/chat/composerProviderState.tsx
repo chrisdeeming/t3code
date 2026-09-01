@@ -55,6 +55,7 @@ type TraitsRenderInput = {
   size?: ComposerControlSize;
   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
+  isComposerOwned?: boolean;
 };
 
 export function getComposerPromptInjectionState(prompt: string): ComposerPromptInjectionState {
@@ -129,6 +130,7 @@ function renderTraitsControl(
     size,
     triggerVariant,
     triggerClassName,
+    isComposerOwned,
   } = input;
   const hasTarget = threadRef !== undefined || draftId !== undefined;
   if (
@@ -159,6 +161,7 @@ function renderTraitsControl(
       {...(size !== undefined ? { size } : {})}
       {...(triggerVariant !== undefined ? { triggerVariant } : {})}
       {...(triggerClassName !== undefined ? { triggerClassName } : {})}
+      {...(isComposerOwned ? { isComposerOwned } : {})}
     />
   );
 }
