@@ -1110,7 +1110,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         if (
           sessionIsActive ||
           hasOpenBlockingRequest(thread) ||
-          threadHasQueuedTurnStart(thread, command.createdAt)
+          hasQueuedTurnStartForThread(thread, command.createdAt)
         ) {
           return yield* new OrchestrationCommandInvariantError({
             commandType: command.type,
