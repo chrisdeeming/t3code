@@ -3,7 +3,7 @@ import { codexFeedbackMessage } from "@t3tools/client-runtime/state/threads";
 import { createRef, type ReactNode, type Ref } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import type { LegendListRef } from "@legendapp/list/react";
+import type { LegendListRef, MaintainScrollAtEndOptions } from "@legendapp/list/react";
 
 vi.mock("@legendapp/list/react", async () => {
   const legendListTestId = "legend-list";
@@ -22,16 +22,7 @@ vi.mock("@legendapp/list/react", async () => {
     };
     contentInsetEndAdjustment?: number;
     className?: string;
-    maintainScrollAtEnd?:
-      | boolean
-      | {
-          animated?: boolean;
-          on?: {
-            dataChange?: boolean;
-            itemLayout?: boolean;
-            layout?: boolean;
-          };
-        };
+    maintainScrollAtEnd?: boolean | MaintainScrollAtEndOptions;
     maintainVisibleContentPosition?:
       | boolean
       | {
@@ -62,6 +53,11 @@ vi.mock("@legendapp/list/react", async () => {
         data-maintain-scroll-at-end-data-change={
           typeof props.maintainScrollAtEnd === "object"
             ? props.maintainScrollAtEnd.on?.dataChange
+            : undefined
+        }
+        data-maintain-scroll-at-end-footer-layout={
+          typeof props.maintainScrollAtEnd === "object"
+            ? props.maintainScrollAtEnd.on?.footerLayout
             : undefined
         }
         data-maintain-scroll-at-end-item-layout={
@@ -811,6 +807,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-maintain-scroll-at-end="enabled"');
     expect(markup).toContain('data-maintain-scroll-at-end-animated="false"');
     expect(markup).toContain('data-maintain-scroll-at-end-data-change="true"');
+    expect(markup).toContain('data-maintain-scroll-at-end-footer-layout="true"');
     expect(markup).toContain('data-maintain-scroll-at-end-item-layout="true"');
     expect(markup).toContain('data-maintain-scroll-at-end-layout="true"');
     expect(markup).toContain('data-user-message-collapsed="true"');

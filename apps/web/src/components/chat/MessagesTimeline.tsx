@@ -38,7 +38,11 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { LegendList, type LegendListRef } from "@legendapp/list/react";
+import {
+  LegendList,
+  type LegendListRef,
+  type MaintainScrollAtEndOptions,
+} from "@legendapp/list/react";
 import { FileDiff } from "@pierre/diffs/react";
 import {
   deriveTimelineEntries,
@@ -228,7 +232,7 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
     itemLayout: true,
     layout: true,
   },
-} as const;
+} as const satisfies MaintainScrollAtEndOptions;
 
 // ---------------------------------------------------------------------------
 // Props (public API)
