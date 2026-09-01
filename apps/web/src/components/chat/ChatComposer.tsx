@@ -138,6 +138,7 @@ import { ComposerPendingElementContexts } from "./ComposerPendingElementContexts
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
 import { ComposerPreviewAnnotationCards } from "./ComposerPreviewAnnotationCards";
 import {
+  getRestingComposerImagePreviewCounts,
   shouldAnimateComposerRestingTransition,
   shouldUseCompactComposerPrimaryActions,
   shouldUseCompactComposerFooter,
@@ -500,6 +501,24 @@ function useComposerRestingTransition(
                   easing: COMPOSER_RESTING_TRANSITION_EASING,
                 },
               ),
+            );
+          }
+
+          const arrivingImagePreviews = nextIsResting
+            ? Array.from(
+                element.querySelectorAll<HTMLElement>('[data-chat-composer-resting-images="true"]'),
+              )
+            : Array.from(
+                element.querySelectorAll<HTMLElement>('[data-chat-composer-expanded-image="true"]'),
+              );
+          for (const imagePreview of arrivingImagePreviews) {
+            stateChangeAnimations.push(
+              imagePreview.animate([{ opacity: 0 }, { opacity: 1 }], {
+                duration: nextIsResting ? duration : duration / 2,
+                delay: nextIsResting ? 0 : duration / 2,
+                fill: "backwards",
+                easing: COMPOSER_RESTING_TRANSITION_EASING,
+              }),
             );
           }
           stateChangeAnimationsRef.current = stateChangeAnimations;
@@ -1323,6 +1342,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerElementContexts = composerDraft.elementContexts;
   const composerPreviewAnnotations = composerDraft.previewAnnotations;
   const composerReviewComments = composerDraft.reviewComments;
+  const standaloneComposerImages = useMemo(() => {
+    const previewAnnotationIds = new Set(
+      composerPreviewAnnotations.map((annotation) => annotation.id),
+    );
+    return composerImages.filter((image) => !previewAnnotationIds.has(image.id));
+  }, [composerImages, composerPreviewAnnotations]);
   const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
   const uploadsByImageId = useAttachmentUploadStore((state) => state.uploadsByImageId);
   const needsReattachFileCount = composerFiles.filter(composerFileNeedsReattach).length;
@@ -3411,6 +3436,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     hasExpandedChrome: composerHasExpandedChrome,
     hasInlineAccessories: showInlineTasksBadge,
   });
+  const restingImagePreviewCounts = getRestingComposerImagePreviewCounts(
+    standaloneComposerImages.length,
+  );
+  const restingComposerImages = standaloneComposerImages.slice(
+    0,
+    restingImagePreviewCounts.visibleCount,
+  );
   const composerMainSurfaceRef = useComposerRestingTransition(
     isComposerResting,
     restingComposerControlsRef,
@@ -4642,25 +4674,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 !isComposerApprovalState &&
                 pendingUserInputs.length === 0 &&
                 (composerVideos.length > 0 ||
-                  composerImages.some(
-                    (image) =>
-                      !composerPreviewAnnotations.some((annotation) => annotation.id === image.id),
-                  )) && (
+                  (!isComposerResting && standaloneComposerImages.length > 0)) && (
                   <div className="mb-3 flex flex-wrap gap-2">
-                    {composerImages
-                      .filter(
-                        (image) =>
-                          !composerPreviewAnnotations.some(
-                            (annotation) => annotation.id === image.id,
-                          ),
-                      )
-                      .map((image) => {
+                    {!isComposerResting &&
+                      standaloneComposerImages.map((image) => {
                         const upload = supportsAttachmentUploads
                           ? uploadsByImageId[image.id]
                           : undefined;
                         return (
                           <div
                             key={image.id}
+                            data-chat-composer-expanded-image="true"
                             className="relative h-16 w-16 overflow-hidden rounded-lg border border-border/80 bg-background"
                           >
                             {image.previewUrl ? (
@@ -4921,6 +4945,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               <div
                 className={cn(
                   "relative",
+                  isComposerResting && "flex min-w-0 items-center gap-1",
                   isComposerResting && (showComposerAttachAction ? "pr-20" : "pr-12"),
                 )}
               >
@@ -4940,6 +4965,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       : []
                   }
                   skills={selectedProviderStatus?.skills ?? []}
+                  containerClassName={cn(isComposerResting && "min-w-0 flex-1")}
                   className={cn(
                     showMobilePendingAnswerActions && "max-sm:pb-11",
                     isComposerResting &&
@@ -4972,6 +4998,47 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   }
                   disabled={isConnecting || isComposerApprovalState || projectSelectionRequired}
                 />
+                {isComposerResting && restingComposerImages.length > 0 ? (
+                  <div
+                    data-chat-composer-resting-images="true"
+                    className="flex shrink-0 items-center gap-1 ps-1"
+                  >
+                    {restingComposerImages.map((image) => (
+                      <button
+                        key={image.id}
+                        type="button"
+                        className="relative size-7 shrink-0 cursor-zoom-in overflow-hidden rounded-md border border-border/70 bg-muted/60"
+                        aria-label={`Preview ${image.name}`}
+                        onPointerDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          const preview = buildExpandedImagePreview(composerImages, image.id);
+                          if (preview) onExpandImage(preview);
+                        }}
+                      >
+                        {image.previewUrl ? (
+                          <img src={image.previewUrl} alt="" className="size-full object-cover" />
+                        ) : (
+                          <FileIcon className="m-auto size-3.5 text-secondary-label" />
+                        )}
+                      </button>
+                    ))}
+                    {restingImagePreviewCounts.overflowCount > 0 ? (
+                      <button
+                        type="button"
+                        className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/70 bg-muted/60 font-medium text-secondary-label text-xs tabular-nums"
+                        aria-label={`Show ${String(restingImagePreviewCounts.overflowCount)} more image attachments`}
+                        onPointerDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          setIsComposerScrollCollapsed(false);
+                          setIsComposerFocused(true);
+                          scheduleComposerFocus();
+                        }}
+                      >
+                        +{restingImagePreviewCounts.overflowCount}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
                 {showMobilePendingAnswerActions ? (
                   <div
                     data-chat-composer-mobile-pending-actions="true"

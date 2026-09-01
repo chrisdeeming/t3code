@@ -50,8 +50,8 @@ the composer loses focus or you scroll the conversation. When the thread-context
 model and mode controls stay available beside the thread context; in narrower windows they return
 when the composer is focused. Focus the composer or start typing to expand it again. New-thread
 layouts keep the full composer, and phone-sized layouts retain their existing mobile collapse
-behavior. Attachments and other draft context remain visible at their natural height while the
-prompt itself is resting.
+behavior. Up to three image attachments move into the resting prompt row, followed by a count when
+more are attached. Videos, files, and other draft context remain visible at their natural height.
 
 On mobile, the model picker shows each OpenCode model's upstream provider, such as Anthropic,
 GitHub Copilot, or OpenCode Zen, beneath its name. Search by that provider name to narrow the list

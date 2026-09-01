@@ -885,6 +885,7 @@ interface ComposerPromptEditorProps {
   skills: ReadonlyArray<ServerProviderSkill>;
   disabled: boolean;
   placeholder: string;
+  containerClassName?: string;
   className?: string;
   placeholderClassName?: string;
   onRemoveTerminalContext: (contextId: string) => void;
@@ -1536,6 +1537,7 @@ function ComposerPromptEditorInner({
   skills,
   disabled,
   placeholder,
+  containerClassName,
   className,
   placeholderClassName,
   onRemoveTerminalContext,
@@ -1784,7 +1786,12 @@ function ComposerPromptEditorInner({
 
   return (
     <ComposerTerminalContextActionsContext value={terminalContextActions}>
-      <div className="relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]">
+      <div
+        className={cn(
+          "relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]",
+          containerClassName,
+        )}
+      >
         <PlainTextPlugin
           contentEditable={
             <ContentEditable
@@ -1835,6 +1842,7 @@ export function ComposerPromptEditor({
   skills,
   disabled,
   placeholder,
+  containerClassName,
   className,
   placeholderClassName,
   onRemoveTerminalContext,
@@ -1875,6 +1883,7 @@ export function ComposerPromptEditor({
         skills={skills}
         disabled={disabled}
         placeholder={placeholder}
+        {...(containerClassName ? { containerClassName } : {})}
         onRemoveTerminalContext={onRemoveTerminalContext}
         onChange={onChange}
         {...(onVisibleSelectionChange ? { onVisibleSelectionChange } : {})}

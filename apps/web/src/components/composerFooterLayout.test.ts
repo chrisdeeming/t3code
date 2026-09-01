@@ -3,11 +3,29 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX,
   COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX,
+  getRestingComposerImagePreviewCounts,
   shouldAnimateComposerRestingTransition,
   shouldUseCompactComposerPrimaryActions,
   shouldUseCompactComposerFooter,
   shouldUseRestingComposerLayout,
 } from "./composerFooterLayout";
+
+describe("getRestingComposerImagePreviewCounts", () => {
+  it("shows at most three thumbnails and counts the remainder", () => {
+    expect(getRestingComposerImagePreviewCounts(0)).toEqual({
+      visibleCount: 0,
+      overflowCount: 0,
+    });
+    expect(getRestingComposerImagePreviewCounts(3)).toEqual({
+      visibleCount: 3,
+      overflowCount: 0,
+    });
+    expect(getRestingComposerImagePreviewCounts(7)).toEqual({
+      visibleCount: 3,
+      overflowCount: 4,
+    });
+  });
+});
 
 describe("shouldUseCompactComposerFooter", () => {
   it("stays expanded without a measured width", () => {
