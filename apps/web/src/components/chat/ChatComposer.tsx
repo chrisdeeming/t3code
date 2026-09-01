@@ -4524,7 +4524,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             ref={composerSurfaceRef}
             data-chat-composer-surface="true"
             data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
-            data-chat-composer-resting={isComposerResting ? "true" : "false"}
             className={cn(
               "rounded-[20px] transition-[background-color] duration-200",
               isDragOverComposer ? "bg-accent/45 ring-1 ring-primary/70" : null,
