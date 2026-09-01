@@ -3435,6 +3435,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     providerInputSubmissionError !== null ||
     hasImageAttachmentAttention;
   const isComposerResting = shouldUseRestingComposerLayout({
+    hasControlsHost: restingControlsHost !== null,
     isExistingThread: routeKind === "server" && activeThreadId !== null,
     isMobileViewport,
     isFocused: isComposerFocused && !isComposerScrollCollapsed,

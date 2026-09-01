@@ -24,6 +24,7 @@ export function shouldUseCompactComposerFooter(
 }
 
 export function shouldUseRestingComposerLayout(input: {
+  hasControlsHost: boolean;
   isExistingThread: boolean;
   isMobileViewport: boolean;
   isFocused: boolean;
@@ -33,11 +34,12 @@ export function shouldUseRestingComposerLayout(input: {
   // Passive draft content is deliberately absent here. Resting only clamps
   // the prompt row and overlays its actions; non-image attachment and context
   // rows keep their natural height above it while image previews move inline.
-  // Resting is also deliberately independent
-  // of whether the context strip can show the relocated controls: where the
-  // strip lacks the room, the controls are simply not shown until the
-  // composer is focused again.
+  // A mounted context strip is required because it hosts the relocated
+  // controls. Its responsive visibility is deliberately absent here: at
+  // narrower widths the host remains mounted and the controls return when
+  // the composer is focused.
   return (
+    input.hasControlsHost &&
     input.isExistingThread &&
     !input.isMobileViewport &&
     !input.isFocused &&

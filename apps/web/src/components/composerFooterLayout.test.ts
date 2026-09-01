@@ -73,6 +73,7 @@ describe("shouldUseCompactComposerPrimaryActions", () => {
 
 describe("shouldUseRestingComposerLayout", () => {
   const resting = {
+    hasControlsHost: true,
     isExistingThread: true,
     isMobileViewport: false,
     isFocused: false,
@@ -82,6 +83,10 @@ describe("shouldUseRestingComposerLayout", () => {
 
   it("uses the resting layout for an unfocused desktop composer", () => {
     expect(shouldUseRestingComposerLayout(resting)).toBe(true);
+  });
+
+  it("keeps the full footer when there is no context strip to host its controls", () => {
+    expect(shouldUseRestingComposerLayout({ ...resting, hasControlsHost: false })).toBe(false);
   });
 
   it("keeps new-thread composers expanded", () => {
