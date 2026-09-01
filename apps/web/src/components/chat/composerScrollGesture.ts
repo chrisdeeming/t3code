@@ -36,10 +36,16 @@ export function recordComposerScrollGestureEvent(
     collapseThresholdPx: number;
     collapseEligible: boolean;
     canScrollInGestureDirection: boolean;
+    scrollsTowardLogicalEnd: boolean;
   },
 ): boolean {
   state.lastEventAt = input.now;
-  if (state.collapseSuppressed || !input.collapseEligible || !input.canScrollInGestureDirection) {
+  if (
+    state.collapseSuppressed ||
+    !input.collapseEligible ||
+    !input.canScrollInGestureDirection ||
+    input.scrollsTowardLogicalEnd
+  ) {
     state.accumulatedDeltaPx = 0;
     return false;
   }

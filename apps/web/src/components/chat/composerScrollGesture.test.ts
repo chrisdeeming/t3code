@@ -17,6 +17,7 @@ function record(
     deltaPx: number;
     collapseEligible: boolean;
     canScrollInGestureDirection: boolean;
+    scrollsTowardLogicalEnd: boolean;
   }> = {},
 ) {
   return recordComposerScrollGestureEvent(state, {
@@ -25,6 +26,7 @@ function record(
     collapseThresholdPx: THRESHOLD_PX,
     collapseEligible: options.collapseEligible ?? true,
     canScrollInGestureDirection: options.canScrollInGestureDirection ?? true,
+    scrollsTowardLogicalEnd: options.scrollsTowardLogicalEnd ?? false,
   });
 }
 
@@ -80,5 +82,13 @@ describe("composer scroll gesture", () => {
     expect(record(state, 40, { deltaPx: 4 })).toBe(true);
     expect(record(state, 60, { deltaPx: 10, collapseEligible: false })).toBe(false);
     expect(record(state, 80, { deltaPx: 14 })).toBe(false);
+  });
+
+  it("does not collapse while scrolling down through composer footer space", () => {
+    const state = createComposerScrollGestureState();
+
+    expect(record(state, 0, { deltaPx: 20 })).toBe(false);
+    expect(record(state, 20, { scrollsTowardLogicalEnd: true })).toBe(false);
+    expect(record(state, 40, { deltaPx: 10 })).toBe(false);
   });
 });

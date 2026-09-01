@@ -231,6 +231,7 @@ const COMPOSER_RESTING_CONTROLS_ARRIVAL_DRIFT_PX = 4;
 function useComposerRestingTransition(
   isResting: boolean,
   restingControlsRef: React.RefObject<HTMLDivElement | null>,
+  onOverlayHeightChange: (height: number) => void,
 ) {
   const elementRef = useRef<HTMLDivElement>(null);
   const isRestingRef = useRef(isResting);
@@ -249,14 +250,21 @@ function useComposerRestingTransition(
   const transitionCleanupTimeoutRef = useRef<number | null>(null);
   const hasCompletedInitialLayoutRef = useRef(false);
 
-  const clearTransitionStyles = useCallback(() => {
-    const element = elementRef.current;
-    const footer = element?.querySelector<HTMLElement>('[data-chat-composer-footer="true"]');
+  const clearOverlayPin = useCallback(() => {
     // The overlay belongs to the chat view and outlives this composer, so it
     // is remembered from pin time rather than re-resolved through a ref that
     // React may already have detached during unmount.
     const overlay = pinnedOverlayRef.current;
     pinnedOverlayRef.current = null;
+    overlay?.style.removeProperty("height");
+    overlay?.style.removeProperty("display");
+    overlay?.style.removeProperty("flex-direction");
+    overlay?.style.removeProperty("justify-content");
+  }, []);
+
+  const clearTransitionStyles = useCallback(() => {
+    const element = elementRef.current;
+    const footer = element?.querySelector<HTMLElement>('[data-chat-composer-footer="true"]');
     element?.style.removeProperty("overflow");
     element
       ?.querySelector<HTMLElement>('[data-chat-composer-surface="true"]')
@@ -267,11 +275,8 @@ function useComposerRestingTransition(
     footer?.style.removeProperty("left");
     footer?.style.removeProperty("right");
     footer?.style.removeProperty("height");
-    overlay?.style.removeProperty("height");
-    overlay?.style.removeProperty("display");
-    overlay?.style.removeProperty("flex-direction");
-    overlay?.style.removeProperty("justify-content");
-  }, []);
+    clearOverlayPin();
+  }, [clearOverlayPin]);
 
   isRestingRef.current = isResting;
 
@@ -354,13 +359,16 @@ function useComposerRestingTransition(
 
         // The chat view resize-observes the overlay to place the timeline
         // inset, the scroll-to-end pill, and the mini player. Pinning the
-        // overlay at its settled height for the duration of the tween turns
-        // that feedback into a single update instead of a ChatView re-render
-        // on every animation frame; bottom alignment keeps the animating
-        // surface glued to the overlay's stable bottom edge meanwhile.
+        // overlay at the destination height turns that feedback into one
+        // update instead of a ChatView re-render on every animation frame;
+        // bottom alignment keeps the animating surface glued to the overlay's
+        // stable bottom edge. The pin lasts only for the tween so later
+        // attachment, thread, font, and viewport changes remain natural.
         const overlay = element.closest<HTMLElement>('[data-chat-composer-overlay="true"]');
+        let pinnedOverlayHeight: number | null = null;
         if (overlay) {
-          overlay.style.height = `${String(overlay.getBoundingClientRect().height)}px`;
+          pinnedOverlayHeight = overlay.getBoundingClientRect().height;
+          overlay.style.height = `${String(pinnedOverlayHeight)}px`;
           overlay.style.display = "flex";
           overlay.style.flexDirection = "column";
           overlay.style.justifyContent = "flex-end";
@@ -392,9 +400,13 @@ function useComposerRestingTransition(
             easing: COMPOSER_RESTING_TRANSITION_EASING,
           },
         );
-        animation.id = "t3-composer-resting-transition";
         animationRef.current = animation;
         animationTargetHeightRef.current = nextHeight;
+        // Publish the destination overlay geometry in the same layout pass;
+        // ResizeObserver remains the fallback for non-transition changes.
+        if (pinnedOverlayHeight !== null) {
+          onOverlayHeightChange(pinnedOverlayHeight);
+        }
 
         const animatedRect = element.getBoundingClientRect();
         const previousPromptTop =
@@ -533,7 +545,7 @@ function useComposerRestingTransition(
         actionFromBottom: nextActionTop === null ? null : nextRect.bottom - nextActionTop,
       };
     },
-    [clearTransitionStyles, restingControlsRef],
+    [clearTransitionStyles, onOverlayHeightChange, restingControlsRef],
   );
 
   useLayoutEffect(() => {
@@ -1161,6 +1173,8 @@ export interface ChatComposerProps {
   gitCwd: string | null;
   restingControlsHost: HTMLDivElement | null;
   getTimelineScrollableNode: () => HTMLElement | null;
+  isTimelineAtLogicalEnd: () => boolean;
+  onComposerOverlayHeightChange: (height: number) => void;
 
   // Refs the parent needs kept in sync
   promptRef: React.RefObject<string>;
@@ -1257,6 +1271,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     gitCwd,
     restingControlsHost,
     getTimelineScrollableNode,
+    isTimelineAtLogicalEnd,
+    onComposerOverlayHeightChange,
     promptRef,
     composerRef,
     composerImagesRef,
@@ -3396,6 +3412,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerMainSurfaceRef = useComposerRestingTransition(
     isComposerResting,
     restingComposerControlsRef,
+    onComposerOverlayHeightChange,
   );
   const canTrackComposerScrollGesture =
     routeKind === "server" && activeThreadId !== null && !isMobileViewport;
@@ -3461,6 +3478,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         collapseEligible:
           targetsTimeline && composerScrollCollapseEligibleRef.current && isPromptEditorFocused,
         canScrollInGestureDirection,
+        scrollsTowardLogicalEnd: event.deltaY > 0 && isTimelineAtLogicalEnd(),
       });
       if (!shouldCollapse) {
         return;
@@ -3474,7 +3492,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       document.removeEventListener("wheel", handleTimelineWheel, true);
       finishScrollGesture();
     };
-  }, [activeThreadId, canTrackComposerScrollGesture, getTimelineScrollableNode]);
+  }, [
+    activeThreadId,
+    canTrackComposerScrollGesture,
+    getTimelineScrollableNode,
+    isTimelineAtLogicalEnd,
+  ]);
 
   const restingHiddenBlockCount = isComposerResting ? restingControlsHiddenBlockCount : 0;
   const composerControlsCompact = isComposerResting
@@ -4222,11 +4245,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onPointerDownCapture={(event) => {
         const target = event.target;
         if (isInsideRestingComposerControlScope(target)) return;
-        if (
-          !(target instanceof Element) ||
-          !target.closest('button, a, input, select, [role="button"], [role="menuitem"]')
-        ) {
-          setIsComposerScrollCollapsed(false);
+        if (!(target instanceof Element)) return;
+        const isInteractive = Boolean(
+          target.closest('button, a, input, select, [role="button"], [role="menuitem"]'),
+        );
+        if (isInteractive) return;
+
+        setIsComposerScrollCollapsed(false);
+        if (isComposerResting && !target.closest('[data-testid="composer-editor"]')) {
+          // Clicking resting-surface padding would otherwise blur the still
+          // focused editor after pointerdown: expansion starts, the blur check
+          // runs, and it immediately collapses again. Treat that padding like
+          // the editor without stealing native caret placement from text.
+          event.preventDefault();
+          setIsComposerFocused(true);
+          scheduleComposerFocus();
         }
       }}
       onFocusCapture={(event) => {
