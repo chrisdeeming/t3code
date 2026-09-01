@@ -3416,6 +3416,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       steps={activeTaskSteps}
     />
   ) : null;
+  const hasImageAttachmentAttention = standaloneComposerImages.some(
+    (image) =>
+      nonPersistedComposerImageIdSet.has(image.id) ||
+      (supportsAttachmentUploads && uploadsByImageId[image.id]?.status === "failed"),
+  );
   const composerHasExpandedChrome =
     hasBannerItems ||
     showComposerTopDrawer ||
@@ -3428,7 +3433,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     projectSelectionRequired ||
     environmentUnavailable !== null ||
     composerSubmissionError !== null ||
-    providerInputSubmissionError !== null;
+    providerInputSubmissionError !== null ||
+    hasImageAttachmentAttention;
   const isComposerResting = shouldUseRestingComposerLayout({
     isExistingThread: routeKind === "server" && activeThreadId !== null,
     isMobileViewport,
@@ -3455,10 +3461,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   composerScrollCollapseEligibleRef.current = canScrollCollapseComposer;
 
   useEffect(() => {
-    if (!canTrackComposerScrollGesture) {
+    if (!canScrollCollapseComposer) {
       setIsComposerScrollCollapsed(false);
     }
-  }, [canTrackComposerScrollGesture]);
+  }, [canScrollCollapseComposer]);
 
   useEffect(() => {
     if (!canTrackComposerScrollGesture) return;

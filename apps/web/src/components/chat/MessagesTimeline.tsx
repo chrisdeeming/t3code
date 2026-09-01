@@ -223,6 +223,7 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
   animated: false,
   on: {
     dataChange: true,
+    footerLayout: true,
     itemLayout: true,
     layout: true,
   },
