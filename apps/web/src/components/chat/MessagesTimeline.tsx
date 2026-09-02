@@ -560,7 +560,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   const handleScroll = useCallback(() => {
     const state = listRef.current?.getState?.();
-    const isAtEnd = resolveTimelineIsAtEnd(state, contentInsetEndAdjustment);
+    const isAtEnd = resolveTimelineIsAtEnd(state);
     if (isAtEnd !== undefined && !citationPositioning) {
       onIsAtEndChange(isAtEnd);
     }
@@ -586,14 +586,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
       strip.dataset.inView = inView ? "true" : "false";
     }
-  }, [
-    citationPositioning,
-    contentInsetEndAdjustment,
-    listRef,
-    minimapItems,
-    minimapStripMap,
-    onIsAtEndChange,
-  ]);
+  }, [citationPositioning, listRef, minimapItems, minimapStripMap, onIsAtEndChange]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(handleScroll);
@@ -1857,7 +1850,7 @@ function WorkGroupToggleTimelineRow({
     >
       <span className="flex size-6 shrink-0 items-center justify-center text-icon-muted">
         <WorkEntryIcon
-          name={toolGroupSummaryIconName(row.summaryKind)}
+          name={row.summaryToolIcon ?? toolGroupSummaryIconName(row.summaryKind)}
           className="size-4 shrink-0 stroke-[1.8] opacity-70"
         />
       </span>
