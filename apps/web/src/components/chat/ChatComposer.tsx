@@ -143,6 +143,7 @@ import { ComposerPreviewAnnotationCards } from "./ComposerPreviewAnnotationCards
 import {
   getRestingComposerImagePreviewCounts,
   shouldAnimateComposerRestingTransition,
+  resolveRestingComposerControlsLayout,
   shouldUseCompactComposerPrimaryActions,
   shouldUseCompactComposerFooter,
   shouldUseRestingComposerLayout,
@@ -837,7 +838,7 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
   const controlsRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef(host);
   hostRef.current = host;
-  const [hiddenCount, setHiddenCount] = useState(0);
+  const [layout, setLayout] = useState({ hiddenCount: 0, visible: true });
 
   const measure = useCallback(() => {
     const currentHost = hostRef.current;
@@ -849,6 +850,10 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
     const blocks = Array.from(controls.querySelectorAll<HTMLElement>("[data-resting-block]"));
     if (blocks.length === 0) return;
 
+    // Every width read here is a natural width: nothing in the cluster
+    // flex-shrinks, and hidden blocks plus the unused overflow trigger stay
+    // mounted out of flow at full size. Measuring squeezed boxes instead would
+    // let the fit self-justify and leave the picker truncated.
     const gap = Number.parseFloat(getComputedStyle(controls).columnGap) || 0;
     const picker = controls.querySelector<HTMLElement>("[data-chat-provider-model-picker]");
     const separator = controls.querySelector<HTMLElement>("[data-resting-controls-separator]");
@@ -858,25 +863,21 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
       (separator ? elementOuterWidth(separator) + gap : 0);
     const blockWidths = blocks.map(elementOuterWidth);
     const overflowWidth = overflow ? elementOuterWidth(overflow) : 0;
+    const hostWidth = currentHost.clientWidth;
 
-    setHiddenCount((current) => {
-      const widthWithHidden = (hidden: number) => {
-        const visibleCount = blockWidths.length - hidden;
-        return (
-          fixedWidth +
-          blockWidths.slice(0, visibleCount).reduce((sum, width) => sum + width, 0) +
-          (hidden > 0 ? overflowWidth : 0) +
-          gap * (visibleCount + (hidden > 0 ? 1 : 0))
-        );
-      };
-
-      let next = Math.min(current, blockWidths.length);
-      while (next < blockWidths.length && widthWithHidden(next) > currentHost.clientWidth)
-        next += 1;
-      while (next > 0 && widthWithHidden(next - 1) <= currentHost.clientWidth - 16) {
-        next -= 1;
-      }
-      return next;
+    setLayout((current) => {
+      const next = resolveRestingComposerControlsLayout({
+        hostWidth,
+        gap,
+        fixedWidth,
+        blockWidths,
+        overflowWidth,
+        currentHiddenCount: current.hiddenCount,
+        currentVisible: current.visible,
+      });
+      return next.hiddenCount === current.hiddenCount && next.visible === current.visible
+        ? current
+        : next;
     });
   }, []);
 
@@ -892,7 +893,7 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
     };
   }, [host, measure]);
 
-  return { controlsRef, hiddenBlockCount: hiddenCount };
+  return { controlsRef, hiddenBlockCount: layout.hiddenCount, controlsVisible: layout.visible };
 }
 
 const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
@@ -2101,6 +2102,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const {
     controlsRef: restingComposerControlsRef,
     hiddenBlockCount: restingControlsHiddenBlockCount,
+    controlsVisible: restingControlsVisible,
   } = useRestingComposerControlsLayout(restingControlsHost);
   const pendingPrimaryAction = useMemo(
     () =>
@@ -3615,9 +3617,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ]);
 
   const restingHiddenBlockCount = isComposerResting ? restingControlsHiddenBlockCount : 0;
-  const composerControlsCompact = isComposerResting
-    ? restingHiddenBlockCount > 0
-    : isComposerFooterCompact;
+  const composerControlsCompact = !isComposerResting && isComposerFooterCompact;
   const restingBlockDefs = [
     ...(providerTraitsPicker
       ? [
@@ -3677,10 +3677,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         keybindings={keybindings}
         modelOptionsByInstance={modelOptionsByInstance}
         size={isComposerResting ? "xs" : "sm"}
-        triggerClassName={cn(
-          !isComposerResting && "-ms-2.5",
-          isComposerResting && composerControlsCompact && "max-w-none! shrink!",
-        )}
+        triggerClassName={isComposerResting ? "shrink-0" : "-ms-2.5"}
         terminalOpen={terminalOpen}
         open={isComposerModelPickerOpen}
         instanceIndicatorBackground={
@@ -3702,7 +3699,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         onInstanceModelChange={onProviderModelSelect}
       />
 
-      {!isComposerResting && composerControlsCompact ? (
+      {composerControlsCompact ? (
         <CompactComposerControlsMenu
           interactionMode={interactionMode}
           runtimeMode={runtimeMode}
@@ -3733,8 +3730,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               </div>
             );
           })}
-          {isComposerResting && hiddenRestingBlockIds.length > 0 ? (
-            <div data-resting-controls-overflow className="min-w-0 shrink-0">
+          {isComposerResting ? (
+            <div
+              key={hiddenRestingBlockIds.length > 0 ? "overflow:visible" : "overflow:hidden"}
+              data-resting-controls-overflow
+              aria-hidden={hiddenRestingBlockIds.length === 0 || undefined}
+              inert={hiddenRestingBlockIds.length === 0 || undefined}
+              className={cn(
+                "min-w-0 shrink-0",
+                hiddenRestingBlockIds.length === 0 && "pointer-events-none invisible absolute",
+              )}
+            >
               <CompactComposerControlsMenu
                 interactionMode={interactionMode}
                 runtimeMode={runtimeMode}
@@ -4466,9 +4472,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             <div
               ref={restingComposerControlsRef}
               data-chat-composer-resting-controls="true"
+              aria-hidden={restingControlsVisible ? undefined : true}
+              inert={restingControlsVisible ? undefined : true}
               className={cn(
-                "relative flex items-center gap-1 font-normal text-muted-foreground/70",
-                restingHiddenBlockCount > 0 ? "w-full min-w-0" : "w-max min-w-max",
+                "relative flex w-max min-w-max items-center gap-1 font-normal text-muted-foreground/70",
+                !restingControlsVisible && "invisible",
               )}
             >
               {composerControls}

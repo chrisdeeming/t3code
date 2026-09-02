@@ -531,14 +531,16 @@ export const BranchToolbar = memo(function BranchToolbar({
         </div>
       )}
 
-      {composerControlsHostRef ? (
-        // The empty host stays in desktop layout so the composer can observe
-        // its rendered width instead of duplicating this media query in JS.
+      {composerControlsHostRef && !isMobile ? (
+        // Only the desktop strip has room to host the resting composer
+        // controls: the mobile layout above grows its selectors into every
+        // spare pixel. Mounting the host only here lets the composer follow
+        // the same layout switch through the ref instead of a second query.
         <div
           ref={composerControlsHostRef}
           data-composer-context-control
           data-chat-resting-composer-controls-host="true"
-          className="hidden min-w-0 flex-1 items-center justify-start overflow-x-clip overflow-y-visible md:flex"
+          className="flex min-w-0 flex-1 items-center justify-start overflow-x-clip overflow-y-visible"
         />
       ) : null}
 
