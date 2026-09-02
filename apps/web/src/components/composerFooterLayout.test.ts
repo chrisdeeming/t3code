@@ -4,7 +4,6 @@ import {
   COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX,
   COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX,
   getRestingComposerImagePreviewCounts,
-  RESTING_COMPOSER_CONTROLS_RESTORE_HYSTERESIS_PX,
   resolveRestingComposerControlsLayout,
   shouldAnimateComposerRestingTransition,
   shouldUseCompactComposerPrimaryActions,
@@ -75,7 +74,6 @@ describe("shouldUseCompactComposerPrimaryActions", () => {
 
 describe("shouldUseRestingComposerLayout", () => {
   const resting = {
-    hasControlsHost: true,
     isExistingThread: true,
     isMobileViewport: false,
     isFocused: false,
@@ -85,10 +83,6 @@ describe("shouldUseRestingComposerLayout", () => {
 
   it("uses the resting layout for an unfocused desktop composer", () => {
     expect(shouldUseRestingComposerLayout(resting)).toBe(true);
-  });
-
-  it("keeps the full footer when there is no context strip to host its controls", () => {
-    expect(shouldUseRestingComposerLayout({ ...resting, hasControlsHost: false })).toBe(false);
   });
 
   it("keeps new-thread composers expanded", () => {
@@ -142,15 +136,14 @@ describe("shouldAnimateComposerRestingTransition", () => {
 });
 
 describe("resolveRestingComposerControlsLayout", () => {
-  // Natural widths: picker 140 (+ separator 9 = fixed 149), traits 60, mode 140,
-  // overflow 24, gap 4.
+  // Picker 140 natural / 96 minimum, plus a 9px separator. Traits 60,
+  // mode 140, overflow 24, gap 4.
   const base = {
     gap: 4,
-    fixedWidth: 149,
+    naturalFixedWidth: 149,
+    minimumFixedWidth: 105,
     blockWidths: [60, 140],
     overflowWidth: 24,
-    currentHiddenCount: 0,
-    currentVisible: true,
   };
 
   it("shows everything when the host has room", () => {
@@ -178,8 +171,20 @@ describe("resolveRestingComposerControlsLayout", () => {
     });
   });
 
-  it("hides the whole cluster when even the picker and overflow menu cannot fit", () => {
+  it("shrinks the picker after moving every trailing block into overflow", () => {
     expect(resolveRestingComposerControlsLayout({ ...base, hostWidth: 176 })).toEqual({
+      hiddenCount: 2,
+      visible: true,
+    });
+    // 105 + 24 + 4 = 133
+    expect(resolveRestingComposerControlsLayout({ ...base, hostWidth: 133 })).toEqual({
+      hiddenCount: 2,
+      visible: true,
+    });
+  });
+
+  it("hides the whole cluster below the picker's minimum readable width", () => {
+    expect(resolveRestingComposerControlsLayout({ ...base, hostWidth: 132 })).toEqual({
       hiddenCount: 2,
       visible: false,
     });
@@ -189,53 +194,27 @@ describe("resolveRestingComposerControlsLayout", () => {
     });
   });
 
-  it("keeps hidden blocks hidden until there is hysteresis room to restore them", () => {
-    const hiddenOne = { ...base, currentHiddenCount: 1 };
-    expect(resolveRestingComposerControlsLayout({ ...hiddenOne, hostWidth: 357 })).toEqual({
+  it("uses the same thresholds while shrinking and growing", () => {
+    expect(resolveRestingComposerControlsLayout({ ...base, hostWidth: 240 })).toEqual({
+      hiddenCount: 2,
+      visible: true,
+    });
+    expect(resolveRestingComposerControlsLayout({ ...base, hostWidth: 241 })).toEqual({
       hiddenCount: 1,
       visible: true,
     });
-    expect(
-      resolveRestingComposerControlsLayout({
-        ...hiddenOne,
-        hostWidth: 357 + RESTING_COMPOSER_CONTROLS_RESTORE_HYSTERESIS_PX,
-      }),
-    ).toEqual({ hiddenCount: 0, visible: true });
   });
 
-  it("keeps a hidden cluster hidden until there is hysteresis room to show it", () => {
-    const hiddenCluster = { ...base, currentHiddenCount: 2, currentVisible: false };
-    expect(resolveRestingComposerControlsLayout({ ...hiddenCluster, hostWidth: 177 })).toEqual({
-      hiddenCount: 2,
-      visible: false,
-    });
-    expect(
-      resolveRestingComposerControlsLayout({
-        ...hiddenCluster,
-        hostWidth: 177 + RESTING_COMPOSER_CONTROLS_RESTORE_HYSTERESIS_PX,
-      }),
-    ).toEqual({ hiddenCount: 2, visible: true });
-  });
-
-  it("restores several blocks at once when the host grows enough", () => {
+  it("supports a single leading control without overflow blocks", () => {
     expect(
       resolveRestingComposerControlsLayout({
         ...base,
-        currentHiddenCount: 2,
-        currentVisible: false,
-        hostWidth: 600,
+        naturalFixedWidth: 140,
+        minimumFixedWidth: 140,
+        blockWidths: [],
+        overflowWidth: 0,
+        hostWidth: 139,
       }),
-    ).toEqual({ hiddenCount: 0, visible: true });
-  });
-
-  it("clamps a stale hidden count to the current block list", () => {
-    expect(
-      resolveRestingComposerControlsLayout({
-        ...base,
-        blockWidths: [140],
-        currentHiddenCount: 2,
-        hostWidth: 600,
-      }),
-    ).toEqual({ hiddenCount: 0, visible: true });
+    ).toEqual({ hiddenCount: 0, visible: false });
   });
 });

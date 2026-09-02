@@ -187,7 +187,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             />
           ) : null}
           <Tooltip>
-            <TooltipTrigger render={<span className="min-w-0 flex-1 overflow-hidden truncate" />}>
+            <TooltipTrigger
+              render={
+                <span
+                  className="min-w-0 flex-1 overflow-hidden truncate"
+                  data-chat-provider-model-picker-label="true"
+                />
+              }
+            >
               {triggerTitle}
             </TooltipTrigger>
             <TooltipPopup side="top">{triggerLabel}</TooltipPopup>

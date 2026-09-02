@@ -13,7 +13,6 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
 import { useProject, useThread, useThreadShellsForProjectRefs } from "../state/entities";
-import { useIsMobile } from "../hooks/useMediaQuery";
 import {
   type EnvMode,
   type EnvironmentOption,
@@ -60,6 +59,7 @@ interface BranchToolbarProps {
   availableEnvironments?: readonly EnvironmentOption[];
   onEnvironmentChange?: (environmentId: EnvironmentId) => void;
   composerControlsHostRef?: (element: HTMLDivElement | null) => void;
+  contextStripVisible?: boolean;
 }
 
 interface MobileRunContextSelectorProps {
@@ -129,7 +129,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
 
   if (isLocked) {
     return (
-      <span className="inline-flex h-7 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] text-sm font-normal text-muted-foreground/70 sm:h-6 sm:text-xs md:hidden">
+      <span className="inline-flex h-7 min-w-0 max-w-[48%] flex-initial items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] text-sm font-normal text-muted-foreground/70 sm:h-6 sm:text-xs">
         {triggerContent}
       </span>
     );
@@ -139,7 +139,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
     <Menu>
       <MenuTrigger
         render={<Button variant="ghost" size="xs" />}
-        className="min-w-0 max-w-[48%] flex-1 justify-start font-normal text-muted-foreground/70 hover:text-foreground/80 md:hidden"
+        className="min-w-0 max-w-[48%] flex-initial justify-start font-normal text-muted-foreground/70 hover:text-foreground/80"
       >
         {triggerContent}
         <ChevronDownIcon className="size-3 shrink-0 opacity-50" />
@@ -397,6 +397,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   availableEnvironments,
   onEnvironmentChange,
   composerControlsHostRef,
+  contextStripVisible = true,
 }: BranchToolbarProps) {
   const threadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
@@ -467,7 +468,6 @@ export const BranchToolbar = memo(function BranchToolbar({
     activeEnvironment: activeEnvironmentOption,
     canPickEnvironment: showEnvironmentPicker,
   });
-  const isMobile = useIsMobile();
   const [stripElement, setStripElement] = useState<HTMLDivElement | null>(null);
   const labelsOverflow = useLabelsOverflow(stripElement);
 
@@ -477,27 +477,37 @@ export const BranchToolbar = memo(function BranchToolbar({
     <ComposerSurface.ContextStrip
       ref={setStripElement}
       data-compact={labelsOverflow ? "" : undefined}
-      className="gap-1 text-xs font-normal text-muted-foreground/70"
+      className={cn(
+        "gap-1 text-xs font-normal text-muted-foreground/70",
+        // A non-Git strip with no visible composer controls should occupy no
+        // space, but its host must retain a prospective width so controls can
+        // become visible again when the chat view grows.
+        !contextStripVisible && "pointer-events-none invisible absolute inset-x-0 top-full",
+      )}
     >
-      {isMobile && showGitControls ? (
-        <MobileRunContextSelector
-          envLocked={envLocked}
-          envModeLocked={envModeLocked}
-          environmentId={environmentId}
-          availableEnvironments={availableEnvironments}
-          showEnvironmentPicker={showEnvironmentPicker}
-          showEnvironmentIndicator={showEnvironmentIndicator}
-          onEnvironmentChange={onEnvironmentChange}
-          effectiveEnvMode={effectiveEnvMode}
-          activeWorktreePath={activeWorktreePath}
-          onEnvModeChange={onEnvModeChange}
-          previousWorktreeLabel={previousWorktreeLabel}
-          onUsePreviousWorktree={onUsePreviousWorktree}
-        />
-      ) : (
+      {showGitControls ? (
+        <div className="contents @3xl/composer-surface:hidden">
+          <MobileRunContextSelector
+            envLocked={envLocked}
+            envModeLocked={envModeLocked}
+            environmentId={environmentId}
+            availableEnvironments={availableEnvironments}
+            showEnvironmentPicker={showEnvironmentPicker}
+            showEnvironmentIndicator={showEnvironmentIndicator}
+            onEnvironmentChange={onEnvironmentChange}
+            effectiveEnvMode={effectiveEnvMode}
+            activeWorktreePath={activeWorktreePath}
+            onEnvModeChange={onEnvModeChange}
+            previousWorktreeLabel={previousWorktreeLabel}
+            onUsePreviousWorktree={onUsePreviousWorktree}
+          />
+        </div>
+      ) : null}
+      {showGitControls || showEnvironmentIndicator ? (
         <div
           className={cn(
-            "flex min-w-10 items-center gap-1",
+            "min-h-7 min-w-10 items-center gap-1 sm:min-h-6",
+            showGitControls ? "hidden @3xl/composer-surface:flex" : "flex",
             composerControlsHostRef ? "shrink" : "flex-1",
           )}
         >
@@ -529,13 +539,12 @@ export const BranchToolbar = memo(function BranchToolbar({
             />
           ) : null}
         </div>
-      )}
+      ) : null}
 
-      {composerControlsHostRef && !isMobile ? (
-        // Only the desktop strip has room to host the resting composer
-        // controls: the mobile layout above grows its selectors into every
-        // spare pixel. Mounting the host only here lets the composer follow
-        // the same layout switch through the ref instead of a second query.
+      {composerControlsHostRef ? (
+        // The host takes whatever the workspace and branch controls leave
+        // over, in both strip layouts, so a collapsed composer can show its
+        // model and mode controls wherever they fit.
         <div
           ref={composerControlsHostRef}
           data-composer-context-control
@@ -546,7 +555,7 @@ export const BranchToolbar = memo(function BranchToolbar({
 
       {showGitControls ? (
         <BranchToolbarBranchSelector
-          className="min-w-0 flex-1 justify-end md:ml-auto md:flex-initial"
+          className="min-w-0 flex-initial justify-end @3xl/composer-surface:ml-auto"
           environmentId={environmentId}
           threadId={threadId}
           {...(draftId ? { draftId } : {})}

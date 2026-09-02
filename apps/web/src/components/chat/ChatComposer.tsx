@@ -234,13 +234,13 @@ const COMPOSER_RESTING_TRANSITION_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 const COMPOSER_RESTING_CONTROLS_ARRIVAL_DRIFT_PX = 4;
 
 function useComposerRestingTransition(
-  isResting: boolean,
+  isCollapsed: boolean,
   restingControlsRef: React.RefObject<HTMLDivElement | null>,
   onOverlayHeightChange: (height: number) => void,
 ) {
   const elementRef = useRef<HTMLDivElement>(null);
-  const isRestingRef = useRef(isResting);
-  const previousRestingRef = useRef(isResting);
+  const isCollapsedRef = useRef(isCollapsed);
+  const previousCollapsedRef = useRef(isCollapsed);
   const previousHeightRef = useRef<number | null>(null);
   const previousContentOffsetsRef = useRef<{
     promptFromTop: number | null;
@@ -253,6 +253,7 @@ function useComposerRestingTransition(
   const stateChangeAnimationsRef = useRef<Animation[]>([]);
   const pinnedOverlayRef = useRef<HTMLElement | null>(null);
   const transitionCleanupTimeoutRef = useRef<number | null>(null);
+  const transitionLayoutRequestRef = useRef(0);
   const hasCompletedInitialLayoutRef = useRef(false);
 
   const clearOverlayPin = useCallback(() => {
@@ -283,7 +284,7 @@ function useComposerRestingTransition(
     clearOverlayPin();
   }, [clearOverlayPin]);
 
-  isRestingRef.current = isResting;
+  isCollapsedRef.current = isCollapsed;
 
   const transitionToCurrentGeometry = useCallback(
     (stateChanged: boolean) => {
@@ -291,10 +292,16 @@ function useComposerRestingTransition(
       const surface = element?.querySelector<HTMLElement>('[data-chat-composer-surface="true"]');
       if (!element || !surface) return;
 
-      const nextIsResting = isRestingRef.current;
+      const nextIsCollapsed = isCollapsedRef.current;
 
-      const prompt = element.querySelector<HTMLElement>('[data-testid="composer-editor"]');
-      const action = element.querySelector<HTMLElement>('[data-chat-composer-actions="right"]');
+      const visibleTransitionElement = (selector: string) =>
+        Array.from(element.querySelectorAll<HTMLElement>(selector)).find(
+          (candidate) => candidate.getClientRects().length > 0,
+        ) ?? null;
+      const prompt = visibleTransitionElement(
+        '[data-testid="composer-editor"], [data-chat-composer-transition-prompt="true"]',
+      );
+      const action = visibleTransitionElement('[data-chat-composer-transition-actions="true"]');
       const footer = element.querySelector<HTMLElement>('[data-chat-composer-footer="true"]');
       const interruptedAnimation = animationRef.current;
       const interruptedPromptTop = interruptedAnimation
@@ -389,7 +396,7 @@ function useComposerRestingTransition(
           footer.style.top = "auto";
           footer.style.bottom = "1px";
           footer.style.height = "3rem";
-          if (nextIsResting) {
+          if (nextIsCollapsed) {
             footer.style.left = "auto";
             footer.style.right = "1px";
           } else {
@@ -455,7 +462,7 @@ function useComposerRestingTransition(
           // rising first line, so no text crosses the returning controls.
           const previousPromptHeight = previousContentOffsetsRef.current.promptHeight;
           if (
-            !nextIsResting &&
+            !nextIsCollapsed &&
             prompt &&
             nextPromptRect &&
             previousPromptHeight !== null &&
@@ -484,11 +491,11 @@ function useComposerRestingTransition(
           // to the bottom row the prompt still occupies while the surface is
           // short, so they stay hidden through the first half of the tween
           // and fade in once the geometry has mostly settled.
-          const arrivingControls = nextIsResting
+          const arrivingControls = nextIsCollapsed
             ? restingControlsRef.current
             : element.querySelector<HTMLElement>('[data-chat-composer-controls="left"]');
           if (arrivingControls) {
-            const drift = nextIsResting
+            const drift = nextIsCollapsed
               ? -COMPOSER_RESTING_CONTROLS_ARRIVAL_DRIFT_PX
               : COMPOSER_RESTING_CONTROLS_ARRIVAL_DRIFT_PX;
             stateChangeAnimations.push(
@@ -498,8 +505,8 @@ function useComposerRestingTransition(
                   { opacity: 1, transform: "none" },
                 ],
                 {
-                  duration: nextIsResting ? duration : duration / 2,
-                  delay: nextIsResting ? 0 : duration / 2,
+                  duration: nextIsCollapsed ? duration : duration / 2,
+                  delay: nextIsCollapsed ? 0 : duration / 2,
                   fill: "backwards",
                   easing: COMPOSER_RESTING_TRANSITION_EASING,
                 },
@@ -507,7 +514,7 @@ function useComposerRestingTransition(
             );
           }
 
-          const arrivingImagePreviews = nextIsResting
+          const arrivingImagePreviews = nextIsCollapsed
             ? Array.from(
                 element.querySelectorAll<HTMLElement>('[data-chat-composer-resting-images="true"]'),
               )
@@ -517,8 +524,8 @@ function useComposerRestingTransition(
           for (const imagePreview of arrivingImagePreviews) {
             stateChangeAnimations.push(
               imagePreview.animate([{ opacity: 0 }, { opacity: 1 }], {
-                duration: nextIsResting ? duration : duration / 2,
-                delay: nextIsResting ? 0 : duration / 2,
+                duration: nextIsCollapsed ? duration : duration / 2,
+                delay: nextIsCollapsed ? 0 : duration / 2,
                 fill: "backwards",
                 easing: COMPOSER_RESTING_TRANSITION_EASING,
               }),
@@ -560,7 +567,7 @@ function useComposerRestingTransition(
         animationTargetHeightRef.current = null;
       }
 
-      previousRestingRef.current = nextIsResting;
+      previousCollapsedRef.current = nextIsCollapsed;
       previousHeightRef.current = nextHeight;
       previousContentOffsetsRef.current = {
         promptFromTop: nextPromptTop === null ? null : nextPromptTop - nextRect.top,
@@ -572,9 +579,22 @@ function useComposerRestingTransition(
   );
 
   useLayoutEffect(() => {
-    const stateChanged = previousRestingRef.current !== isResting;
-    transitionToCurrentGeometry(stateChanged);
-  }, [isResting, transitionToCurrentGeometry]);
+    const requestId = transitionLayoutRequestRef.current + 1;
+    transitionLayoutRequestRef.current = requestId;
+    const stateChanged = previousCollapsedRef.current !== isCollapsed;
+    // A non-Git context strip enters or leaves flow through ChatView state in
+    // an earlier layout effect. Let React flush that parent update before the
+    // FLIP reads its destination geometry, while still running before paint.
+    queueMicrotask(() => {
+      if (transitionLayoutRequestRef.current !== requestId) return;
+      transitionToCurrentGeometry(stateChanged);
+    });
+    return () => {
+      if (transitionLayoutRequestRef.current === requestId) {
+        transitionLayoutRequestRef.current += 1;
+      }
+    };
+  }, [isCollapsed, transitionToCurrentGeometry]);
 
   useLayoutEffect(() => {
     const element = elementRef.current;
@@ -589,19 +609,21 @@ function useComposerRestingTransition(
         return;
       }
       const elementRect = element.getBoundingClientRect();
-      const promptRect =
-        element
-          .querySelector<HTMLElement>('[data-testid="composer-editor"]')
-          ?.getBoundingClientRect() ?? null;
-      const actionTop =
-        element
-          .querySelector<HTMLElement>('[data-chat-composer-actions="right"]')
-          ?.getBoundingClientRect().top ?? null;
+      const visibleTransitionElement = (selector: string) =>
+        Array.from(element.querySelectorAll<HTMLElement>(selector)).find(
+          (candidate) => candidate.getClientRects().length > 0,
+        ) ?? null;
+      const promptRect = visibleTransitionElement(
+        '[data-testid="composer-editor"], [data-chat-composer-transition-prompt="true"]',
+      )?.getBoundingClientRect();
+      const actionTop = visibleTransitionElement(
+        '[data-chat-composer-transition-actions="true"]',
+      )?.getBoundingClientRect().top;
       previousHeightRef.current = elementRect.height;
       previousContentOffsetsRef.current = {
-        promptFromTop: promptRect === null ? null : promptRect.top - elementRect.top,
+        promptFromTop: promptRect === undefined ? null : promptRect.top - elementRect.top,
         promptHeight: promptRect?.height ?? null,
-        actionFromBottom: actionTop === null ? null : elementRect.bottom - actionTop,
+        actionFromBottom: actionTop === undefined ? null : elementRect.bottom - actionTop,
       };
     });
     observer.observe(element);
@@ -826,12 +848,41 @@ const terminalContextIdListsEqual = (
   contexts.length === ids.length && contexts.every((context, index) => context.id === ids[index]);
 
 function elementOuterWidth(element: HTMLElement): number {
+  const width = element.getBoundingClientRect().width;
+  if (width === 0) return 0;
   const style = getComputedStyle(element);
   return (
-    element.getBoundingClientRect().width +
+    width +
     (Number.parseFloat(style.marginInlineStart) || 0) +
     (Number.parseFloat(style.marginInlineEnd) || 0)
   );
+}
+
+function elementInlineMarginWidth(element: HTMLElement): number {
+  const style = getComputedStyle(element);
+  return (
+    (Number.parseFloat(style.marginInlineStart) || 0) +
+    (Number.parseFloat(style.marginInlineEnd) || 0)
+  );
+}
+
+function providerModelPickerNaturalWidth(picker: HTMLElement): number {
+  const renderedWidth = picker.getBoundingClientRect().width;
+  if (renderedWidth === 0) return 0;
+  const style = getComputedStyle(picker);
+  const label = picker.querySelector<HTMLElement>('[data-chat-provider-model-picker-label="true"]');
+  const hiddenLabelWidth = label ? Math.max(0, label.scrollWidth - label.clientWidth) : 0;
+  const maxWidth = Number.parseFloat(style.maxWidth);
+  const naturalWidth = Math.min(
+    renderedWidth + hiddenLabelWidth,
+    Number.isFinite(maxWidth) ? maxWidth : Number.POSITIVE_INFINITY,
+  );
+  return naturalWidth + elementInlineMarginWidth(picker);
+}
+
+function providerModelPickerMinimumWidth(picker: HTMLElement): number {
+  const minWidth = Number.parseFloat(getComputedStyle(picker).minWidth) || 0;
+  return minWidth + elementInlineMarginWidth(picker);
 }
 
 function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
@@ -848,19 +899,27 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
     if (currentHost === null || !controls) return;
 
     const blocks = Array.from(controls.querySelectorAll<HTMLElement>("[data-resting-block]"));
-    if (blocks.length === 0) return;
 
-    // Every width read here is a natural width: nothing in the cluster
-    // flex-shrinks, and hidden blocks plus the unused overflow trigger stay
-    // mounted out of flow at full size. Measuring squeezed boxes instead would
-    // let the fit self-justify and leave the picker truncated.
+    // Hidden blocks and the unused overflow trigger stay mounted out of flow
+    // at full size. The picker is the one flexible item: recover its intended
+    // width from the truncated label, then let it contract only after all
+    // trailing blocks have moved into overflow.
     const gap = Number.parseFloat(getComputedStyle(controls).columnGap) || 0;
     const picker = controls.querySelector<HTMLElement>("[data-chat-provider-model-picker]");
+    const leadingControl =
+      picker ?? controls.querySelector<HTMLElement>('[data-chat-provider-unavailable="true"]');
+    if (!leadingControl) return;
+    // Separators are display:none on phone widths; a hidden one takes no gap.
     const separator = controls.querySelector<HTMLElement>("[data-resting-controls-separator]");
+    const separatorWidth = separator ? elementOuterWidth(separator) : 0;
     const overflow = controls.querySelector<HTMLElement>("[data-resting-controls-overflow]");
-    const fixedWidth =
-      (picker ? elementOuterWidth(picker) : 0) +
-      (separator ? elementOuterWidth(separator) + gap : 0);
+    const separatorAndGapWidth = separatorWidth > 0 ? separatorWidth + gap : 0;
+    const naturalFixedWidth =
+      (picker ? providerModelPickerNaturalWidth(picker) : elementOuterWidth(leadingControl)) +
+      separatorAndGapWidth;
+    const minimumFixedWidth =
+      (picker ? providerModelPickerMinimumWidth(picker) : elementOuterWidth(leadingControl)) +
+      separatorAndGapWidth;
     const blockWidths = blocks.map(elementOuterWidth);
     const overflowWidth = overflow ? elementOuterWidth(overflow) : 0;
     const hostWidth = currentHost.clientWidth;
@@ -869,11 +928,10 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
       const next = resolveRestingComposerControlsLayout({
         hostWidth,
         gap,
-        fixedWidth,
+        naturalFixedWidth,
+        minimumFixedWidth,
         blockWidths,
         overflowWidth,
-        currentHiddenCount: current.hiddenCount,
-        currentVisible: current.visible,
       });
       return next.hiddenCount === current.hiddenCount && next.visible === current.visible
         ? current
@@ -1203,6 +1261,8 @@ export interface ChatComposerProps {
   terminalOpen: boolean;
   gitCwd: string | null;
   restingControlsHost: HTMLDivElement | null;
+  restingControlsHaveLeadingContext: boolean;
+  onRestingControlsVisibilityChange: (visible: boolean) => void;
   getTimelineScrollableNode: () => HTMLElement | null;
   isTimelineAtLogicalEnd: () => boolean;
   onComposerOverlayHeightChange: (height: number) => void;
@@ -1301,6 +1361,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     terminalOpen,
     gitCwd,
     restingControlsHost,
+    restingControlsHaveLeadingContext,
+    onRestingControlsVisibilityChange,
     getTimelineScrollableNode,
     isTimelineAtLogicalEnd,
     onComposerOverlayHeightChange,
@@ -3492,11 +3554,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       steps={activeTaskSteps}
     />
   ) : null;
-  const hasImageAttachmentAttention = standaloneComposerImages.some(
-    (image) =>
-      nonPersistedComposerImageIdSet.has(image.id) ||
-      (supportsAttachmentUploads && uploadsByImageId[image.id]?.status === "failed"),
-  );
+  const hasImageAttachmentAttention = standaloneComposerImages.some((image) => {
+    const upload = uploadsByImageId[image.id];
+    const failedInCurrentEnvironment =
+      supportsAttachmentUploads &&
+      upload?.status === "failed" &&
+      upload.environmentId === environmentId;
+    // A failed upload remains actionable in the expanded attachment tray, but
+    // its collapsed thumbnail is enough to signal that the draft has images.
+    return nonPersistedComposerImageIdSet.has(image.id) && !failedInCurrentEnvironment;
+  });
   const composerHasExpandedChrome =
     hasBannerItems ||
     showComposerTopDrawer ||
@@ -3512,13 +3579,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     providerInputSubmissionError !== null ||
     hasImageAttachmentAttention;
   const isComposerResting = shouldUseRestingComposerLayout({
-    hasControlsHost: restingControlsHost !== null,
     isExistingThread: routeKind === "server" && activeThreadId !== null,
     isMobileViewport,
     isFocused: isComposerFocused && !isComposerScrollCollapsed,
     hasExpandedChrome: composerHasExpandedChrome,
     hasInlineAccessories: showInlineTasksBadge,
   });
+  // The relocated controls live in the context strip whenever the composer is
+  // collapsed for any reason, the desktop resting layout or the phone
+  // collapse. Both leave the footer unrendered, so the strip is the only place
+  // to see or change the model without expanding the composer.
+  const composerControlsInStrip = isComposerResting || isComposerCollapsedMobile;
+  const composerControlsVisibleInStrip = composerControlsInStrip && restingControlsVisible;
+  useLayoutEffect(() => {
+    onRestingControlsVisibilityChange(composerControlsVisibleInStrip);
+  }, [composerControlsVisibleInStrip, onRestingControlsVisibilityChange]);
   const restingImagePreviewCounts = getRestingComposerImagePreviewCounts(
     standaloneComposerImages.length,
   );
@@ -3526,8 +3601,54 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     0,
     restingImagePreviewCounts.visibleCount,
   );
+  const collapsedComposerImagePreviews =
+    restingComposerImages.length > 0 ? (
+      <div
+        data-chat-composer-resting-images="true"
+        className="flex shrink-0 items-center gap-1 ps-1"
+      >
+        {restingComposerImages.map((image) => (
+          <button
+            key={image.id}
+            type="button"
+            className="relative size-7 shrink-0 cursor-zoom-in overflow-hidden rounded-md border border-border/70 bg-muted/60"
+            aria-label={`Preview ${image.name}`}
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => {
+              const preview = buildExpandedImagePreview(composerImages, image.id);
+              if (preview) onExpandImage(preview);
+            }}
+          >
+            {image.previewUrl ? (
+              <img src={image.previewUrl} alt="" className="size-full object-cover" />
+            ) : (
+              <FileIcon className="m-auto size-3.5 text-secondary-label" />
+            )}
+          </button>
+        ))}
+        {restingImagePreviewCounts.overflowCount > 0 ? (
+          <button
+            type="button"
+            className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border/70 bg-muted/60 font-medium text-secondary-label text-xs tabular-nums outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+            aria-label={`Show ${String(restingImagePreviewCounts.overflowCount)} more image attachments`}
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => {
+              if (isComposerCollapsedMobile) {
+                expandMobileComposer();
+                return;
+              }
+              setIsComposerScrollCollapsed(false);
+              setIsComposerFocused(true);
+              scheduleComposerFocus();
+            }}
+          >
+            +{restingImagePreviewCounts.overflowCount}
+          </button>
+        ) : null}
+      </div>
+    ) : null;
   const composerMainSurfaceRef = useComposerRestingTransition(
-    isComposerResting,
+    composerControlsInStrip,
     restingComposerControlsRef,
     onComposerOverlayHeightChange,
   );
@@ -3616,8 +3737,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isTimelineAtLogicalEnd,
   ]);
 
-  const restingHiddenBlockCount = isComposerResting ? restingControlsHiddenBlockCount : 0;
-  const composerControlsCompact = !isComposerResting && isComposerFooterCompact;
+  const restingHiddenBlockCount = composerControlsInStrip ? restingControlsHiddenBlockCount : 0;
+  const composerControlsCompact = !composerControlsInStrip && isComposerFooterCompact;
   const restingBlockDefs = [
     ...(providerTraitsPicker
       ? [
@@ -3625,8 +3746,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             id: "traits",
             content: (
               <>
-                <ComposerControlSeparator size={isComposerResting ? "xs" : "sm"} />
-                {isComposerResting ? restingProviderTraitsPicker : providerTraitsPicker}
+                <ComposerControlSeparator size={composerControlsInStrip ? "xs" : "sm"} />
+                {composerControlsInStrip ? restingProviderTraitsPicker : providerTraitsPicker}
               </>
             ),
           },
@@ -3639,7 +3760,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
           interactionMode={interactionMode}
           runtimeMode={runtimeMode}
-          size={isComposerResting ? "xs" : "sm"}
+          size={composerControlsInStrip ? "xs" : "sm"}
           onToggleInteractionMode={toggleInteractionMode}
           onRuntimeModeChange={handleRuntimeModeChange}
         />
@@ -3663,7 +3784,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     </Button>
   ) : (
     <>
-      {isComposerResting ? (
+      {composerControlsInStrip && restingControlsHaveLeadingContext ? (
         <ComposerControlSeparator size="xs" data-resting-controls-separator="true" />
       ) : null}
       <ProviderModelPicker
@@ -3676,20 +3797,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         instanceEntries={providerInstanceEntries}
         keybindings={keybindings}
         modelOptionsByInstance={modelOptionsByInstance}
-        size={isComposerResting ? "xs" : "sm"}
-        triggerClassName={isComposerResting ? "shrink-0" : "-ms-2.5"}
+        size={composerControlsInStrip ? "xs" : "sm"}
+        triggerClassName={composerControlsInStrip ? "min-w-26 shrink" : "-ms-2.5"}
         terminalOpen={terminalOpen}
         open={isComposerModelPickerOpen}
         instanceIndicatorBackground={
-          isComposerResting
+          composerControlsInStrip
             ? "color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent)"
             : "var(--contrast-input)"
         }
-        {...(composerProviderState.modelPickerIconClassName || isComposerResting
+        {...(composerProviderState.modelPickerIconClassName || composerControlsInStrip
           ? {
               activeProviderIconClassName: cn(
                 composerProviderState.modelPickerIconClassName,
-                isComposerResting &&
+                composerControlsInStrip &&
                   "fill-muted-foreground/70! text-muted-foreground/70! [&_path]:fill-muted-foreground/70! [&_rect]:fill-muted-foreground/70!",
               ),
             }
@@ -3711,7 +3832,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ) : (
         <>
           {restingBlockDefs.map((def, index) => {
-            if (!isComposerResting) {
+            if (!composerControlsInStrip) {
               return <Fragment key={def.id}>{def.content}</Fragment>;
             }
             const hidden = index >= restingBlockDefs.length - restingHiddenBlockCount;
@@ -3730,7 +3851,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               </div>
             );
           })}
-          {isComposerResting ? (
+          {composerControlsInStrip ? (
             <div
               key={hiddenRestingBlockIds.length > 0 ? "overflow:visible" : "overflow:hidden"}
               data-resting-controls-overflow
@@ -4428,7 +4549,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }}
       onFocusCapture={(event) => {
         const activeElement = event.target;
-        if (isComposerResting && isInsideRestingComposerControlScope(activeElement)) {
+        if (composerControlsInStrip && isInsideRestingComposerControlScope(activeElement)) {
           return;
         }
         if (
@@ -4467,7 +4588,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       className="mx-auto w-full min-w-0 max-w-3xl"
       data-chat-composer-form="true"
     >
-      {isComposerResting && restingControlsHost
+      {composerControlsInStrip && restingControlsHost
         ? createPortal(
             <div
               ref={restingComposerControlsRef}
@@ -4475,7 +4596,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               aria-hidden={restingControlsVisible ? undefined : true}
               inert={restingControlsVisible ? undefined : true}
               className={cn(
-                "relative flex w-max min-w-max items-center gap-1 font-normal text-muted-foreground/70",
+                "relative flex w-max min-w-0 max-w-full items-center gap-1 font-normal text-muted-foreground/70",
                 !restingControlsVisible && "invisible",
               )}
             >
@@ -4660,6 +4781,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               <div className="flex items-center justify-between gap-2 px-3 py-2">
                 <button
                   type="button"
+                  data-chat-composer-transition-prompt="true"
                   className={cn(
                     "min-w-0 flex-1 truncate bg-transparent p-0 text-left text-[14px] focus:outline-none",
                     (activePendingProgress ? activePendingProgress.customAnswer : prompt.trim())
@@ -4676,8 +4798,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     : prompt.trim() ||
                       (noProviderAvailable ? "Enable a provider in Settings" : "Ask anything...")}
                 </button>
+                {collapsedComposerImagePreviews}
                 <button
                   type="button"
+                  data-chat-composer-transition-actions="true"
                   className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-30"
                   disabled={collapsedComposerPrimaryActionDisabled}
                   aria-label={collapsedComposerPrimaryActionLabel}
@@ -5128,47 +5252,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   }
                   disabled={isConnecting || isComposerApprovalState || projectSelectionRequired}
                 />
-                {isComposerResting && restingComposerImages.length > 0 ? (
-                  <div
-                    data-chat-composer-resting-images="true"
-                    className="flex shrink-0 items-center gap-1 ps-1"
-                  >
-                    {restingComposerImages.map((image) => (
-                      <button
-                        key={image.id}
-                        type="button"
-                        className="relative size-7 shrink-0 cursor-zoom-in overflow-hidden rounded-md border border-border/70 bg-muted/60"
-                        aria-label={`Preview ${image.name}`}
-                        onPointerDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          const preview = buildExpandedImagePreview(composerImages, image.id);
-                          if (preview) onExpandImage(preview);
-                        }}
-                      >
-                        {image.previewUrl ? (
-                          <img src={image.previewUrl} alt="" className="size-full object-cover" />
-                        ) : (
-                          <FileIcon className="m-auto size-3.5 text-secondary-label" />
-                        )}
-                      </button>
-                    ))}
-                    {restingImagePreviewCounts.overflowCount > 0 ? (
-                      <button
-                        type="button"
-                        className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border/70 bg-muted/60 font-medium text-secondary-label text-xs tabular-nums outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
-                        aria-label={`Show ${String(restingImagePreviewCounts.overflowCount)} more image attachments`}
-                        onPointerDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          setIsComposerScrollCollapsed(false);
-                          setIsComposerFocused(true);
-                          scheduleComposerFocus();
-                        }}
-                      >
-                        +{restingImagePreviewCounts.overflowCount}
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
+                {isComposerResting ? collapsedComposerImagePreviews : null}
                 {showMobilePendingAnswerActions ? (
                   <div
                     data-chat-composer-mobile-pending-actions="true"
@@ -5225,12 +5309,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isComposerResting && "hidden",
                   )}
                 >
-                  {isComposerResting ? null : composerControls}
+                  {composerControlsInStrip ? null : composerControls}
                 </div>
 
                 {/* Right side: send / stop button */}
                 <div
                   data-chat-composer-actions="right"
+                  data-chat-composer-transition-actions="true"
                   data-chat-composer-primary-actions-compact={
                     isComposerPrimaryActionsCompact ? "true" : "false"
                   }

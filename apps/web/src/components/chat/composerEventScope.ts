@@ -15,6 +15,7 @@ export function isInsideRestingComposerControlScope(target: EventTarget | null):
   return (
     target instanceof Element &&
     (target.closest('[data-chat-composer-resting-controls="true"]') !== null ||
+      target.closest('[data-chat-composer-resting-images="true"]') !== null ||
       isInsideComposerFloatingLayer(target))
   );
 }

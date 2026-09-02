@@ -9,7 +9,10 @@ class FakeElement {
   constructor(private readonly matchingSelector: string | null) {}
 
   closest(selector: string): FakeElement | null {
-    return this.matchingSelector !== null && selector.includes(this.matchingSelector) ? this : null;
+    return this.matchingSelector !== null &&
+      selector.split(",").some((candidate) => candidate === this.matchingSelector)
+      ? this
+      : null;
   }
 }
 
@@ -21,14 +24,21 @@ describe("composer event scopes", () => {
   it("recognizes events from the portaled resting controls", () => {
     vi.stubGlobal("Element", FakeElement);
 
-    const target = new FakeElement('data-chat-composer-resting-controls="true"');
+    const target = new FakeElement('[data-chat-composer-resting-controls="true"]');
+    expect(isInsideRestingComposerControlScope(target as unknown as EventTarget)).toBe(true);
+  });
+
+  it("keeps resting image previews focused without expanding their subtree", () => {
+    vi.stubGlobal("Element", FakeElement);
+
+    const target = new FakeElement('[data-chat-composer-resting-images="true"]');
     expect(isInsideRestingComposerControlScope(target as unknown as EventTarget)).toBe(true);
   });
 
   it("includes composer-owned floating layers in the resting control scope", () => {
     vi.stubGlobal("Element", FakeElement);
 
-    const target = new FakeElement('data-chat-composer-floating-layer="true"');
+    const target = new FakeElement('[data-chat-composer-floating-layer="true"]');
     expect(isInsideComposerFloatingLayer(target as unknown as EventTarget)).toBe(true);
     expect(isInsideRestingComposerControlScope(target as unknown as EventTarget)).toBe(true);
   });
@@ -36,7 +46,7 @@ describe("composer event scopes", () => {
   it("leaves unrelated floating layers outside the composer scope", () => {
     vi.stubGlobal("Element", FakeElement);
 
-    const target = new FakeElement('data-slot="popover-popup"');
+    const target = new FakeElement('[data-slot="popover-popup"]');
     expect(isInsideComposerFloatingLayer(target as unknown as EventTarget)).toBe(false);
     expect(isInsideRestingComposerControlScope(target as unknown as EventTarget)).toBe(false);
   });
