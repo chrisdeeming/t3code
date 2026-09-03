@@ -1435,6 +1435,84 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain('data-testid="file-diff"');
   });
 
+  it("renders attachment chips bound to server ids and hides their file rows", () => {
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-attachments",
+            kind: "message",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            message: {
+              id: MessageId.make("message-attachments"),
+              role: "user",
+              text: "See ![shot.png](t3-context://v1/image/img-1) and [notes.txt](t3-context://v1/file/file-1).",
+              attachments: [
+                {
+                  type: "image",
+                  id: "thread-1-aaa",
+                  name: "shot.png",
+                  mimeType: "image/png",
+                  sizeBytes: 3,
+                },
+                {
+                  type: "file",
+                  id: "thread-1-bbb",
+                  name: "notes.txt",
+                  mimeType: "text/plain",
+                  sizeBytes: 3,
+                },
+                {
+                  type: "file",
+                  id: "thread-1-ccc",
+                  name: "legacy.txt",
+                  mimeType: "text/plain",
+                  sizeBytes: 3,
+                },
+              ],
+              context: {
+                version: 1,
+                records: [
+                  {
+                    version: 1,
+                    contextId: "img-1" as never,
+                    kind: "image",
+                    label: "shot.png",
+                    attachmentId: "thread-1-aaa",
+                    name: "shot.png",
+                    mimeType: "image/png",
+                    sizeBytes: 3,
+                  },
+                  {
+                    version: 1,
+                    contextId: "file-1" as never,
+                    kind: "file",
+                    label: "notes.txt",
+                    attachmentId: "thread-1-bbb",
+                    name: "notes.txt",
+                    mimeType: "text/plain",
+                    sizeBytes: 3,
+                  },
+                ],
+              },
+              turnId: null,
+              createdAt: "2026-03-17T19:12:28.000Z",
+              updatedAt: "2026-03-17T19:12:28.000Z",
+              streaming: false,
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Image attachment, shot.png"');
+    expect(markup).toContain('aria-label="File attachment, notes.txt"');
+    expect(markup).not.toContain('aria-label="Download notes.txt"');
+    expect(markup).toContain("legacy.txt");
+    expect(markup).not.toContain("t3-context://");
+  });
+
   it("renders structured context records as chips without reparsing text", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline

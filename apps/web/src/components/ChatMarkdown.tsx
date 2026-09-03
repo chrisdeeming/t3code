@@ -396,7 +396,7 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
   protocols: {
     ...defaultSchema.protocols,
     href: [...(defaultSchema.protocols?.href ?? []), "file", "t3-citation", "t3-context"],
-    src: [...(defaultSchema.protocols?.src ?? []), "file"],
+    src: [...(defaultSchema.protocols?.src ?? []), "file", "t3-context"],
   },
 } satisfies Parameters<typeof rehypeSanitize>[0];
 
@@ -2638,6 +2638,16 @@ function ChatMarkdown({
         );
       },
       img: function MarkdownImage({ node, title, src, alt, ...props }) {
+        // `![name](t3-context://...)` is an inline image reference, not media to load.
+        const contextReference = typeof src === "string" ? parseComposerContextHref(src) : null;
+        if (contextReference) {
+          const label = alt || contextReference.contextId;
+          return renderContextReference ? (
+            renderContextReference({ ...contextReference, label })
+          ) : (
+            <span>{label}</span>
+          );
+        }
         const imageExpand = use(MarkdownLinkContext) ? undefined : expandMedia;
         const localSrc = node?.properties?.dataLocalSrc;
         const markdownTitle = node?.properties?.dataMarkdownTitle;

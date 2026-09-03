@@ -30,7 +30,6 @@ import { toolActivityFaviconUrl } from "@t3tools/shared/favicon";
 import { getProjectFaviconCacheKey } from "@t3tools/shared/projectFavicon";
 import {
   createContext,
-  Fragment,
   memo,
   use,
   useCallback,
@@ -96,6 +95,8 @@ import {
   XIcon,
   ZapIcon,
   CircleDashedIcon,
+  FileIcon,
+  ImageIcon,
 } from "lucide-react";
 import type { KnownComposerContextRecord } from "@t3tools/contracts";
 import { Button } from "../ui/button";
@@ -149,6 +150,7 @@ import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { asKnownContextRecord, resolveUserMessageContext } from "~/lib/composerContextRecords";
+import { collectComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import {
   CHAT_INLINE_CHIP_CLASS_NAME,
   CHAT_INLINE_CHIP_LABEL_CLASS_NAME,
@@ -1191,6 +1193,14 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const resolvedContext = resolveUserMessageContext(row.message);
   const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
   const regularImages = userImages.filter((image) => !image.name.startsWith("preview-annotation-"));
+  // Files with a chip in the prose need no row; older messages keep their rows.
+  const chippedAttachmentIds = new Set(
+    collectComposerContextReferences(resolvedContext.text).flatMap((occurrence) => {
+      const record = asKnownContextRecord(resolvedContext.recordsById.get(occurrence.contextId));
+      return record?.kind === "file" || record?.kind === "image" ? [record.attachmentId] : [];
+    }),
+  );
+  const unchippedFiles = otherUserFiles.filter((file) => !chippedAttachmentIds.has(file.id));
   const annotationRecordIds = resolvedContext.records
     .filter((record) => record.kind === "preview-annotation")
     .map((record) => record.contextId);
@@ -1205,11 +1215,23 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           previewImages[annotationRecordIds.indexOf(record.contextId)] ??
           null)
         : null;
+    const attachment =
+      record?.kind === "image"
+        ? (userImages.find((image) => image.id === record.attachmentId) ?? null)
+        : record?.kind === "file"
+          ? (userFiles.find((file) => file.id === record.attachmentId) ?? null)
+          : null;
     return (
       <UserMessageContextReferenceChip
         reference={reference}
         record={record}
         annotationImage={annotationImage}
+        attachment={attachment}
+        onExpandImage={(image) => {
+          const preview = buildExpandedImagePreview(userImages, image.id);
+          if (preview) ctx.onImageExpand(preview);
+        }}
+        onOpenFile={(file) => ctx.onFileOpen(file)}
       />
     );
   };
@@ -1254,9 +1276,9 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             ))}
           </div>
         )}
-        {otherUserFiles.length > 0 || unknownAttachments.length > 0 ? (
+        {unchippedFiles.length > 0 || unknownAttachments.length > 0 ? (
           <div className="mb-2 flex flex-col gap-1">
-            {otherUserFiles.map((file) => {
+            {unchippedFiles.map((file) => {
               const opensInPreview = isBrowserPreviewAttachment(file);
               const fileIdentity = (
                 <>
@@ -2183,9 +2205,48 @@ function UserMessageContextReferenceChip(props: {
   reference: ChatMarkdownContextReference;
   record: KnownComposerContextRecord | undefined;
   annotationImage: ChatImageAttachment | null;
+  attachment: ChatImageAttachment | ChatFileAttachment | null;
+  onExpandImage: (image: ChatImageAttachment) => void;
+  onOpenFile: (file: ChatFileAttachment) => void;
 }) {
-  const { reference, record } = props;
+  const { reference, record, attachment } = props;
   const iconClassName = cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5");
+  if (record?.kind === "image" && attachment && isImageAttachment(attachment)) {
+    return (
+      <button
+        type="button"
+        className={cn(CHAT_INLINE_CHIP_CLASS_NAME, "cursor-zoom-in")}
+        aria-label={`Image attachment, ${record.name}`}
+        onClick={() => props.onExpandImage(attachment)}
+      >
+        {attachment.previewUrl ? (
+          <img
+            src={attachment.previewUrl}
+            alt=""
+            className="size-3.5 shrink-0 rounded-sm object-cover"
+          />
+        ) : (
+          <ImageIcon className={iconClassName} />
+        )}
+        <span className={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}>{record.name}</span>
+      </button>
+    );
+  }
+  if (record?.kind === "file" && attachment && isFileAttachment(attachment)) {
+    const disabled = attachment.downloadable === false;
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        className={cn(CHAT_INLINE_CHIP_CLASS_NAME, !disabled && "cursor-pointer hover:underline")}
+        aria-label={`File attachment, ${record.name}`}
+        onClick={() => props.onOpenFile(attachment)}
+      >
+        <FileIcon className={iconClassName} />
+        <span className={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}>{record.name}</span>
+      </button>
+    );
+  }
   if (record?.kind === "terminal") {
     const tooltipText = record.text.length > 0 ? `${record.label}\n${record.text}` : record.label;
     return <TerminalContextInlineChip label={record.label} tooltipText={tooltipText} />;

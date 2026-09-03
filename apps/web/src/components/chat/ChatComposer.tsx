@@ -103,10 +103,7 @@ import {
   type ComposerBannerStackItem,
 } from "./ComposerBannerStack";
 import { compressImageForStash, prepareImageForAttachment } from "../../lib/imageCompression";
-import {
-  fileAttachmentTooLargeMessage,
-  formatAttachmentSize,
-} from "@t3tools/client-runtime/state/attachments";
+import { fileAttachmentTooLargeMessage } from "@t3tools/client-runtime/state/attachments";
 import {
   attachmentsToReleaseOnUploadCapabilityLoss,
   classifyComposerAttachmentFile,
@@ -153,12 +150,23 @@ import {
 import { measureRestingComposerControls } from "./restingComposerControlsMeasurement";
 import { observeResponsiveBreakpointFade, usePanelAnimationSettings } from "../../panelAnimations";
 import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../ComposerPromptEditor";
-import { composerContextRecordsFromDraft } from "../composerContextPresentation";
+import {
+  ComposerContextActionsContext,
+  composerContextRecordsFromDraft,
+} from "../composerContextPresentation";
 import {
   collectInlineContextIds,
+  type ComposerContextReference,
+  ensureInlineContextReferences,
+  formatInlineContextReference,
   insertInlineContextReference,
 } from "~/lib/composerContextReferences";
-import { terminalContextReference } from "~/lib/composerContextRecords";
+import {
+  fileContextReference,
+  imageContextReference,
+  terminalContextReference,
+} from "~/lib/composerContextRecords";
+import { requestConfirmDialog } from "~/confirmDialog";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
@@ -758,9 +766,9 @@ import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import {
+  FileIcon,
   BotIcon,
   CircleAlertIcon,
-  FileIcon,
   PaperclipIcon,
   PencilRulerIcon,
   PlayIcon,
@@ -1345,9 +1353,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerVideos = composerFiles.filter((file) =>
     isPreviewableComposerVideo(file, environmentId),
   );
-  const composerOtherFiles = composerFiles.filter(
-    (file) => !isPreviewableComposerVideo(file, environmentId),
-  );
   const composerTerminalContexts = composerDraft.terminalContexts;
   const composerPreviewAnnotations = composerDraft.previewAnnotations;
   const composerReviewComments = composerDraft.reviewComments;
@@ -1357,17 +1362,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     );
     return composerImages.filter((image) => !previewAnnotationIds.has(image.id));
   }, [composerImages, composerPreviewAnnotations]);
+  const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
+  const uploadsByImageId = useAttachmentUploadStore((state) => state.uploadsByImageId);
+  const composerContextActions = useMemo(
+    () => ({
+      expandImage: (imageId: string) => {
+        const preview = buildExpandedImagePreview(composerImages, imageId);
+        if (preview) onExpandImage(preview);
+      },
+    }),
+    [composerImages, onExpandImage],
+  );
   const composerContextRecords = useMemo(
     () =>
       composerContextRecordsFromDraft({
         terminalContexts: composerTerminalContexts,
         reviewComments: composerReviewComments,
         previewAnnotations: composerPreviewAnnotations,
+        images: composerImages,
+        files: composerFiles,
+        uploadsByImageId,
       }),
-    [composerPreviewAnnotations, composerReviewComments, composerTerminalContexts],
+    [
+      composerFiles,
+      composerImages,
+      composerPreviewAnnotations,
+      composerReviewComments,
+      composerTerminalContexts,
+      uploadsByImageId,
+    ],
   );
-  const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
-  const uploadsByImageId = useAttachmentUploadStore((state) => state.uploadsByImageId);
   const needsReattachFileCount = composerFiles.filter(composerFileNeedsReattach).length;
   const fileStagingLimit = fileAttachmentStagingLimit({
     attachmentUploadsCapabilityKnown,
@@ -2451,6 +2475,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (!referenced.has(annotation.id)) {
           releaseAttachmentUpload(annotation.id);
           removeComposerDraftPreviewAnnotation(composerDraftTarget, annotation.id);
+        }
+      }
+      // Files live only as chips; images stay on the shelf when their chip goes.
+      for (const file of composerFiles) {
+        if (!referenced.has(file.id)) {
+          removeComposerFileFromDraft(file.id);
         }
       }
       setComposerCursor(nextCursor);
@@ -4025,6 +4055,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setThreadError(threadId, error);
     if (acceptedFiles.length > 0) {
       addComposerFilesToDraft(acceptedFiles);
+      insertAttachmentReferences(
+        acceptedFiles
+          .filter((file) => !replacedReattachMarkerIds.has(file.id))
+          .map(fileContextReference),
+      );
     }
     if (acceptedImages.length === 0) return;
 
@@ -4063,6 +4098,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       } else if (nextImages.length > 1) {
         addComposerImagesToDraft(nextImages);
       }
+      insertAttachmentReferences(nextImages.map(imageContextReference));
       // Only failures are reported here. Success must not pass `null`: by
       // now other work (a failed send, an overlapping paste) may have set a
       // thread error this call knows nothing about, and clearing it would
@@ -4081,8 +4117,37 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
   };
 
+  /**
+   * Chips for freshly attached files land at the caret; when the editor cannot take
+   * input (approval, pending questions) they are appended so the file is never invisible.
+   */
+  const insertAttachmentReferences = (references: ReadonlyArray<ComposerContextReference>) => {
+    if (references.length === 0) return;
+    const text = references.map(formatInlineContextReference).join(" ");
+    const inserted = insertComposerText(`${text} `, "cursor", { ensureLeadingBoundary: true });
+    if (!inserted) {
+      setPrompt(ensureInlineContextReferences(promptRef.current, references));
+    }
+  };
+
   const removeComposerImage = (imageId: string) => {
-    removeComposerImageFromDraft(imageId);
+    const referenced = collectInlineContextIds(promptRef.current).includes(imageId);
+    if (!referenced) {
+      removeComposerImageFromDraft(imageId);
+      return;
+    }
+    const image = composerImagesRef.current.find((candidate) => candidate.id === imageId);
+    const confirmation = requestConfirmDialog(
+      `Remove ${image?.name ?? "this image"} from the message?\nIt is referenced in your text; removing it also removes every reference.`,
+      { variant: "destructive" },
+    );
+    if (!confirmation) {
+      removeComposerImageFromDraft(imageId);
+      return;
+    }
+    void confirmation.then((confirmed) => {
+      if (confirmed) removeComposerImageFromDraft(imageId);
+    });
   };
 
   // ------------------------------------------------------------------
@@ -5042,78 +5107,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   </div>
                 )}
 
-              {!isComposerCollapsedMobile &&
-                !isComposerApprovalState &&
-                pendingUserInputs.length === 0 &&
-                composerOtherFiles.length > 0 && (
-                  <div className="mb-3 flex flex-col gap-1">
-                    {composerOtherFiles.map((file) => {
-                      const fileCanUpload =
-                        supportsAttachmentUploads &&
-                        maxFileAttachmentBytes !== null &&
-                        file.sizeBytes <= maxFileAttachmentBytes;
-                      const upload = fileCanUpload ? uploadsByImageId[file.id] : undefined;
-                      const needsReattach = composerFileNeedsReattach(file);
-                      const canReattachFile =
-                        fileStagingLimit !== null && file.sizeBytes <= fileStagingLimit;
-                      return (
-                        <div
-                          key={file.id}
-                          className="flex min-w-0 items-center gap-2 py-1 text-sm text-foreground"
-                        >
-                          <FileIcon className="size-4 shrink-0 text-secondary-label" />
-                          <span className="min-w-0 flex-1 truncate">{file.name}</span>
-                          <span className="shrink-0 text-xs text-secondary-label">
-                            {needsReattach
-                              ? canReattachFile
-                                ? "Attach again"
-                                : "Remove to send"
-                              : upload?.status === "uploading"
-                                ? formatAttachmentUploadProgress(upload.progress)
-                                : formatAttachmentSize(file.sizeBytes)}
-                          </span>
-                          {!needsReattach && upload?.status === "failed" ? (
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    onClick={() =>
-                                      retryAttachmentUpload({
-                                        environmentId,
-                                        image: file,
-                                        draftTarget: composerDraftTarget,
-                                      })
-                                    }
-                                    aria-label={`Retry upload for ${file.name}`}
-                                  />
-                                }
-                              >
-                                <RotateCcwIcon />
-                              </TooltipTrigger>
-                              <TooltipPopup
-                                side="top"
-                                className="max-w-64 whitespace-normal leading-tight"
-                              >
-                                {upload.reason}
-                              </TooltipPopup>
-                            </Tooltip>
-                          ) : null}
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => removeComposerFileFromDraft(file.id)}
-                            aria-label={`Remove ${file.name}`}
-                          >
-                            <XIcon />
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
               <div
                 className={cn(
                   "relative",
@@ -5121,60 +5114,62 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   isComposerResting && (showComposerAttachAction ? "pr-20" : "pr-12"),
                 )}
               >
-                <ComposerPromptEditor
-                  editorRef={composerEditorRef}
-                  value={
-                    isComposerApprovalState
-                      ? ""
-                      : activePendingProgress
-                        ? activePendingProgress.customAnswer
-                        : prompt
-                  }
-                  cursor={composerCursor}
-                  contextRecords={composerContextRecords}
-                  skills={selectedProviderSkills}
-                  containerClassName={cn(isComposerResting && "min-w-0 flex-1")}
-                  className={cn(
-                    showMobilePendingAnswerActions && "max-sm:pb-11",
-                    isComposerResting &&
-                      "max-h-8 min-h-8 overflow-hidden whitespace-nowrap! leading-8",
-                  )}
-                  placeholderClassName={cn(
-                    isComposerResting &&
-                      "flex items-center overflow-hidden whitespace-nowrap leading-8",
-                  )}
-                  onChange={onPromptChange}
-                  onVisibleSelectionChange={expandComposerForEditorChange}
-                  onCommandKeyDown={onComposerCommandKey}
-                  onPageScrollKeyDown={onPageScrollKeyDown}
-                  onPageScrollKeyUp={onPageScrollKeyUp}
-                  onPageScrollRelease={onPageScrollRelease}
-                  onPaste={onComposerPaste}
-                  placeholder={
-                    isComposerApprovalState
-                      ? (activePendingApproval?.detail ??
-                        "Resolve this approval request to continue")
-                      : activePendingProgress
-                        ? isChoiceOnlyPendingQuestion
-                          ? "Choose an option above"
-                          : "Type your own answer, or leave this blank to use the selected option"
-                        : showPlanFollowUpPrompt && activeProposedPlan
-                          ? "Add feedback to refine the plan, or leave this blank to implement it"
-                          : projectSelectionRequired
-                            ? "Choose a project above to start a thread"
-                            : noProviderAvailable
-                              ? "Enable a provider in Settings to send a message"
-                              : phase === "disconnected"
-                                ? DISCONNECTED_COMPOSER_PLACEHOLDER
-                                : "Ask anything, @tag files/folders, $use skills, or / for commands"
-                  }
-                  disabled={
-                    isConnecting ||
-                    isComposerApprovalState ||
-                    projectSelectionRequired ||
-                    isChoiceOnlyPendingQuestion
-                  }
-                />
+                <ComposerContextActionsContext value={composerContextActions}>
+                  <ComposerPromptEditor
+                    editorRef={composerEditorRef}
+                    value={
+                      isComposerApprovalState
+                        ? ""
+                        : activePendingProgress
+                          ? activePendingProgress.customAnswer
+                          : prompt
+                    }
+                    cursor={composerCursor}
+                    contextRecords={composerContextRecords}
+                    skills={selectedProviderSkills}
+                    containerClassName={cn(isComposerResting && "min-w-0 flex-1")}
+                    className={cn(
+                      showMobilePendingAnswerActions && "max-sm:pb-11",
+                      isComposerResting &&
+                        "max-h-8 min-h-8 overflow-hidden whitespace-nowrap! leading-8",
+                    )}
+                    placeholderClassName={cn(
+                      isComposerResting &&
+                        "flex items-center overflow-hidden whitespace-nowrap leading-8",
+                    )}
+                    onChange={onPromptChange}
+                    onVisibleSelectionChange={expandComposerForEditorChange}
+                    onCommandKeyDown={onComposerCommandKey}
+                    onPageScrollKeyDown={onPageScrollKeyDown}
+                    onPageScrollKeyUp={onPageScrollKeyUp}
+                    onPageScrollRelease={onPageScrollRelease}
+                    onPaste={onComposerPaste}
+                    placeholder={
+                      isComposerApprovalState
+                        ? (activePendingApproval?.detail ??
+                          "Resolve this approval request to continue")
+                        : activePendingProgress
+                          ? isChoiceOnlyPendingQuestion
+                            ? "Choose an option above"
+                            : "Type your own answer, or leave this blank to use the selected option"
+                          : showPlanFollowUpPrompt && activeProposedPlan
+                            ? "Add feedback to refine the plan, or leave this blank to implement it"
+                            : projectSelectionRequired
+                              ? "Choose a project above to start a thread"
+                              : noProviderAvailable
+                                ? "Enable a provider in Settings to send a message"
+                                : phase === "disconnected"
+                                  ? DISCONNECTED_COMPOSER_PLACEHOLDER
+                                  : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                    }
+                    disabled={
+                      isConnecting ||
+                      isComposerApprovalState ||
+                      projectSelectionRequired ||
+                      isChoiceOnlyPendingQuestion
+                    }
+                  />
+                </ComposerContextActionsContext>
                 {isComposerResting ? collapsedComposerImagePreviews : null}
                 {showMobilePendingAnswerActions ? (
                   <div

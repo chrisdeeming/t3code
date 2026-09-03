@@ -6237,11 +6237,22 @@ function ChatViewContent(props: ChatViewProps) {
         promptForSend,
       )
       .trim();
-    const outgoingMessageContext = buildMessageContext({
-      terminalContexts: composerTerminalContextsSnapshot,
-      reviewComments: composerReviewCommentsSnapshot,
-      previewAnnotations: composerPreviewAnnotationsSnapshot,
-    });
+    // Records bind attachments by the id each side knows: the local id for the optimistic
+    // row, the upload id (or local id on the data-URL path) on the wire; the server
+    // rebinds them to the persisted id.
+    const buildOutgoingMessageContext = (attachmentIds: ReadonlyArray<string>) =>
+      buildMessageContext({
+        terminalContexts: composerTerminalContextsSnapshot,
+        reviewComments: composerReviewCommentsSnapshot,
+        previewAnnotations: composerPreviewAnnotationsSnapshot,
+        attachments: composerAttachmentsSnapshot.map((attachment, index) => ({
+          attachment,
+          attachmentId: attachmentIds[index] ?? attachment.id,
+        })),
+      });
+    const outgoingMessageContext = buildOutgoingMessageContext(
+      composerAttachmentsSnapshot.map((attachment) => attachment.id),
+    );
     const outgoingMessageText = formatOutgoingPrompt({
       provider: ctxSelectedProvider,
       model: ctxSelectedModel,
@@ -6357,6 +6368,7 @@ function ChatViewContent(props: ChatViewProps) {
         }
         return {
           type: "image" as const,
+          id: attachment.id,
           name: attachment.name,
           mimeType: attachment.mimeType,
           sizeBytes: attachment.sizeBytes,
@@ -6555,7 +6567,16 @@ function ChatViewContent(props: ChatViewProps) {
             role: "user",
             text: outgoingMessageText,
             attachments: turnAttachmentsResult.value,
-            ...(outgoingMessageContext !== undefined ? { context: outgoingMessageContext } : {}),
+            ...(() => {
+              const context = buildOutgoingMessageContext(
+                turnAttachmentsResult.value.map((attachment, index) =>
+                  "id" in attachment && attachment.id !== undefined
+                    ? attachment.id
+                    : composerAttachmentsSnapshot[index]!.id,
+                ),
+              );
+              return context !== undefined ? { context } : {};
+            })(),
           },
           modelSelection: ctxSelectedModelSelection,
           titleSeed: title,
