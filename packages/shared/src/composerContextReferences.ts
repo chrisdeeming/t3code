@@ -3,6 +3,7 @@ import {
   type ComposerContextId,
   type ComposerContextKind,
   type ComposerContextRecord,
+  type ElementContextDetails,
   type KnownComposerContextRecord,
 } from "@t3tools/contracts";
 
@@ -162,6 +163,18 @@ function formatSourceLocation(source: {
   return `${source.fileName}:${source.lineNumber}${source.columnNumber != null ? `:${source.columnNumber}` : ""}`;
 }
 
+function formatElementDetails(element: ElementContextDetails): string[] {
+  const lines = [`url: ${element.pageUrl}`, `tag: ${element.tagName}`];
+  if (element.pageTitle) lines.push(`title: ${element.pageTitle}`);
+  if (element.selector) lines.push(`selector: ${element.selector}`);
+  if (element.componentName) lines.push(`component: ${element.componentName}`);
+  const location = element.source ? formatSourceLocation(element.source) : null;
+  if (location) lines.push(`source: ${location}`);
+  if (element.htmlPreview.trim()) lines.push("html:", indent(element.htmlPreview.trim()));
+  if (element.styles.trim()) lines.push("styles:", indent(element.styles.trim()));
+  return lines;
+}
+
 /** Body lines for one payload. Returns null for kinds whose marker is self-describing. */
 export function formatComposerContextProviderPayload(
   record: KnownComposerContextRecord,
@@ -181,17 +194,8 @@ export function formatComposerContextProviderPayload(
         .map((line, index) => `${record.lineStart + index} | ${line}`);
       return [`terminal: ${record.terminalLabel}`, ...lines].join("\n");
     }
-    case "element": {
-      const lines = [`url: ${record.pageUrl}`, `tag: ${record.tagName}`];
-      if (record.pageTitle) lines.push(`title: ${record.pageTitle}`);
-      if (record.selector) lines.push(`selector: ${record.selector}`);
-      if (record.componentName) lines.push(`component: ${record.componentName}`);
-      const location = record.source ? formatSourceLocation(record.source) : null;
-      if (location) lines.push(`source: ${location}`);
-      if (record.htmlPreview.trim()) lines.push("html:", indent(record.htmlPreview.trim()));
-      if (record.styles.trim()) lines.push("styles:", indent(record.styles.trim()));
-      return lines.join("\n");
-    }
+    case "element":
+      return formatElementDetails(record).join("\n");
     case "preview-annotation": {
       const lines = [
         `page: ${record.pageTitle?.trim() || record.pageUrl}`,
@@ -206,6 +210,9 @@ export function formatComposerContextProviderPayload(
         );
       }
       if (record.screenshotContextId) lines.push(`screenshot: ref=${record.screenshotContextId}`);
+      for (const [index, element] of (record.elements ?? []).entries()) {
+        lines.push(`element ${index + 1}:`, indent(formatElementDetails(element).join("\n")));
+      }
       return lines.join("\n");
     }
     case "review-comment": {

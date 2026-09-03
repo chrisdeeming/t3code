@@ -113,9 +113,8 @@ export const ElementContextSource = Schema.Struct({
 });
 export type ElementContextSource = typeof ElementContextSource.Type;
 
-export const ElementContextRecord = Schema.Struct({
-  ...recordBase,
-  kind: Schema.Literal("element"),
+/** What a picked page element looks like to the agent; shared by element and annotation records. */
+export const ElementContextDetails = Schema.Struct({
   pageUrl: ShortString,
   pageTitle: NullableShortString,
   tagName: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
@@ -124,6 +123,13 @@ export const ElementContextRecord = Schema.Struct({
   componentName: NullableShortString,
   source: Schema.NullOr(ElementContextSource),
   styles: BoundedString(COMPOSER_CONTEXT_ELEMENT_STYLES_MAX_CHARS),
+});
+export type ElementContextDetails = typeof ElementContextDetails.Type;
+
+export const ElementContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("element"),
+  ...ElementContextDetails.fields,
 });
 export type ElementContextRecord = typeof ElementContextRecord.Type;
 
@@ -136,6 +142,8 @@ export const PreviewAnnotationContextRecord = Schema.Struct({
   comment: BoundedString(COMPOSER_CONTEXT_PREVIEW_COMMENT_MAX_CHARS),
   targetSummary: ShortString,
   styleChanges: Schema.Array(ShortString).check(Schema.isMaxLength(200)),
+  /** Picked elements inside the annotation, with the detail the agent needs to find them. */
+  elements: Schema.optional(Schema.Array(ElementContextDetails).check(Schema.isMaxLength(50))),
   /** The screenshot travels as its own image record; this links the two. */
   screenshotContextId: Schema.optional(ComposerContextId),
 });

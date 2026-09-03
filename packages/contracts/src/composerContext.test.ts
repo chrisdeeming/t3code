@@ -68,6 +68,18 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     comment: "Make this bigger",
     targetSummary: "1 selected element",
     styleChanges: ["font-size: 20px"],
+    elements: [
+      {
+        pageUrl: "http://localhost:3000/checkout",
+        pageTitle: "Checkout",
+        tagName: "button",
+        selector: "#pay",
+        htmlPreview: "<button>Pay</button>",
+        componentName: "Button",
+        source: null,
+        styles: "",
+      },
+    ],
     screenshotContextId: "ctx_2",
   },
   "review-comment": {
