@@ -5,6 +5,7 @@ import {
   COMPOSER_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
+  CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES,
 } from "../composerInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
@@ -32,6 +33,7 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
             <TerminalIcon
               className={cn(
                 COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
+                CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES.terminal,
                 "size-3.5",
                 expired && "opacity-100",
               )}

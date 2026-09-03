@@ -16,6 +16,15 @@ export const COMPOSER_INLINE_CHIP_DECORATOR_CLASS_NAME =
 export const COMPOSER_INLINE_CHIP_ICON_CLASS_NAME =
   "block size-[1.17em] shrink-0 self-center opacity-85 [&>svg]:block";
 
+export const CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES = {
+  image: "text-rose-600 dark:text-rose-400",
+  file: "text-sky-600 dark:text-sky-400",
+  terminal: "text-emerald-600 dark:text-emerald-400",
+  element: "text-amber-600 dark:text-amber-400",
+  "preview-annotation": "text-amber-600 dark:text-amber-400",
+  "review-comment": "text-violet-600 dark:text-violet-400",
+} as const;
+
 export const CHAT_INLINE_CHIP_LABEL_CLASS_NAME = "truncate leading-tight";
 
 export const COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME =
@@ -27,3 +36,16 @@ export const SKILL_CHIP_ICON_SVG = `<svg width="100%" height="100%" viewBox="0 0
 
 export const COMPOSER_INLINE_CHIP_DISMISS_BUTTON_CLASS_NAME =
   "ml-[0.17em] inline-flex size-[1.17em] shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground/72 transition-colors hover:bg-foreground/6 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+
+/** Keeps both the recognizable beginning and the extension/end of a long attachment name. */
+export function middleTruncateAttachmentName(name: string, maxCharacters = 36): string {
+  const characters = Array.from(name);
+  if (characters.length <= maxCharacters) return name;
+  if (maxCharacters <= 0) return "";
+  if (maxCharacters === 1) return "…";
+  const available = maxCharacters - 1;
+  const suffixLength = Math.min(available - 1, available >= 18 ? 14 : Math.ceil(available / 2));
+  const prefixLength = available - suffixLength;
+  const suffix = suffixLength === 0 ? "" : characters.slice(-suffixLength).join("");
+  return `${characters.slice(0, prefixLength).join("")}…${suffix}`;
+}

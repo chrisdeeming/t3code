@@ -30,7 +30,7 @@ the whole message. The field is optional on `OrchestrationMessage`, both turn-st
 
 - `ComposerContextId` (`ctx_…`): durable payload identity. Branded.
 - `ComposerContextReferenceId` (`ref_…`): one document occurrence. Branded. Lives in editor state,
-  not on the wire.
+  not on the wire and is regenerated when canonical Markdown is reparsed.
 - `ChatAttachmentId`: the existing server-owned attachment resource. A record's `attachmentId` is
   a binding, not the chip's identity, so upload normalization can rename the resource without
   rewriting references.
@@ -92,11 +92,11 @@ transcript renderer moves to records.
 
 `ComposerContextReferenceNode` (`apps/web/src/components/ComposerContextReferenceNode.tsx`) is
 the one inline Lexical node for every context kind. It stores `kind`, `contextId`, `label`, and a
-per-occurrence `referenceId`, and its text content is the canonical link. Because the composer's
-prompt string is built from node text, the string carries identity, and rebuilding the editor from
-the string restores the same chips. Old drafts that used the U+FFFC ordinal placeholder migrate on
-hydration: placeholders bind to the terminal contexts in array order, then any context the prompt
-does not mention is prepended as a link.
+per-occurrence `referenceId`, and its text content is the canonical link. The prompt string carries
+payload identity and position, so rebuilding the editor restores equivalent chips; it does not
+preserve the editor-local occurrence ids. Old drafts that used the U+FFFC ordinal placeholder
+migrate on hydration: placeholders bind to the terminal contexts in array order, then any context
+the prompt does not mention is prepended as a link.
 
 Records stay in the draft store's typed arrays for now. The editor builds a `Map` keyed by
 `contextId` from them (`composerContextRecordsFromDraft`) and provides it through
@@ -105,9 +105,17 @@ the kind's chip; an unknown kind or a missing record renders the unresolved chip
 vanishing. Removing a chip removes only that occurrence; the composer's change handler compares
 the referenced ids against the draft array and drops records no chip points at.
 
-Send time is unchanged for terminal context: the link is replaced by the readable
-`@terminal-1:509-514` label and the full excerpt trails in `<terminal_context>`. Unifying this
-with the provider projection above is the next step.
+Version 1 deliberately keeps kind presentation explicit in each client instead of exposing a
+runtime handler registry. The contract and codecs are shared; web/desktop render rich chips and
+mobile renders the readable label. Add a registry only when a third-party or runtime-defined kind
+must provide behaviour that cannot ship with the client. Likewise, a durable occurrence id belongs
+in the canonical reference syntax only if a future feature needs to address one occurrence across
+serialization boundaries.
+
+Terminal context now follows the same send path as every other context record: the persisted
+message keeps its canonical link and structured record, while the provider projection replaces
+the link with a readable marker and includes the excerpt once in the context envelope. The legacy
+trailing `<terminal_context>` form is parsed only when reading messages sent by older clients.
 
 ## Sending and reading messages
 
@@ -117,10 +125,11 @@ The composer sends `message.text` as canonical prose with reference links and
 The server projects provider text at turn start (`ProviderCommandReactor`), so the persisted
 message stays readable and the provider receives markers plus one envelope.
 
-Review comments and preview annotations enter the draft through store mutators that append a
-reference at the end of the prompt, because the diff and preview panels do not know the caret.
-Terminal excerpts insert at the caret through the composer handle. Removing a chip in the editor
-removes the record; removing a preview screenshot thumbnail removes its annotation and chip.
+Review comments and preview annotations enter the draft through store mutators. A mounted composer
+registers a context insertion handler so panel-originated references land at its current or
+last-known caret; when no composer is mounted, the store appends them. Terminal excerpts and
+attachments use the same caret-first behavior. Removing a chip in the editor removes the record;
+removing a preview screenshot thumbnail removes its annotation and chip.
 
 The transcript resolves a message with `resolveUserMessageContext`: structured context is used as
 is, older messages are upgraded in memory. `ChatMarkdown` renders `t3-context://` links through

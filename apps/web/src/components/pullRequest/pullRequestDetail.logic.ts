@@ -20,6 +20,8 @@ import {
 } from "@t3tools/contracts";
 
 import { inferReviewCommentFenceLanguage, type ReviewCommentContext } from "~/reviewCommentContext";
+import { reviewCommentContextId } from "~/lib/composerContextRecords";
+import { removeInlineContextReference } from "~/lib/composerContextReferences";
 
 const safeShellArgument = /^[A-Za-z0-9._/@+=,-]+$/;
 const bitbucketRepositoryName = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
@@ -576,6 +578,19 @@ export interface FixFindingsHandoff {
  * tells them apart from the ones a reader marked up in the thread's own diff.
  */
 const HANDOFF_COMMENT_ID_PREFIX = "pull-request-";
+
+/** Removes references owned by the previous PR handoff before its prose is replaced. */
+export function stripPullRequestHandoffReferences(
+  prompt: string,
+  comments: ReadonlyArray<ReviewCommentContext>,
+): string {
+  let next = prompt;
+  for (const comment of comments) {
+    if (!comment.id.startsWith(HANDOFF_COMMENT_ID_PREFIX)) continue;
+    next = removeInlineContextReference(next, reviewCommentContextId(comment.id)).prompt;
+  }
+  return next;
+}
 
 /**
  * The prompt the composer should hold once a hand-off lands there.

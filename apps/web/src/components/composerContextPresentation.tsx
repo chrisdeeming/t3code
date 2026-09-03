@@ -29,6 +29,8 @@ import {
   COMPOSER_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
+  CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES,
+  middleTruncateAttachmentName,
 } from "./composerInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
@@ -151,9 +153,17 @@ function ImageContextChip(props: {
                 className="size-3.5 shrink-0 rounded-sm object-cover"
               />
             ) : (
-              <ImageIcon className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />
+              <ImageIcon
+                className={cn(
+                  COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
+                  CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES.image,
+                  "size-3.5",
+                )}
+              />
             )}
-            <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{props.record.name}</span>
+            <span className={cn(COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME, "max-w-72")}>
+              {middleTruncateAttachmentName(props.record.name)}
+            </span>
             {suffix ? <span className="text-[10px] text-muted-foreground">{suffix}</span> : null}
           </button>
         }
@@ -171,6 +181,7 @@ function FileContextChip(props: {
 }) {
   const needsReattach = composerFileNeedsReattach(props.record);
   const suffix = needsReattach ? "attach again" : uploadStatusSuffix(props.upload);
+  const size = formatAttachmentSize(props.record.sizeBytes);
   return (
     <Tooltip>
       <TooltipTrigger
@@ -182,11 +193,20 @@ function FileContextChip(props: {
               props.upload?.status === "failed" &&
                 "border-destructive/35 bg-destructive/8 text-destructive",
             )}
-            aria-label={`File attachment, ${props.record.name}`}
+            aria-label={`File attachment, ${props.record.name}, ${size}`}
             data-context-unresolved={needsReattach ? "true" : undefined}
           >
-            <FileIcon className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />
-            <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{props.record.name}</span>
+            <FileIcon
+              className={cn(
+                COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
+                CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES.file,
+                "size-3.5",
+              )}
+            />
+            <span className={cn(COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME, "max-w-72")}>
+              {middleTruncateAttachmentName(props.record.name)}
+            </span>
+            <span className="shrink-0 text-[10px] text-muted-foreground">{size}</span>
             {suffix ? <span className="text-[10px] opacity-80">{suffix}</span> : null}
           </span>
         }
@@ -264,7 +284,13 @@ export function ComposerContextReferenceChip(props: {
     return (
       <ContextChip
         icon={
-          <MessageCircleIcon className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />
+          <MessageCircleIcon
+            className={cn(
+              COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
+              CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES["review-comment"],
+              "size-3.5",
+            )}
+          />
         }
         label={reviewCommentContextLabel(entry.record)}
         kindLabel="Review comment"
@@ -276,7 +302,13 @@ export function ComposerContextReferenceChip(props: {
     return (
       <ContextChip
         icon={
-          <MousePointerClickIcon className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />
+          <MousePointerClickIcon
+            className={cn(
+              COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
+              CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES["preview-annotation"],
+              "size-3.5",
+            )}
+          />
         }
         label={previewAnnotationContextLabel(entry.record)}
         kindLabel="Preview annotation"

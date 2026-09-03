@@ -2571,6 +2571,21 @@ describe("composerDraftStore inline context references", () => {
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("look");
   });
 
+  it("keeps bulk-set review records and their inline references in sync", () => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadRef, "Explain this pull request.");
+    store.setReviewComments(threadRef, [reviewComment]);
+
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(
+      `Explain this pull request. ${reviewLink} `,
+    );
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.reviewComments).toEqual([reviewComment]);
+
+    store.setReviewComments(threadRef, []);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("Explain this pull request.");
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.reviewComments).toEqual([]);
+  });
+
   it("hands new review comments to a registered caret handler instead of appending", () => {
     const store = useComposerDraftStore.getState();
     store.setPrompt(threadRef, "look");
@@ -2587,6 +2602,28 @@ describe("composerDraftStore inline context references", () => {
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(
       "look [b.ts L4](t3-context://v1/review-comment/rc-2) ",
     );
+  });
+
+  it("does not overwrite a prompt update made by the caret handler", () => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadRef, "before after");
+    store.setContextInsertionHandler(threadRef, (references) => {
+      const reference = references[0];
+      if (!reference) return false;
+      useComposerDraftStore
+        .getState()
+        .setPrompt(
+          threadRef,
+          `before [${reference.label}](t3-context://v1/${reference.kind}/${reference.contextId}) after`,
+        );
+      return true;
+    });
+
+    store.addReviewComment(threadRef, reviewComment);
+
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(`before ${reviewLink} after`);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.reviewComments).toEqual([reviewComment]);
+    store.setContextInsertionHandler(threadRef, null);
   });
 
   it("appends a link when a preview annotation is added and strips it on removal", () => {

@@ -16,6 +16,7 @@ import {
 } from "@t3tools/client-runtime/work-log/presentation";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
+import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import {
   emptyAgentPanelModel,
   formatSubagentTokenCount,
@@ -98,7 +99,11 @@ import {
   FileIcon,
   ImageIcon,
 } from "lucide-react";
-import type { ComposerContextId, KnownComposerContextRecord } from "@t3tools/contracts";
+import type {
+  ComposerContextId,
+  ComposerContextRecord,
+  KnownComposerContextRecord,
+} from "@t3tools/contracts";
 import { Button } from "../ui/button";
 import { useAssetUrlRefresh, useAssetUrlState } from "../../assets/assetUrls";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
@@ -162,6 +167,8 @@ import {
   CHAT_INLINE_CHIP_CLASS_NAME,
   CHAT_INLINE_CHIP_LABEL_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
+  CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES,
+  middleTruncateAttachmentName,
 } from "../composerInlineChip";
 import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import { cn } from "~/lib/utils";
@@ -1259,14 +1266,17 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   };
   const renderContextReference = (reference: ChatMarkdownContextReference) => {
     const record = asKnownContextRecord(resolvedContext.recordsById.get(reference.contextId));
-    // Screenshots keep the annotation id in their filename; older messages only have order.
+    // Structured annotations point at the image record, which in turn points at the persisted
+    // attachment. Filename and order are compatibility fallbacks for legacy messages only.
     const annotationImage =
       record?.kind === "preview-annotation"
-        ? (previewImages.find(
-            (image) => image.name === `preview-annotation-${record.annotationId}.png`,
-          ) ??
-          previewImages[annotationRecordIds.indexOf(record.contextId)] ??
-          null)
+        ? resolvePreviewAnnotationImage({
+            record,
+            recordsById: resolvedContext.recordsById,
+            userImages,
+            previewImages,
+            annotationRecordIds,
+          })
         : null;
     const attachment =
       record?.kind === "image"
@@ -1451,6 +1461,28 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         </div>
       </div>
     </div>
+  );
+}
+
+export function resolvePreviewAnnotationImage(input: {
+  record: Extract<KnownComposerContextRecord, { kind: "preview-annotation" }>;
+  recordsById: ReadonlyMap<string, ComposerContextRecord>;
+  userImages: ReadonlyArray<ChatImageAttachment>;
+  previewImages: ReadonlyArray<ChatImageAttachment>;
+  annotationRecordIds: ReadonlyArray<string>;
+}): ChatImageAttachment | null {
+  const screenshotRecord = input.record.screenshotContextId
+    ? asKnownContextRecord(input.recordsById.get(input.record.screenshotContextId))
+    : undefined;
+  return (
+    (screenshotRecord?.kind === "image"
+      ? input.userImages.find((image) => image.id === screenshotRecord.attachmentId)
+      : undefined) ??
+    input.previewImages.find(
+      (image) => image.name === `preview-annotation-${input.record.annotationId}.png`,
+    ) ??
+    input.previewImages[input.annotationRecordIds.indexOf(input.record.contextId)] ??
+    null
   );
 }
 
@@ -2220,12 +2252,13 @@ function UserMessagePreviewAnnotationDetails(props: {
   image: ChatImageAttachment | null;
 }) {
   const ctx = use(TimelineRowCtx);
+  const visibleElements = props.record.elements?.slice(0, 3) ?? [];
   return (
-    <div className="flex max-w-full items-center overflow-hidden rounded-lg border border-border/70 bg-background/70">
+    <div className="max-w-full overflow-hidden rounded-lg border border-border/70 bg-background/70">
       {props.image?.previewUrl ? (
         <button
           type="button"
-          className="size-14 shrink-0 cursor-zoom-in overflow-hidden border-r border-border/70 bg-muted"
+          className="block max-h-64 w-full cursor-zoom-in overflow-hidden border-b border-border/70 bg-muted"
           aria-label={`Preview ${props.image.name}`}
           onClick={() => {
             if (!props.image) return;
@@ -2236,11 +2269,15 @@ function UserMessagePreviewAnnotationDetails(props: {
           <img
             src={props.image.previewUrl}
             alt="Annotated preview crop"
-            className="size-full object-cover"
+            className="max-h-64 w-full object-contain"
           />
         </button>
-      ) : null}
-      <div className="min-w-0 px-2.5 py-2">
+      ) : (
+        <div className="border-b border-border/70 bg-muted/40 px-3 py-2 text-secondary-label text-xs">
+          Screenshot unavailable
+        </div>
+      )}
+      <div className="min-w-0 px-3 py-2.5">
         <div className="text-message-foreground text-xs font-medium">
           {props.record.pageTitle?.trim() || props.record.pageUrl || "Preview annotation"}
         </div>
@@ -2260,6 +2297,42 @@ function UserMessagePreviewAnnotationDetails(props: {
             </span>
           ) : null}
         </div>
+        {visibleElements.length > 0 ? (
+          <div className="mt-2 space-y-2 border-t border-border/60 pt-2">
+            {visibleElements.map((element) => {
+              const source = element.source;
+              const sourceLabel = source?.fileName
+                ? `${source.fileName}${source.lineNumber === null ? "" : `:${source.lineNumber}`}`
+                : null;
+              return (
+                <div
+                  key={`${element.selector}\u0000${element.tagName}\u0000${sourceLabel ?? ""}\u0000${element.htmlPreview}`}
+                  className="min-w-0"
+                >
+                  <div className="flex min-w-0 items-center gap-2 text-xs">
+                    <code className="truncate text-message-foreground">
+                      {element.selector || `<${element.tagName}>`}
+                    </code>
+                    {sourceLabel ? (
+                      <span className="ml-auto shrink-0 text-secondary-label">{sourceLabel}</span>
+                    ) : null}
+                  </div>
+                  {element.htmlPreview.trim() ? (
+                    <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded bg-muted/60 px-2 py-1.5 text-[10px] leading-relaxed">
+                      {element.htmlPreview.trim()}
+                    </pre>
+                  ) : null}
+                </div>
+              );
+            })}
+            {(props.record.elements?.length ?? 0) > visibleElements.length ? (
+              <div className="text-secondary-label text-[10px]">
+                {(props.record.elements?.length ?? 0) - visibleElements.length} more selected
+                elements
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -2297,26 +2370,50 @@ function UserMessageContextReferenceChip(props: {
             className="size-3.5 shrink-0 rounded-sm object-cover"
           />
         ) : (
-          <ImageIcon className={iconClassName} />
+          <ImageIcon
+            className={cn(iconClassName, CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES.image)}
+          />
         )}
-        <span className={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}>{record.name}</span>
+        <span className={cn(CHAT_INLINE_CHIP_LABEL_CLASS_NAME, "max-w-72")}>
+          {middleTruncateAttachmentName(record.name)}
+        </span>
       </button>
     );
   }
   if (record?.kind === "file" && attachment && isFileAttachment(attachment)) {
     const disabled = attachment.downloadable === false;
+    const size = formatAttachmentSize(record.sizeBytes);
     return (
-      <button
-        type="button"
-        disabled={disabled}
-        className={cn(CHAT_INLINE_CHIP_CLASS_NAME, !disabled && "cursor-pointer hover:underline")}
-        aria-label={`File attachment, ${record.name}`}
-        data-markdown-copy={copyMarkdown}
-        onClick={() => props.onOpenFile(attachment)}
-      >
-        <FileIcon className={iconClassName} />
-        <span className={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}>{record.name}</span>
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              disabled={disabled}
+              className={cn(
+                CHAT_INLINE_CHIP_CLASS_NAME,
+                !disabled && "cursor-pointer hover:underline",
+              )}
+              aria-label={`File attachment, ${record.name}, ${size}`}
+              data-markdown-copy={copyMarkdown}
+              onClick={() => props.onOpenFile(attachment)}
+            >
+              <FileIcon
+                className={cn(iconClassName, CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES.file)}
+              />
+              <span className={cn(CHAT_INLINE_CHIP_LABEL_CLASS_NAME, "max-w-72")}>
+                {middleTruncateAttachmentName(record.name)}
+              </span>
+              <span className="shrink-0 text-[10px] text-muted-foreground">{size}</span>
+            </button>
+          }
+        />
+        <TooltipPopup side="top" className="max-w-80 whitespace-pre-wrap leading-tight">
+          {record.name}
+          {"\n"}
+          {size}
+        </TooltipPopup>
+      </Tooltip>
     );
   }
   if (record?.kind === "terminal") {
@@ -2333,7 +2430,11 @@ function UserMessageContextReferenceChip(props: {
     if (record.htmlPreview.trim()) lines.push("", record.htmlPreview.trim().slice(0, 600));
     return (
       <UserMessageContextChip
-        icon={<MousePointerClickIcon className={iconClassName} />}
+        icon={
+          <MousePointerClickIcon
+            className={cn(iconClassName, CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES.element)}
+          />
+        }
         label={record.label}
         copyMarkdown={copyMarkdown}
         tooltip={lines.join("\n")}
@@ -2345,7 +2446,14 @@ function UserMessageContextReferenceChip(props: {
       <UserMessageContextPopover
         chip={
           <UserMessageContextChip
-            icon={<MessageCircleIcon className={iconClassName} />}
+            icon={
+              <MessageCircleIcon
+                className={cn(
+                  iconClassName,
+                  CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES["review-comment"],
+                )}
+              />
+            }
             label={record.label}
             copyMarkdown={copyMarkdown}
           />
@@ -2373,7 +2481,14 @@ function UserMessageContextReferenceChip(props: {
       <UserMessageContextPopover
         chip={
           <UserMessageContextChip
-            icon={<MousePointerClickIcon className={iconClassName} />}
+            icon={
+              <MousePointerClickIcon
+                className={cn(
+                  iconClassName,
+                  CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES["preview-annotation"],
+                )}
+              />
+            }
             label={record.label}
             copyMarkdown={copyMarkdown}
           />
