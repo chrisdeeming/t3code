@@ -87,3 +87,24 @@ transcript renderer moves to records.
 [contract]: ../../packages/contracts/src/composerContext.ts
 [shared]: ../../packages/shared/src/composerContextReferences.ts
 [legacy]: ../../packages/shared/src/composerContextLegacy.ts
+
+## Editor model (web and desktop)
+
+`ComposerContextReferenceNode` (`apps/web/src/components/ComposerContextReferenceNode.tsx`) is
+the one inline Lexical node for every context kind. It stores `kind`, `contextId`, `label`, and a
+per-occurrence `referenceId`, and its text content is the canonical link. Because the composer's
+prompt string is built from node text, the string carries identity, and rebuilding the editor from
+the string restores the same chips. Old drafts that used the U+FFFC ordinal placeholder migrate on
+hydration: placeholders bind to the terminal contexts in array order, then any context the prompt
+does not mention is prepended as a link.
+
+Records stay in the draft store's typed arrays for now. The editor builds a `Map` keyed by
+`contextId` from them (`composerContextRecordsFromDraft`) and provides it through
+`ComposerContextRecordsContext`. `ComposerContextReferenceChip` looks the record up and renders
+the kind's chip; an unknown kind or a missing record renders the unresolved chip instead of
+vanishing. Removing a chip removes only that occurrence; the composer's change handler compares
+the referenced ids against the draft array and drops records no chip points at.
+
+Send time is unchanged for terminal context: the link is replaced by the readable
+`@terminal-1:509-514` label and the full excerpt trails in `<terminal_context>`. Unifying this
+with the provider projection above is the next step.
