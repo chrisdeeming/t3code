@@ -122,7 +122,8 @@ context is no longer available shows the same dashed outline; hover it for what 
 
 Copying a message with the copy button, or copying text out of it, gives other apps readable
 Markdown with a link in place of each chip. Older messages that were sent before chips still
-show their context.
+show their context. Stashing a prompt keeps its chips and what they point to; restoring brings
+them back.
 
 On mobile, chips in sent messages read as their labels.
 
