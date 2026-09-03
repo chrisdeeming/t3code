@@ -85,12 +85,20 @@ export function composerContextRecordsFromDraft(input: {
   return records;
 }
 
-function ContextChip(props: { icon: ReactElement; label: string; tooltip: string }) {
+function ContextChip(props: {
+  icon: ReactElement;
+  label: string;
+  kindLabel: string;
+  tooltip: string;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <span className={COMPOSER_INLINE_CHIP_CLASS_NAME}>
+          <span
+            className={COMPOSER_INLINE_CHIP_CLASS_NAME}
+            aria-label={`${props.kindLabel}, ${props.label}`}
+          >
             {props.icon}
             <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{props.label}</span>
           </span>
@@ -218,6 +226,7 @@ function UnresolvedContextChip(props: { label: string }) {
         render={
           <span
             className={cn(COMPOSER_INLINE_CHIP_CLASS_NAME, "border-dashed text-muted-foreground")}
+            aria-label={`Unavailable context, ${props.label}`}
             data-context-unresolved="true"
           >
             <CircleDashedIcon className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />
@@ -256,6 +265,7 @@ export function ComposerContextReferenceChip(props: {
           <MessageCircleIcon className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />
         }
         label={reviewCommentContextLabel(entry.record)}
+        kindLabel="Review comment"
         tooltip={reviewCommentTooltip(entry.record)}
       />
     );
@@ -267,6 +277,7 @@ export function ComposerContextReferenceChip(props: {
           <MousePointerClickIcon className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />
         }
         label={previewAnnotationContextLabel(entry.record)}
+        kindLabel="Preview annotation"
         tooltip={previewAnnotationTooltip(entry.record)}
       />
     );
