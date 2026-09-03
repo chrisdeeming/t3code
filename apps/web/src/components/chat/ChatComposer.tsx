@@ -179,7 +179,7 @@ import { encodeComposerContextFragment } from "@t3tools/shared/composerContextCl
 import type { ComposerContextClipboardFragment, ComposerContextRecord } from "@t3tools/contracts";
 import { resolveAssetUrl } from "~/assets/assetUrls";
 import { assetEnvironment } from "~/state/assets";
-import { usePreparedConnection } from "~/state/session";
+import { readPreparedConnection } from "~/state/session";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
@@ -4180,27 +4180,51 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ],
   );
   const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, { reportFailure: false });
-  const preparedConnection = usePreparedConnection(environmentId);
-  const httpBaseUrl =
-    preparedConnection._tag === "Some" ? preparedConnection.value.httpBaseUrl : null;
   /**
-   * Bytes for a pasted image or file come back through the environment's asset URL and
-   * re-enter the draft as a normal attachment under a fresh id; the pasted chip is rewritten
-   * to that id and reads as unresolved until the bytes land.
+   * Bytes for a pasted image or file come back through the source environment's asset URL
+   * (the client is the only party that can reach both) and re-enter this draft as a normal
+   * attachment under a fresh id. The pasted chip is rewritten to that id and reads as
+   * unresolved until the bytes land; a failed transfer says so and leaves the chip to remove.
    */
   const importAttachmentRecord = useCallback(
-    async (record: Extract<ComposerContextRecord, { kind: "image" | "file" }>, localId: string) => {
-      if (!httpBaseUrl) return;
+    async (
+      record: Extract<ComposerContextRecord, { kind: "image" | "file" }>,
+      localId: string,
+      sourceEnvironmentId: EnvironmentId,
+    ) => {
+      const fail = (reason: string) => {
+        toastManager.add({
+          type: "error",
+          title: `Couldn't bring ${record.name} into this message`,
+          description: `${reason} Remove the chip or attach the file again.`,
+        });
+      };
+      const sourceConnection = readPreparedConnection(sourceEnvironmentId);
+      if (!sourceConnection) {
+        fail("The environment it came from is not connected.");
+        return;
+      }
       const result = await createAssetUrl({
-        environmentId,
+        environmentId: sourceEnvironmentId,
         input: { resource: { _tag: "attachment", attachmentId: record.attachmentId } },
       });
-      if (result._tag !== "Success") return;
-      const url = resolveAssetUrl(httpBaseUrl, result.value.relativeUrl);
-      if (!url) return;
-      const response = await fetch(url);
-      if (!response.ok) return;
-      const blob = await response.blob();
+      const url =
+        result._tag === "Success"
+          ? resolveAssetUrl(sourceConnection.httpBaseUrl, result.value.relativeUrl)
+          : null;
+      if (!url) {
+        fail("The original attachment is no longer available.");
+        return;
+      }
+      let blob: Blob;
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        blob = await response.blob();
+      } catch {
+        fail("Downloading it from the source failed.");
+        return;
+      }
       const file = new File([blob], record.name, { type: record.mimeType || blob.type });
       if (record.kind === "image") {
         addComposerImage({
@@ -4225,7 +4249,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ]);
       }
     },
-    [addComposerFilesToDraft, addComposerImage, createAssetUrl, environmentId, httpBaseUrl],
+    [addComposerFilesToDraft, addComposerImage, createAssetUrl],
   );
   const importContextFragment = useCallback(
     (fragment: ComposerContextClipboardFragment): ReadonlyMap<string, string> => {
@@ -4257,10 +4281,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             break;
           case "image":
           case "file": {
-            if (fragment.source.environmentId !== environmentId) break;
             const localId = randomUUID();
             rewritten.set(record.contextId, localId);
-            void importAttachmentRecord(record, localId);
+            void importAttachmentRecord(record, localId, fragment.source.environmentId);
             break;
           }
           default:
@@ -4276,7 +4299,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       addComposerDraftTerminalContexts,
       composerContextRecords,
       composerDraftTarget,
-      environmentId,
       importAttachmentRecord,
     ],
   );
