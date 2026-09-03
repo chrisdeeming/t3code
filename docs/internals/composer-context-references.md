@@ -163,3 +163,8 @@ environment's asset URL and attached under a fresh local id, with the pasted lin
 that id. A pasted binary reads as an unresolved chip until its bytes arrive; a fragment from
 another environment leaves binaries unresolved. Rendered chips and sent messages are never
 mutated by a paste.
+
+Pasting across threads, projects, or environments uses the same path: the client mints an asset
+URL from the source environment, downloads the bytes, and attaches them here. There is no
+server-side clone; if the source is unreachable or the attachment is gone, a toast says so and
+the chip stays unresolved.
