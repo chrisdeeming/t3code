@@ -43,7 +43,8 @@ import {
 } from "./types";
 import {
   type TerminalContextDraft,
-  ensureInlineTerminalContextPlaceholders,
+  ensureInlineTerminalContextReferences,
+  migrateLegacyTerminalContextPlaceholders,
   normalizeTerminalContextText,
 } from "./lib/terminalContext";
 import {
@@ -1862,9 +1863,9 @@ function normalizePersistedDraftsByThreadId(
       draftCandidate.interactionMode === "plan" || draftCandidate.interactionMode === "default"
         ? draftCandidate.interactionMode
         : null;
-    const prompt = ensureInlineTerminalContextPlaceholders(
-      promptCandidate,
-      terminalContexts.length,
+    const prompt = ensureInlineTerminalContextReferences(
+      migrateLegacyTerminalContextPlaceholders(promptCandidate, terminalContexts),
+      terminalContexts,
     );
     // If the draft already has the v3 shape, use it directly
     const legacyDraftCandidate = draftValue as LegacyPersistedComposerThreadDraftState;
@@ -2905,10 +2906,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
             const nextDraft: ComposerThreadDraftState = {
               ...existing,
-              prompt: ensureInlineTerminalContextPlaceholders(
-                existing.prompt,
-                normalizedContexts.length,
-              ),
+              prompt: ensureInlineTerminalContextReferences(existing.prompt, normalizedContexts),
               terminalContexts: normalizedContexts,
             };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
@@ -3495,10 +3493,10 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 ...state.draftsByThreadKey,
                 [threadKey]: {
                   ...existing,
-                  prompt: ensureInlineTerminalContextPlaceholders(
-                    existing.prompt,
-                    existing.terminalContexts.length + acceptedContexts.length,
-                  ),
+                  prompt: ensureInlineTerminalContextReferences(existing.prompt, [
+                    ...existing.terminalContexts,
+                    ...acceptedContexts,
+                  ]),
                   terminalContexts: [...existing.terminalContexts, ...acceptedContexts],
                 },
               },
@@ -3856,7 +3854,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft: ComposerThreadDraftState = {
               ...current,
-              prompt: ensureInlineTerminalContextPlaceholders("", current.terminalContexts.length),
+              prompt: ensureInlineTerminalContextReferences("", current.terminalContexts),
               images: [],
               files: [],
               nonPersistedImageIds: [],

@@ -80,7 +80,8 @@ import {
 import { removeLocalStorageItem, setLocalStorageItem } from "./hooks/useLocalStorage";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
-  insertInlineTerminalContextPlaceholder,
+  formatTerminalContextReference,
+  insertInlineTerminalContextReference,
   type TerminalContextDraft,
 } from "./lib/terminalContext";
 import { createDebouncedStorage } from "./lib/storage";
@@ -770,36 +771,30 @@ describe("composerDraftStore terminal contexts", () => {
   });
 
   it("inserts terminal contexts at the requested inline prompt position", () => {
-    const firstInsertion = insertInlineTerminalContextPlaceholder("alpha beta", 6);
-    const secondInsertion = insertInlineTerminalContextPlaceholder(firstInsertion.prompt, 0);
+    const first = makeTerminalContext({ id: "ctx-1" });
+    const second = makeTerminalContext({
+      id: "ctx-2",
+      terminalLabel: "Terminal 2",
+      lineStart: 9,
+      lineEnd: 10,
+    });
+    const firstInsertion = insertInlineTerminalContextReference("alpha beta", 6, first);
+    const secondInsertion = insertInlineTerminalContextReference(firstInsertion.prompt, 0, second);
 
     expect(
       useComposerDraftStore
         .getState()
-        .insertTerminalContext(
-          threadRef,
-          firstInsertion.prompt,
-          makeTerminalContext({ id: "ctx-1" }),
-          firstInsertion.contextIndex,
-        ),
+        .insertTerminalContext(threadRef, firstInsertion.prompt, first, 0),
     ).toBe(true);
     expect(
-      useComposerDraftStore.getState().insertTerminalContext(
-        threadRef,
-        secondInsertion.prompt,
-        makeTerminalContext({
-          id: "ctx-2",
-          terminalLabel: "Terminal 2",
-          lineStart: 9,
-          lineEnd: 10,
-        }),
-        secondInsertion.contextIndex,
-      ),
+      useComposerDraftStore
+        .getState()
+        .insertTerminalContext(threadRef, secondInsertion.prompt, second, 0),
     ).toBe(true);
 
     const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
     expect(draft?.prompt).toBe(
-      `${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} alpha ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} beta`,
+      `${formatTerminalContextReference(second)} alpha ${formatTerminalContextReference(first)} beta`,
     );
     expect(draft?.terminalContexts.map((context) => context.id)).toEqual(["ctx-2", "ctx-1"]);
   });
@@ -869,6 +864,9 @@ describe("composerDraftStore terminal contexts", () => {
       useComposerDraftStore.getInitialState(),
     );
 
+    expect(mergedState.draftsByThreadKey[threadKeyFor(threadId)]?.prompt).toBe(
+      "[Terminal 1 lines 4-5](t3-context://v1/terminal/ctx-rehydrated)",
+    );
     expect(mergedState.draftsByThreadKey[threadKeyFor(threadId)]?.terminalContexts).toMatchObject([
       {
         id: "ctx-rehydrated",
