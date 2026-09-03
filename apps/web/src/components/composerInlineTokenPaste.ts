@@ -3,7 +3,10 @@ import {
   COMPOSER_CONTEXT_CLIPBOARD_MIME,
   decodeComposerContextFragment,
 } from "@t3tools/shared/composerContextClipboard";
-import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import {
+  collectComposerContextReferences,
+  replaceComposerContextReferences,
+} from "@t3tools/shared/composerContextReferences";
 import {
   $createLineBreakNode,
   $createTextNode,
@@ -53,12 +56,25 @@ export function registerComposerInlineTokenPaste(
       if (pastedText.length === 0) {
         return false;
       }
-      const fragment = options.importContextFragment
+      // Only records whose links are in the pasted text get imported; a fragment may carry
+      // more (it was built for a larger copy) and must not start transfers for those.
+      const decodedFragment = options.importContextFragment
         ? decodeComposerContextFragment(
             event.clipboardData.getData(COMPOSER_CONTEXT_CLIPBOARD_MIME),
           )
         : null;
-      const rewrittenIds = fragment ? options.importContextFragment!(fragment) : null;
+      const pastedIds = new Set(
+        collectComposerContextReferences(pastedText).map((occurrence) => occurrence.contextId),
+      );
+      const fragment =
+        decodedFragment === null
+          ? null
+          : {
+              ...decodedFragment,
+              records: decodedFragment.records.filter((record) => pastedIds.has(record.contextId)),
+            };
+      const rewrittenIds =
+        fragment && fragment.records.length > 0 ? options.importContextFragment!(fragment) : null;
       const text =
         rewrittenIds && rewrittenIds.size > 0
           ? replaceComposerContextReferences(pastedText, (occurrence) => {

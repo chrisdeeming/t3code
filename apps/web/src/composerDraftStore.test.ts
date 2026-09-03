@@ -2571,6 +2571,24 @@ describe("composerDraftStore inline context references", () => {
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("look");
   });
 
+  it("hands new review comments to a registered caret handler instead of appending", () => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadRef, "look");
+    const seen: string[] = [];
+    store.setContextInsertionHandler(threadRef, (references) => {
+      seen.push(...references.map((reference) => reference.contextId));
+      return true;
+    });
+    store.addReviewComment(threadRef, reviewComment);
+    expect(seen).toEqual(["rc-1"]);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("look");
+    store.setContextInsertionHandler(threadRef, null);
+    store.addReviewComment(threadRef, { ...reviewComment, id: "rc-2" });
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(
+      "look [b.ts L4](t3-context://v1/review-comment/rc-2) ",
+    );
+  });
+
   it("appends a link when a preview annotation is added and strips it on removal", () => {
     const store = useComposerDraftStore.getState();
     store.addPreviewAnnotation(threadRef, annotation);

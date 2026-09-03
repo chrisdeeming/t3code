@@ -1224,10 +1224,38 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           records: resolvedContext.records,
         });
   // Chips inside the selection copy as their links (data-markdown-copy); the structured
-  // fragment rides beside so a paste into a draft brings the payloads along.
+  // fragment rides beside so a paste into a draft brings the payloads along. Only records
+  // for chips that are actually inside the selection travel, so copying prose next to an
+  // image never starts importing that image somewhere else.
   const onBodyCopyCapture = (event: React.ClipboardEvent<HTMLDivElement>) => {
-    if (!contextClipboardFragment || !event.clipboardData) return;
-    event.clipboardData.setData(COMPOSER_CONTEXT_CLIPBOARD_MIME, contextClipboardFragment);
+    if (resolvedContext.records.length === 0 || !event.clipboardData) return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+    const copiedMarkdown: string[] = [];
+    for (let index = 0; index < selection.rangeCount; index += 1) {
+      const container = document.createElement("div");
+      container.appendChild(selection.getRangeAt(index).cloneContents());
+      for (const element of container.querySelectorAll("[data-markdown-copy]")) {
+        copiedMarkdown.push(element.getAttribute("data-markdown-copy") ?? "");
+      }
+    }
+    const selectedIds = new Set(
+      collectComposerContextReferences(copiedMarkdown.join("\n")).map((o) => o.contextId),
+    );
+    const records = resolvedContext.records.filter((record) => selectedIds.has(record.contextId));
+    if (records.length === 0) return;
+    event.clipboardData.setData(
+      COMPOSER_CONTEXT_CLIPBOARD_MIME,
+      encodeComposerContextFragment({
+        version: 1,
+        source: {
+          environmentId: ctx.activeThreadEnvironmentId,
+          ...(ctx.threadRef ? { threadId: ctx.threadRef.threadId } : {}),
+          messageId: row.message.id,
+        },
+        records,
+      }),
+    );
   };
   const renderContextReference = (reference: ChatMarkdownContextReference) => {
     const record = asKnownContextRecord(resolvedContext.recordsById.get(reference.contextId));

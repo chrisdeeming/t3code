@@ -48,6 +48,7 @@ import {
 } from "./lib/terminalContext";
 import {
   appendInlineContextReference,
+  type ComposerContextReference,
   ensureInlineContextReferences,
   formatInlineContextReference,
   removeInlineContextReference,
@@ -315,6 +316,17 @@ const PersistedComposerDraftStoreStorage = Schema.Struct({
 export interface ComposerContextAddOptions {
   appendReference?: boolean;
 }
+
+/**
+ * A mounted composer registers itself here so context produced by other panels (diff
+ * comments, preview picks) lands at its caret. Without a handler the store appends the
+ * reference to the prompt, which is where a draft with no composer open would show it.
+ * Runtime-only: never persisted.
+ */
+export type ComposerContextInsertionHandler = (
+  references: ReadonlyArray<ComposerContextReference>,
+) => boolean;
+const contextInsertionHandlers = new Map<string, ComposerContextInsertionHandler>();
 
 export interface ComposerThreadDraftState {
   prompt: string;
@@ -588,6 +600,11 @@ interface ComposerDraftStoreState {
     threadRef: ComposerThreadTarget,
     comment: ReviewCommentContext,
     options?: ComposerContextAddOptions,
+  ) => void;
+  /** Registers (or clears, with null) the caret-insertion handler for a draft. */
+  setContextInsertionHandler: (
+    threadRef: ComposerThreadTarget,
+    handler: ComposerContextInsertionHandler | null,
   ) => void;
   setReviewComments: (
     threadRef: ComposerThreadTarget,
@@ -3470,18 +3487,20 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               screenshot: annotation.screenshot ? { ...annotation.screenshot, dataUrl: "" } : null,
             };
             const alreadyPresent = nextAnnotations.length !== existing.previewAnnotations.length;
+            const reference = previewAnnotationContextReference(compactAnnotation);
+            const placeAtCaret =
+              !alreadyPresent &&
+              options?.appendReference !== false &&
+              (contextInsertionHandlers.get(threadKey)?.([reference]) ?? false);
             return {
               draftsByThreadKey: {
                 ...state.draftsByThreadKey,
                 [threadKey]: {
                   ...existing,
                   prompt:
-                    alreadyPresent || options?.appendReference === false
+                    alreadyPresent || placeAtCaret || options?.appendReference === false
                       ? existing.prompt
-                      : appendInlineContextReference(
-                          existing.prompt,
-                          previewAnnotationContextReference(compactAnnotation),
-                        ),
+                      : appendInlineContextReference(existing.prompt, reference),
                   previewAnnotations: [...nextAnnotations, compactAnnotation],
                 },
               },
@@ -3541,23 +3560,31 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               (entry) => entry.id !== comment.id,
             );
             const alreadyPresent = reviewComments.length !== existing.reviewComments.length;
+            const reference = reviewCommentContextReference(comment);
+            const placeAtCaret =
+              !alreadyPresent &&
+              options?.appendReference !== false &&
+              (contextInsertionHandlers.get(threadKey)?.([reference]) ?? false);
             return {
               draftsByThreadKey: {
                 ...state.draftsByThreadKey,
                 [threadKey]: {
                   ...existing,
                   prompt:
-                    alreadyPresent || options?.appendReference === false
+                    alreadyPresent || placeAtCaret || options?.appendReference === false
                       ? existing.prompt
-                      : appendInlineContextReference(
-                          existing.prompt,
-                          reviewCommentContextReference(comment),
-                        ),
+                      : appendInlineContextReference(existing.prompt, reference),
                   reviewComments: [...reviewComments, { ...comment }],
                 },
               },
             };
           });
+        },
+        setContextInsertionHandler: (threadRef, handler) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          if (!threadKey) return;
+          if (handler) contextInsertionHandlers.set(threadKey, handler);
+          else contextInsertionHandlers.delete(threadKey);
         },
         setReviewComments: (threadRef, comments) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef);
