@@ -47,7 +47,6 @@ export function PromptFontPreview() {
         disabled={false}
         placeholder={DISCONNECTED_COMPOSER_PLACEHOLDER}
         className="max-h-40 min-h-12"
-        onRemoveTerminalContext={noop}
         onChange={onChange}
         onPaste={noop}
       />
