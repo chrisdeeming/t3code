@@ -3974,14 +3974,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Callbacks: attachments
   // ------------------------------------------------------------------
-  const addComposerAttachments = async (files: File[]) => {
-    if (!activeThreadId || files.length === 0) return;
+  /** Resolves true when at least one chip was inserted for the accepted attachments. */
+  const addComposerAttachments = async (files: File[]): Promise<boolean> => {
+    if (!activeThreadId || files.length === 0) return false;
     if (pendingUserInputs.length > 0) {
       toastManager.add({
         type: "error",
         title: "Attach files after answering plan questions.",
       });
-      return;
+      return false;
     }
     // Captured before the awaits below: the user may switch threads while a
     // large image is being compressed, and the attachments and errors belong
@@ -4067,15 +4068,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
     }
     setThreadError(threadId, error);
+    let insertedAny = false;
     if (acceptedFiles.length > 0) {
       addComposerFilesToDraft(acceptedFiles);
-      insertAttachmentReferences(
-        acceptedFiles
-          .filter((file) => !replacedReattachMarkerIds.has(file.id))
-          .map(fileContextReference),
-      );
+      insertAttachmentReferences(acceptedFiles.map(fileContextReference));
+      insertedAny = true;
     }
-    if (acceptedImages.length === 0) return;
+    if (acceptedImages.length === 0) return insertedAny;
 
     pendingImageCompressionsRef.current.set(threadId, pendingCount + acceptedImages.length);
     try {
@@ -4112,7 +4111,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       } else if (nextImages.length > 1) {
         addComposerImagesToDraft(nextImages);
       }
-      insertAttachmentReferences(nextImages.map(imageContextReference));
+      if (nextImages.length > 0) {
+        insertAttachmentReferences(nextImages.map(imageContextReference));
+        insertedAny = true;
+      }
       // Only failures are reported here. Success must not pass `null`: by
       // now other work (a failed send, an overlapping paste) may have set a
       // thread error this call knows nothing about, and clearing it would
@@ -4129,6 +4131,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         pendingImageCompressionsRef.current.delete(threadId);
       }
     }
+    return insertedAny;
   };
 
   const addComposerDraftTerminalContexts = useComposerDraftStore(
@@ -4594,8 +4597,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         setIsComposerScrollCollapsed(false);
       },
       addDroppedFiles: (files: File[]) => {
-        void addComposerAttachments(files);
-        focusComposer();
+        void addComposerAttachments(files).then((inserted) => {
+          if (!inserted) focusComposer();
+        });
       },
       insertTextAtEnd: insertComposerTextAtEnd,
       citeAssistantText: (citation, sourceAnchor) =>
@@ -5438,8 +5442,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         onChange={(event) => {
                           const files = Array.from(event.currentTarget.files ?? []);
                           event.currentTarget.value = "";
-                          void addComposerAttachments(files);
-                          focusComposer();
+                          // Inserting a chip refocuses the editor after the draft renders;
+                          // focusing synchronously here would report the editor's stale text
+                          // over the prompt that was just written.
+                          void addComposerAttachments(files).then((inserted) => {
+                            if (!inserted) focusComposer();
+                          });
                         }}
                       />
                       <Tooltip>

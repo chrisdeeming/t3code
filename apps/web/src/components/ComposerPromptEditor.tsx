@@ -1542,6 +1542,12 @@ function ComposerPromptEditorInner({
   });
   const selectionRangeRef = useRef({ start: initialExpandedCursor, end: initialExpandedCursor });
   const isApplyingControlledUpdateRef = useRef(false);
+  // Latest controlled value, readable from editor listeners that fire before the layout
+  // effect has rewritten the editor to match it.
+  const latestValueRef = useRef(value);
+  useLayoutEffect(() => {
+    latestValueRef.current = value;
+  }, [value]);
   const citationCommentRequestRef = useRef<ComposerCitationCommentRequest | null>(null);
   const [openCitationComment, setOpenCitationComment] =
     useState<ComposerCitationCommentTarget | null>(null);
@@ -1650,11 +1656,16 @@ function ComposerPromptEditorInner({
     (nextCursor: number) => {
       const rootElement = editor.getRootElement();
       if (!rootElement) return;
-      const boundedCursor = clampCollapsedComposerCursor(snapshotRef.current.value, nextCursor);
       rootElement.focus({ preventScroll: true });
+      // A newer prompt is waiting to be applied (a chip was just inserted through the store).
+      // Reporting the editor's stale text now would overwrite that prompt; the pending rewrite
+      // places the caret from the store's cursor instead.
+      if (snapshotRef.current.value !== latestValueRef.current) return;
+      const boundedCursor = clampCollapsedComposerCursor(snapshotRef.current.value, nextCursor);
       editor.update(() => {
         $setSelectionAtComposerOffset(boundedCursor);
       });
+      if (boundedCursor === snapshotRef.current.cursor) return;
       snapshotRef.current = {
         value: snapshotRef.current.value,
         cursor: boundedCursor,
@@ -1780,6 +1791,12 @@ function ComposerPromptEditorInner({
         if (didComposerSelectionChangeVisibly(previousSelectionRange, nextSelectionRange)) {
           onVisibleSelectionChangeRef.current?.();
         }
+        return;
+      }
+      // A selection-only update while a newer prompt waits to be applied (an attachment
+      // chip was just inserted through the store) would report stale text and stale
+      // context ids, clobbering the prompt and dropping the record. Let the rewrite land.
+      if (previousSnapshot.value === nextValue && nextValue !== latestValueRef.current) {
         return;
       }
       snapshotRef.current = {
