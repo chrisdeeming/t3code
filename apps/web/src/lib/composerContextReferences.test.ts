@@ -8,6 +8,7 @@ import {
   insertInlineContextReference,
   removeInlineContextReference,
   stripInlineContextReferences,
+  toComposerContextId,
 } from "./composerContextReferences";
 
 const review = { kind: "review-comment", contextId: "rc-1", label: "a.ts L4" };
@@ -47,5 +48,16 @@ describe("composerContextReferences", () => {
     );
     expect(ensureInlineContextReferences("", [review])).toBe(`${reviewLink} `);
     expect(ensureInlineContextReferences(reviewLink, [review])).toBe(reviewLink);
+  });
+});
+
+describe("toComposerContextId", () => {
+  it("keeps ids that already fit the grammar and folds the rest deterministically", () => {
+    expect(toComposerContextId("file-comment-1700-1")).toBe("file-comment-1700-1");
+    const folded = toComposerContextId("pull-request-selection:src/a.ts:4-9");
+    expect(folded).toMatch(/^pull-request-selection-src-a-ts-4-9-[0-9a-f]{8}$/);
+    expect(toComposerContextId("pull-request-selection:src/a.ts:4-9")).toBe(folded);
+    expect(toComposerContextId("pull-request-selection:src/b.ts:4-9")).not.toBe(folded);
+    expect(toComposerContextId("::")).toMatch(/^ctx-[0-9a-f]{8}$/);
   });
 });

@@ -18,6 +18,32 @@ export interface ComposerContextReference {
   label: string;
 }
 
+const CONTEXT_ID_PATTERN = /^[a-z0-9_-]{1,128}$/i;
+
+function fnv1a32(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/**
+ * Producers mint ids in their own grammars (`pull-request-finding:42`,
+ * `file-comment-<ms>-<n>`). A context id must survive a Markdown link and the wire
+ * schema, so anything outside `[a-z0-9_-]` is folded into a readable slug plus a hash of
+ * the original. Deterministic, so the same producer id always maps to the same context id.
+ */
+export function toComposerContextId(producerId: string): ComposerContextId {
+  if (CONTEXT_ID_PATTERN.test(producerId)) return producerId as ComposerContextId;
+  const slug = producerId
+    .replace(/[^a-z0-9_-]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return `${slug || "ctx"}-${fnv1a32(producerId)}` as ComposerContextId;
+}
+
 export function formatInlineContextReference(reference: ComposerContextReference): string {
   return formatComposerContextReference({
     kind: reference.kind,

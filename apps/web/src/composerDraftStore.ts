@@ -54,7 +54,9 @@ import {
 } from "./lib/composerContextReferences";
 import {
   fileContextReference,
+  previewAnnotationContextId,
   previewAnnotationContextReference,
+  reviewCommentContextId,
   reviewCommentContextReference,
   terminalContextReference,
 } from "./lib/composerContextRecords";
@@ -3511,7 +3513,10 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             if (previewAnnotations.length === current.previewAnnotations.length) return state;
             const nextDraft = {
               ...current,
-              prompt: removeInlineContextReference(current.prompt, annotationId).prompt,
+              prompt: removeInlineContextReference(
+                current.prompt,
+                previewAnnotationContextId(annotationId),
+              ).prompt,
               previewAnnotations,
               images: current.images.filter((image) => image.id !== annotationId),
               persistedAttachments: current.persistedAttachments.filter(
@@ -3579,7 +3584,10 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             if (reviewComments.length === current.reviewComments.length) return state;
             const nextDraft = {
               ...current,
-              prompt: removeInlineContextReference(current.prompt, commentId).prompt,
+              prompt: removeInlineContextReference(
+                current.prompt,
+                reviewCommentContextId(commentId),
+              ).prompt,
               reviewComments,
             };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };

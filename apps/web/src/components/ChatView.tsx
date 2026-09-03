@@ -253,10 +253,14 @@ import {
   type TerminalContextDraft,
   type TerminalContextSelection,
 } from "../lib/terminalContext";
-import { removeInlineContextReference } from "../lib/composerContextReferences";
+import {
+  ensureInlineContextReferences,
+  removeInlineContextReference,
+} from "../lib/composerContextReferences";
 import {
   buildMessageContext,
   previewAnnotationContextLabel,
+  previewAnnotationContextReference,
   reviewCommentContextLabel,
 } from "../lib/composerContextRecords";
 import { type ReviewCommentContext } from "../reviewCommentContext";
@@ -6026,7 +6030,13 @@ function ChatViewContent(props: ChatViewProps) {
             },
           ]
         : sendContextPreviewAnnotations;
-    const promptForSend = promptRef.current;
+    // A direct "send annotation" writes the draft and sends in the same tick; the reference
+    // must be in the text now, not after the next render.
+    const promptForSend = directAnnotation
+      ? ensureInlineContextReferences(promptRef.current, [
+          previewAnnotationContextReference(directAnnotation.annotation),
+        ])
+      : promptRef.current;
     const {
       trimmedPrompt: trimmed,
       sendableTerminalContexts: sendableComposerTerminalContexts,

@@ -166,8 +166,10 @@ import {
   attachmentContextRecord,
   fileContextReference,
   imageContextReference,
+  previewAnnotationContextId,
   previewAnnotationContextRecord,
   previewAnnotationFromRecord,
+  reviewCommentContextId,
   reviewCommentContextRecord,
   reviewCommentFromRecord,
   terminalContextDraftFromRecord,
@@ -2481,12 +2483,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         );
       }
       for (const comment of composerReviewComments) {
-        if (!referenced.has(comment.id)) {
+        if (!referenced.has(reviewCommentContextId(comment.id))) {
           removeComposerDraftReviewComment(composerDraftTarget, comment.id);
         }
       }
       for (const annotation of composerPreviewAnnotations) {
-        if (!referenced.has(annotation.id)) {
+        if (!referenced.has(previewAnnotationContextId(annotation.id))) {
           releaseAttachmentUpload(annotation.id);
           removeComposerDraftPreviewAnnotation(composerDraftTarget, annotation.id);
         }
@@ -4146,10 +4148,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       const wanted = new Set(contextIds);
       const records: ComposerContextRecord[] = [
         ...composerTerminalContexts.filter((c) => wanted.has(c.id)).map(terminalContextRecord),
-        ...composerReviewComments.filter((c) => wanted.has(c.id)).map(reviewCommentContextRecord),
+        ...composerReviewComments
+          .filter((c) => wanted.has(reviewCommentContextId(c.id)))
+          .map(reviewCommentContextRecord),
         ...composerPreviewAnnotations
-          .filter((a) => wanted.has(a.id))
-          .map(previewAnnotationContextRecord),
+          .filter((a) => wanted.has(previewAnnotationContextId(a.id)))
+          .map((annotation) =>
+            previewAnnotationContextRecord(annotation, {
+              screenshotContextId: composerImages.some((image) => image.id === annotation.id)
+                ? annotation.id
+                : undefined,
+            }),
+          ),
         ...[...composerImages, ...composerFiles]
           .filter((attachment) => wanted.has(attachment.id))
           .map((attachment) => {

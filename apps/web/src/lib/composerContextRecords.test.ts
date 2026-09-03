@@ -46,9 +46,9 @@ const annotation: PreviewAnnotationPayload = {
 describe("composerContextRecords", () => {
   it("builds a preview annotation record with element details and readable style changes", () => {
     expect(previewAnnotationContextLabel(annotation)).toBe("Make this bigger");
-    expect(previewAnnotationContextRecord(annotation)).toEqual({
+    expect(previewAnnotationContextRecord(annotation, { screenshotContextId: "ann_1" })).toEqual({
       version: 1,
-      contextId: "ann_1",
+      contextId: "annotation-ann_1",
       kind: "preview-annotation",
       label: "Make this bigger",
       annotationId: "ann_1",
@@ -57,6 +57,7 @@ describe("composerContextRecords", () => {
       comment: "Make this   bigger",
       targetSummary: "1 selected element",
       styleChanges: ["font-size: (unset) → 20px"],
+      screenshotContextId: "ann_1",
       elements: [
         {
           pageUrl: "http://localhost:3000/checkout",
@@ -118,7 +119,10 @@ describe("composerContextRecords", () => {
       ],
       previewAnnotations: [annotation],
     });
-    expect(context?.records.map((record) => record.contextId)).toEqual(["rc-1", "ann_1"]);
+    expect(context?.records.map((record) => record.contextId)).toEqual([
+      "rc-1",
+      "annotation-ann_1",
+    ]);
     expect(
       buildMessageContext({ terminalContexts: [], reviewComments: [], previewAnnotations: [] }),
     ).toBeUndefined();
@@ -209,5 +213,28 @@ describe("attachment context records", () => {
       ],
     });
     expect(context?.records.map((record) => record.kind)).toEqual(["file"]);
+  });
+});
+
+describe("producer ids that do not fit the grammar", () => {
+  it("folds review comment ids and keeps the raw id in the draft shape", () => {
+    const record = reviewCommentContextRecord({
+      id: "pull-request-finding:42",
+      sectionId: "s",
+      sectionTitle: "t",
+      filePath: "a/b.ts",
+      startIndex: 0,
+      endIndex: 0,
+      rangeLabel: "L1",
+      text: "",
+      diff: "",
+    });
+    expect(record.contextId).toMatch(/^pull-request-finding-42-[0-9a-f]{8}$/);
+    expect(
+      resolveUserMessageContext({
+        text: `[b.ts L1](t3-context://v1/review-comment/${record.contextId})`,
+        context: { version: 1, records: [record] },
+      }).recordsById.has(record.contextId),
+    ).toBe(true);
   });
 });

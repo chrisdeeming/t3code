@@ -17,7 +17,9 @@ import {
 } from "~/lib/attachmentUploadState";
 import { cn } from "~/lib/utils";
 import {
+  previewAnnotationContextId,
   previewAnnotationContextLabel,
+  reviewCommentContextId,
   reviewCommentContextLabel,
 } from "~/lib/composerContextRecords";
 import type { TerminalContextDraft } from "~/lib/terminalContext";
@@ -77,10 +79,10 @@ export function composerContextRecordsFromDraft(input: {
     records.set(record.id, { kind: "terminal", record });
   }
   for (const record of input.reviewComments ?? []) {
-    records.set(record.id, { kind: "review-comment", record });
+    records.set(reviewCommentContextId(record.id), { kind: "review-comment", record });
   }
   for (const record of input.previewAnnotations ?? []) {
-    records.set(record.id, { kind: "preview-annotation", record });
+    records.set(previewAnnotationContextId(record.id), { kind: "preview-annotation", record });
   }
   return records;
 }

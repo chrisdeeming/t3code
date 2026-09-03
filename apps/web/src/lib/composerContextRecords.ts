@@ -15,7 +15,7 @@ import type {
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
 import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
 
-import type { ComposerContextReference } from "./composerContextReferences";
+import { type ComposerContextReference, toComposerContextId } from "./composerContextReferences";
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
 import { normalizeElementContextSelection } from "./elementContext";
 import {
@@ -54,12 +54,22 @@ export function terminalContextReference(context: TerminalContextDraft): Compose
   return { kind: "terminal", contextId: context.id, label: formatTerminalContextLabel(context) };
 }
 
+/** Review producers mint ids in their own grammars; the context id is a folded form of them. */
+export function reviewCommentContextId(commentId: string): ComposerContextId {
+  return toComposerContextId(commentId);
+}
+
+/** Distinct from the screenshot image, which reuses the annotation id as its attachment id. */
+export function previewAnnotationContextId(annotationId: string): ComposerContextId {
+  return toComposerContextId(`annotation-${annotationId}`);
+}
+
 export function reviewCommentContextReference(
   comment: ReviewCommentContext,
 ): ComposerContextReference {
   return {
     kind: "review-comment",
-    contextId: comment.id,
+    contextId: reviewCommentContextId(comment.id),
     label: reviewCommentContextLabel(comment),
   };
 }
@@ -69,7 +79,7 @@ export function previewAnnotationContextReference(
 ): ComposerContextReference {
   return {
     kind: "preview-annotation",
-    contextId: annotation.id,
+    contextId: previewAnnotationContextId(annotation.id),
     label: previewAnnotationContextLabel(annotation),
   };
 }
@@ -93,7 +103,7 @@ export function reviewCommentContextRecord(
 ): ReviewCommentContextRecord {
   return {
     version: 1,
-    contextId: comment.id as ComposerContextId,
+    contextId: reviewCommentContextId(comment.id),
     kind: "review-comment",
     label: sanitizeComposerContextLabel(reviewCommentContextLabel(comment), "review-comment"),
     sectionId: comment.sectionId,
@@ -120,6 +130,7 @@ function previewAnnotationTargetSummary(annotation: PreviewAnnotationPayload): s
 
 export function previewAnnotationContextRecord(
   annotation: PreviewAnnotationPayload,
+  options?: { screenshotContextId?: string | undefined },
 ): PreviewAnnotationContextRecord {
   const elements = annotation.elements.flatMap((target): ElementContextDetails[] => {
     const element = normalizeElementContextSelection(target.element);
@@ -127,7 +138,7 @@ export function previewAnnotationContextRecord(
   });
   return {
     version: 1,
-    contextId: annotation.id as ComposerContextId,
+    contextId: previewAnnotationContextId(annotation.id),
     kind: "preview-annotation",
     label: sanitizeComposerContextLabel(
       previewAnnotationContextLabel(annotation),
@@ -142,6 +153,9 @@ export function previewAnnotationContextRecord(
       (change) => `${change.property}: ${change.previousValue || "(unset)"} → ${change.value}`,
     ),
     ...(elements.length > 0 ? { elements } : {}),
+    ...(options?.screenshotContextId !== undefined
+      ? { screenshotContextId: options.screenshotContextId as ComposerContextId }
+      : {}),
   };
 }
 
@@ -181,10 +195,16 @@ export function buildMessageContext(input: {
   previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
 }): OrchestrationMessageContext | undefined {
+  // An annotation's screenshot travels as the image attachment that reuses its id.
+  const attachmentIds = new Set((input.attachments ?? []).map((bound) => bound.attachment.id));
   const records: ComposerContextRecord[] = [
     ...input.terminalContexts.map(terminalContextRecord),
     ...input.reviewComments.map(reviewCommentContextRecord),
-    ...input.previewAnnotations.map(previewAnnotationContextRecord),
+    ...input.previewAnnotations.map((annotation) =>
+      previewAnnotationContextRecord(annotation, {
+        screenshotContextId: attachmentIds.has(annotation.id) ? annotation.id : undefined,
+      }),
+    ),
     ...(input.attachments ?? []).map(attachmentContextRecord),
   ];
   return records.length === 0 ? undefined : { version: 1, records };
@@ -244,6 +264,7 @@ export function terminalContextDraftFromRecord(
 
 export function reviewCommentFromRecord(record: ReviewCommentContextRecord): ReviewCommentContext {
   return {
+    // The folded id is itself a valid producer id, so it folds to itself again.
     id: record.contextId,
     sectionId: record.sectionId,
     sectionTitle: record.sectionTitle,
@@ -262,7 +283,7 @@ export function previewAnnotationFromRecord(
   record: PreviewAnnotationContextRecord,
 ): PreviewAnnotationPayload {
   return {
-    id: record.contextId,
+    id: record.annotationId || record.contextId,
     pageUrl: record.pageUrl,
     pageTitle: record.pageTitle,
     comment: record.comment,
