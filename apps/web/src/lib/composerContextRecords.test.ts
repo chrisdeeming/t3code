@@ -4,9 +4,11 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   attachmentContextRecord,
   buildMessageContext,
+  isPullRequestSummaryContext,
   previewAnnotationContextLabel,
   previewAnnotationContextRecord,
   resolveUserMessageContext,
+  reviewCommentContextLabel,
   reviewCommentContextRecord,
   terminalContextRecord,
 } from "./composerContextRecords";
@@ -44,6 +46,51 @@ const annotation: PreviewAnnotationPayload = {
 };
 
 describe("composerContextRecords", () => {
+  it.each([
+    ["+181", "a.ts L181"],
+    ["+181 to +183", "a.ts L181 to L183"],
+    ["-63", "a.ts L63 (before)"],
+    ["L4", "a.ts L4"],
+  ])("presents review range %s consistently as %s", (rangeLabel, expected) => {
+    expect(
+      reviewCommentContextLabel({
+        id: "review-1",
+        sectionId: "file:src/a.ts",
+        sectionTitle: "File comment",
+        filePath: "src/a.ts",
+        startIndex: 0,
+        endIndex: 0,
+        rangeLabel,
+        text: "",
+        diff: "",
+      }),
+    ).toBe(expected);
+  });
+
+  it("distinguishes a PR summary from a comment on its diff", () => {
+    const summary = {
+      id: "review-1",
+      sectionId: "pull-request:42",
+      sectionTitle: "PR #42",
+      filePath: "PR #42",
+      startIndex: 0,
+      endIndex: 0,
+      rangeLabel: "Improve context chips",
+      text: "Pull request details",
+      diff: "",
+    };
+
+    expect(isPullRequestSummaryContext(summary)).toBe(true);
+    expect(
+      isPullRequestSummaryContext({
+        ...summary,
+        filePath: "src/a.ts",
+        rangeLabel: "+12",
+        diff: "+const answer = 42;",
+      }),
+    ).toBe(false);
+  });
+
   it("builds a preview annotation record with element details and readable style changes", () => {
     expect(previewAnnotationContextLabel(annotation)).toBe("Make this bigger");
     expect(previewAnnotationContextRecord(annotation, { screenshotContextId: "ann_1" })).toEqual({

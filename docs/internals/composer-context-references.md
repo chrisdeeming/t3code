@@ -133,9 +133,11 @@ removing a preview screenshot thumbnail removes its annotation and chip.
 
 The transcript resolves a message with `resolveUserMessageContext`: structured context is used as
 is, older messages are upgraded in memory. `ChatMarkdown` renders `t3-context://` links through
-`renderContextReference`, which the timeline maps to chips: terminal and element show a tooltip,
-review comments and preview annotations open a popover with the card, unknown kinds render the
-unresolved chip. Mobile renders context links as their labels.
+`renderContextReference`, which the timeline maps to chips through the web context-presentation
+registry. The registry declares compact, details, and expanded capabilities for every known kind,
+rejects duplicate surface handlers, and provides the unresolved fallback. Terminal excerpts,
+elements, review comments, and preview annotations open structured details popovers; images and
+videos use the shared media modal. Mobile renders context links as their labels.
 
 ## Attachments
 
@@ -152,8 +154,9 @@ keep the thumbnail shelf as their inventory; deleting a chip leaves the image, a
 thumbnail that is still referenced asks for confirmation before removing both. Old drafts do not
 gain image chips.
 
-In the transcript an image chip opens the gallery preview and a file chip opens or downloads the
-file. The gallery still shows every image; file rows remain only for files no chip references.
+In the transcript an image chip opens the gallery preview, a video chip opens the media preview,
+and another file chip opens or downloads the file. The gallery still shows every image; file rows
+remain only for files no chip references.
 
 ## Clipboard
 
