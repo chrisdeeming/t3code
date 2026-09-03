@@ -66,7 +66,7 @@ import {
   selectionTouchesMentionBoundary,
   splitPromptIntoComposerSegments,
 } from "~/composer-editor-mentions";
-import { type TerminalContextDraft } from "~/lib/terminalContext";
+import { collectInlineContextIds } from "~/lib/composerContextReferences";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { basenameOfPath } from "~/pierre-icons";
 import {
@@ -84,7 +84,7 @@ import {
 } from "./ComposerContextReferenceNode";
 import {
   ComposerContextRecordsContext,
-  composerContextRecordsFromDraft,
+  type ComposerDraftContextRecords,
 } from "./composerContextPresentation";
 import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/providerSkills";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -784,19 +784,19 @@ function $setComposerEditorPrompt(
   }
 }
 
-function collectTerminalContextIdOccurrences(node: LexicalNode): string[] {
+function collectContextIdOccurrences(node: LexicalNode): string[] {
   if (node instanceof ComposerContextReferenceNode) {
-    return node.__kind === "terminal" ? [node.__contextId] : [];
+    return [node.__contextId];
   }
   if ($isElementNode(node)) {
-    return node.getChildren().flatMap((child) => collectTerminalContextIdOccurrences(child));
+    return node.getChildren().flatMap((child) => collectContextIdOccurrences(child));
   }
   return [];
 }
 
 /** Payload ids referenced by the document, once each in first-occurrence order. */
-function collectTerminalContextIds(node: LexicalNode): string[] {
-  return Array.from(new Set(collectTerminalContextIdOccurrences(node)));
+function collectContextIds(node: LexicalNode): string[] {
+  return Array.from(new Set(collectContextIdOccurrences(node)));
 }
 
 export interface ComposerPromptEditorHandle {
@@ -808,14 +808,15 @@ export interface ComposerPromptEditorHandle {
     value: string;
     cursor: number;
     expandedCursor: number;
-    terminalContextIds: string[];
+    contextIds: string[];
   };
 }
 
 interface ComposerPromptEditorProps {
   value: string;
   cursor: number;
-  terminalContexts: ReadonlyArray<TerminalContextDraft>;
+  /** Draft records behind the prompt's context references, keyed by context id. */
+  contextRecords: ComposerDraftContextRecords;
   skills: ReadonlyArray<ServerProviderSkill>;
   disabled: boolean;
   placeholder: string;
@@ -827,7 +828,7 @@ interface ComposerPromptEditorProps {
     nextCursor: number,
     expandedCursor: number,
     cursorAdjacentToMention: boolean,
-    terminalContextIds: string[],
+    contextIds: string[],
   ) => void;
   onVisibleSelectionChange?: () => void;
   onCommandKeyDown?: (
@@ -1456,7 +1457,7 @@ function ComposerSurroundSelectionPlugin(props: { skills: ReadonlyArray<ServerPr
 function ComposerPromptEditorInner({
   value,
   cursor,
-  terminalContexts,
+  contextRecords,
   skills,
   disabled,
   placeholder,
@@ -1484,7 +1485,7 @@ function ComposerPromptEditorInner({
     value,
     cursor: initialCursor,
     expandedCursor: initialExpandedCursor,
-    terminalContextIds: terminalContexts.map((context) => context.id),
+    contextIds: collectInlineContextIds(value),
   });
   const selectionRangeRef = useRef({ start: initialExpandedCursor, end: initialExpandedCursor });
   const isApplyingControlledUpdateRef = useRef(false);
@@ -1501,10 +1502,6 @@ function ComposerPromptEditorInner({
       },
     }),
     [openCitationComment],
-  );
-  const contextRecords = useMemo(
-    () => composerContextRecordsFromDraft({ terminalContexts }),
-    [terminalContexts],
   );
 
   useEffect(() => {
@@ -1556,7 +1553,7 @@ function ComposerPromptEditorInner({
       value,
       cursor: normalizedCursor,
       expandedCursor: normalizedExpandedCursor,
-      terminalContextIds: terminalContexts.map((context) => context.id),
+      contextIds: collectInlineContextIds(value),
     };
     selectionRangeRef.current = {
       start: normalizedExpandedCursor,
@@ -1594,7 +1591,7 @@ function ComposerPromptEditorInner({
     queueMicrotask(() => {
       isApplyingControlledUpdateRef.current = false;
     });
-  }, [cursor, editor, skillsSignature, terminalContexts, value]);
+  }, [cursor, editor, skillsSignature, value]);
 
   const focusAt = useCallback(
     (nextCursor: number) => {
@@ -1609,7 +1606,7 @@ function ComposerPromptEditorInner({
         value: snapshotRef.current.value,
         cursor: boundedCursor,
         expandedCursor: expandCollapsedComposerCursor(snapshotRef.current.value, boundedCursor),
-        terminalContextIds: snapshotRef.current.terminalContextIds,
+        contextIds: snapshotRef.current.contextIds,
       };
       selectionRangeRef.current = {
         start: snapshotRef.current.expandedCursor,
@@ -1620,7 +1617,7 @@ function ComposerPromptEditorInner({
         boundedCursor,
         snapshotRef.current.expandedCursor,
         false,
-        snapshotRef.current.terminalContextIds,
+        snapshotRef.current.contextIds,
       );
     },
     [editor],
@@ -1630,7 +1627,7 @@ function ComposerPromptEditorInner({
     value: string;
     cursor: number;
     expandedCursor: number;
-    terminalContextIds: string[];
+    contextIds: string[];
   } => {
     let snapshot = snapshotRef.current;
     editor.getEditorState().read(() => {
@@ -1649,12 +1646,12 @@ function ComposerPromptEditorInner({
         $readExpandedSelectionOffsetFromEditorState(fallbackExpandedCursor),
       );
       const selectionRange = getSelectionRangeForExpandedComposerOffsets($getSelection());
-      const terminalContextIds = collectTerminalContextIds($getRoot());
+      const contextIds = collectContextIds($getRoot());
       snapshot = {
         value: nextValue,
         cursor: nextCursor,
         expandedCursor: nextExpandedCursor,
-        terminalContextIds,
+        contextIds,
       };
       selectionRangeRef.current = selectionRange ?? {
         start: nextExpandedCursor,
@@ -1714,14 +1711,14 @@ function ComposerPromptEditorInner({
         start: nextExpandedCursor,
         end: nextExpandedCursor,
       };
-      const terminalContextIds = collectTerminalContextIds($getRoot());
+      const contextIds = collectContextIds($getRoot());
       const previousSnapshot = snapshotRef.current;
       const snapshotChanged = !(
         previousSnapshot.value === nextValue &&
         previousSnapshot.cursor === nextCursor &&
         previousSnapshot.expandedCursor === nextExpandedCursor &&
-        previousSnapshot.terminalContextIds.length === terminalContextIds.length &&
-        previousSnapshot.terminalContextIds.every((id, index) => id === terminalContextIds[index])
+        previousSnapshot.contextIds.length === contextIds.length &&
+        previousSnapshot.contextIds.every((id, index) => id === contextIds[index])
       );
       if (isApplyingControlledUpdateRef.current) {
         return;
@@ -1736,7 +1733,7 @@ function ComposerPromptEditorInner({
         value: nextValue,
         cursor: nextCursor,
         expandedCursor: nextExpandedCursor,
-        terminalContextIds,
+        contextIds,
       };
       const cursorAdjacentToMention =
         isCollapsedCursorAdjacentToInlineToken(nextValue, nextCursor, "left") ||
@@ -1746,7 +1743,7 @@ function ComposerPromptEditorInner({
         nextCursor,
         nextExpandedCursor,
         cursorAdjacentToMention,
-        terminalContextIds,
+        contextIds,
       );
     });
   }, []);
@@ -1815,7 +1812,7 @@ function ComposerPromptEditorInner({
               />
             }
             placeholder={
-              terminalContexts.length > 0 ? null : (
+              contextRecords.size > 0 ? null : (
                 <div
                   className={cn(
                     "pointer-events-none absolute inset-0 leading-relaxed text-placeholder",
@@ -1847,7 +1844,7 @@ function ComposerPromptEditorInner({
 export function ComposerPromptEditor({
   value,
   cursor,
-  terminalContexts,
+  contextRecords,
   skills,
   disabled,
   placeholder,
@@ -1890,7 +1887,7 @@ export function ComposerPromptEditor({
       <ComposerPromptEditorInner
         value={value}
         cursor={cursor}
-        terminalContexts={terminalContexts}
+        contextRecords={contextRecords}
         skills={skills}
         disabled={disabled}
         placeholder={placeholder}
