@@ -108,3 +108,22 @@ the referenced ids against the draft array and drops records no chip points at.
 Send time is unchanged for terminal context: the link is replaced by the readable
 `@terminal-1:509-514` label and the full excerpt trails in `<terminal_context>`. Unifying this
 with the provider projection above is the next step.
+
+## Sending and reading messages
+
+The composer sends `message.text` as canonical prose with reference links and
+`message.context.records` built from the draft (`buildMessageContext` in
+`apps/web/src/lib/composerContextRecords.ts`). Expired terminal excerpts are dropped from both.
+The server projects provider text at turn start (`ProviderCommandReactor`), so the persisted
+message stays readable and the provider receives markers plus one envelope.
+
+Review comments and preview annotations enter the draft through store mutators that append a
+reference at the end of the prompt, because the diff and preview panels do not know the caret.
+Terminal excerpts insert at the caret through the composer handle. Removing a chip in the editor
+removes the record; removing a preview screenshot thumbnail removes its annotation and chip.
+
+The transcript resolves a message with `resolveUserMessageContext`: structured context is used as
+is, older messages are upgraded in memory. `ChatMarkdown` renders `t3-context://` links through
+`renderContextReference`, which the timeline maps to chips: terminal and element show a tooltip,
+review comments and preview annotations open a popover with the card, unknown kinds render the
+unresolved chip. Mobile renders context links as their labels.
