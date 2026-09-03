@@ -64,6 +64,24 @@ describe("upgradeLegacyContextMessage", () => {
     );
   });
 
+  it("binds materialized inline terminal labels from sent messages in place", () => {
+    const text = [
+      "Look at @terminal-1:509-510 and again @build:7 please",
+      "",
+      "<terminal_context>",
+      "- Terminal 1 lines 509-510:",
+      "  509 | error: boom",
+      "  510 |   at main.ts:1",
+      "",
+      "- Build line 7:",
+      "  7 | done",
+      "</terminal_context>",
+    ].join("\n");
+    expect(upgradeLegacyContextMessage(text).text).toBe(
+      "Look at [Terminal 1 lines 509-510](t3-context://v1/terminal/legacy_terminal_1) and again [Build line 7](t3-context://v1/terminal/legacy_terminal_2) please",
+    );
+  });
+
   it("upgrades a trailing element block into element records", () => {
     const text = [
       "fix this",

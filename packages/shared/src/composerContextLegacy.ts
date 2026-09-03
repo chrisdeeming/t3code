@@ -63,6 +63,16 @@ function parseEntries(block: string): ParsedEntry[] {
   return entries;
 }
 
+/** The inline label the old send path wrote for a terminal excerpt: `@terminal-1:509-514`. */
+function inlineTerminalLabel(record: TerminalContextRecord): string {
+  const slug = record.terminalLabel.trim().toLowerCase().replace(/\s+/g, "-");
+  const range =
+    record.lineStart === record.lineEnd
+      ? `${record.lineStart}`
+      : `${record.lineStart}-${record.lineEnd}`;
+  return `@${slug}:${range}`;
+}
+
 function legacyId(kind: string, index: number): ComposerContextId {
   return `legacy_${kind}_${index}` as ComposerContextId;
 }
@@ -297,10 +307,21 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
     placeholderIndex += 1;
     return record ? formatComposerContextReference(record) : "";
   });
+  // Sent messages carry the materialized `@terminal-1:509-514` label instead of the
+  // placeholder; each such label becomes the chip in place.
+  const placedTerminals = new Set(terminals.slice(0, placeholderIndex));
+  for (const record of terminals) {
+    if (placedTerminals.has(record)) continue;
+    const label = inlineTerminalLabel(record);
+    const at = body.indexOf(label);
+    if (at === -1) continue;
+    body = `${body.slice(0, at)}${formatComposerContextReference(record)}${body.slice(at + label.length)}`;
+    placedTerminals.add(record);
+  }
   body = body.replace(/[ \t]+$/gm, "").trimEnd();
 
   const appended = [
-    ...terminals.slice(placeholderIndex),
+    ...terminals.filter((record) => !placedTerminals.has(record)),
     ...elements,
     ...previews,
     ...appendedReviews,
