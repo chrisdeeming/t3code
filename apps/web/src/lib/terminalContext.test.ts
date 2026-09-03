@@ -5,20 +5,22 @@ import {
   appendTerminalContextsToPrompt,
   buildTerminalContextPreviewTitle,
   buildTerminalContextBlock,
-  countInlineTerminalContextPlaceholders,
+  collectInlineTerminalContextIds,
   deriveDisplayedUserMessageState,
-  ensureInlineTerminalContextPlaceholders,
+  ensureInlineTerminalContextReferences,
   extractTrailingTerminalContexts,
   filterTerminalContextsWithText,
   formatInlineTerminalContextLabel,
   formatTerminalContextLabel,
+  formatTerminalContextReference,
   hasTerminalContextText,
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
-  insertInlineTerminalContextPlaceholder,
+  insertInlineTerminalContextReference,
   isTerminalContextExpired,
   materializeInlineTerminalContextPrompt,
-  removeInlineTerminalContextPlaceholder,
-  stripInlineTerminalContextPlaceholders,
+  migrateLegacyTerminalContextPlaceholders,
+  removeInlineTerminalContextReference,
+  stripInlineContextReferences,
   type TerminalContextDraft,
 } from "./terminalContext";
 
@@ -75,10 +77,10 @@ describe("terminalContext", () => {
     );
   });
 
-  it("replaces inline placeholders with inline terminal labels before appending context blocks", () => {
+  it("replaces inline references with inline terminal labels before appending context blocks", () => {
     expect(
       appendTerminalContextsToPrompt(
-        `Investigate ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} carefully`,
+        `Investigate ${formatTerminalContextReference(makeContext())} carefully`,
         [makeContext()],
       ),
     ).toBe(
@@ -149,40 +151,70 @@ describe("terminalContext", () => {
     ).toBeNull();
   });
 
-  it("tracks inline terminal context placeholders in prompt text", () => {
-    const placeholder = INLINE_TERMINAL_CONTEXT_PLACEHOLDER;
-    expect(countInlineTerminalContextPlaceholders(`a${placeholder}b${placeholder}`)).toBe(2);
-    expect(ensureInlineTerminalContextPlaceholders("Investigate this", 2)).toBe(
-      `${placeholder}${placeholder}Investigate this`,
+  it("formats a terminal context as a canonical reference link", () => {
+    expect(formatTerminalContextReference(makeContext())).toBe(
+      "[Terminal 1 lines 12-13](t3-context://v1/terminal/context-1)",
     );
-    expect(insertInlineTerminalContextPlaceholder("abc", 1)).toEqual({
-      prompt: `a ${placeholder} bc`,
-      cursor: 4,
-      contextIndex: 0,
-    });
-    expect(removeInlineTerminalContextPlaceholder(`a${placeholder}b${placeholder}c`, 1)).toEqual({
-      prompt: `a${placeholder}bc`,
-      cursor: 3,
-    });
-    expect(stripInlineTerminalContextPlaceholders(`a${placeholder}b`)).toBe("ab");
   });
 
-  it("inserts a placeholder after a file mention when given the expanded prompt cursor", () => {
-    const placeholder = INLINE_TERMINAL_CONTEXT_PLACEHOLDER;
-    expect(insertInlineTerminalContextPlaceholder("Inspect @package.json ", 22)).toEqual({
-      prompt: `Inspect @package.json ${placeholder} `,
-      cursor: 24,
-      contextIndex: 0,
+  it("inserts a reference at the cursor with spacing and lands the cursor after it", () => {
+    const link = formatTerminalContextReference(makeContext());
+    expect(insertInlineTerminalContextReference("abc", 1, makeContext())).toEqual({
+      prompt: `a ${link} bc`,
+      cursor: 2 + link.length + 1,
+    });
+    expect(
+      insertInlineTerminalContextReference("Inspect @package.json ", 22, makeContext()),
+    ).toEqual({ prompt: `Inspect @package.json ${link} `, cursor: 22 + link.length + 1 });
+    // Consumes an existing trailing space at the insertion point.
+    expect(insertInlineTerminalContextReference("yo whats", 3, makeContext())).toEqual({
+      prompt: `yo ${link} whats`,
+      cursor: 3 + link.length + 1,
     });
   });
 
-  it("adds a trailing space and consumes an existing trailing space at the insertion point", () => {
-    const placeholder = INLINE_TERMINAL_CONTEXT_PLACEHOLDER;
-    expect(insertInlineTerminalContextPlaceholder("yo whats", 3)).toEqual({
-      prompt: `yo ${placeholder} whats`,
+  it("removes a reference by id together with one adjacent space", () => {
+    const first = formatTerminalContextReference(makeContext());
+    const second = formatTerminalContextReference(makeContext({ id: "context-2" }));
+    expect(removeInlineTerminalContextReference(`a ${first} ${second} c`, "context-2")).toEqual({
+      prompt: `a ${first} c`,
+      cursor: 2 + first.length + 1,
+    });
+    expect(removeInlineTerminalContextReference("plain", "context-9")).toEqual({
+      prompt: "plain",
       cursor: 5,
-      contextIndex: 0,
     });
+  });
+
+  it("collects referenced ids and strips references for content checks", () => {
+    const first = formatTerminalContextReference(makeContext());
+    const second = formatTerminalContextReference(makeContext({ id: "context-2" }));
+    const prompt = `see ${first} and ${second} and [img](t3-context://v1/image/ctx_9)`;
+    expect(collectInlineTerminalContextIds(prompt)).toEqual(["context-1", "context-2"]);
+    expect(stripInlineContextReferences(prompt)).toBe("see  and  and ");
+  });
+
+  it("prepends references for contexts the prompt does not mention yet", () => {
+    const first = formatTerminalContextReference(makeContext());
+    const second = formatTerminalContextReference(makeContext({ id: "context-2" }));
+    const contexts = [makeContext(), makeContext({ id: "context-2" })];
+    expect(ensureInlineTerminalContextReferences(`x ${second}`, contexts)).toBe(
+      `${first} x ${second}`,
+    );
+    expect(ensureInlineTerminalContextReferences(`${first} ${second}`, contexts)).toBe(
+      `${first} ${second}`,
+    );
+    expect(ensureInlineTerminalContextReferences("", contexts)).toBe(`${first} ${second} `);
+  });
+
+  it("migrates legacy placeholders to references in order and drops extras", () => {
+    const placeholder = INLINE_TERMINAL_CONTEXT_PLACEHOLDER;
+    const first = formatTerminalContextReference(makeContext());
+    const contexts = [makeContext()];
+    expect(
+      migrateLegacyTerminalContextPlaceholders(`a ${placeholder} b ${placeholder}`, contexts),
+    ).toBe(`a ${first} b `);
+    expect(migrateLegacyTerminalContextPlaceholders("plain", contexts)).toBe("plain");
   });
 
   it("marks contexts without snapshot text as expired and filters them from sendable contexts", () => {
@@ -199,13 +231,14 @@ describe("terminalContext", () => {
     expect(filterTerminalContextsWithText([expiredContext, liveContext])).toEqual([liveContext]);
   });
 
-  it("formats and materializes inline terminal labels from placeholder positions", () => {
+  it("formats and materializes inline terminal labels from references by id", () => {
     expect(formatInlineTerminalContextLabel(makeContext())).toBe("@terminal-1:12-13");
+    const known = formatTerminalContextReference(makeContext());
+    const unknown = formatTerminalContextReference(makeContext({ id: "gone" }));
     expect(
-      materializeInlineTerminalContextPrompt(
-        `Investigate ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} carefully`,
-        [makeContext()],
-      ),
-    ).toBe("Investigate @terminal-1:12-13 carefully");
+      materializeInlineTerminalContextPrompt(`Investigate ${known} carefully ${unknown}!`, [
+        makeContext(),
+      ]),
+    ).toBe("Investigate @terminal-1:12-13 carefully !");
   });
 });
