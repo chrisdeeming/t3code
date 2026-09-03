@@ -162,11 +162,25 @@ import {
   insertInlineContextReference,
 } from "~/lib/composerContextReferences";
 import {
+  asKnownContextRecord,
+  attachmentContextRecord,
   fileContextReference,
   imageContextReference,
+  previewAnnotationContextRecord,
+  previewAnnotationFromRecord,
+  reviewCommentContextRecord,
+  reviewCommentFromRecord,
+  terminalContextDraftFromRecord,
   terminalContextReference,
+  terminalContextRecord,
 } from "~/lib/composerContextRecords";
 import { requestConfirmDialog } from "~/confirmDialog";
+import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
+import type { ComposerContextClipboardFragment, ComposerContextRecord } from "@t3tools/contracts";
+import { resolveAssetUrl } from "~/assets/assetUrls";
+import { assetEnvironment } from "~/state/assets";
+import { usePreparedConnection } from "~/state/session";
+import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
@@ -4117,6 +4131,155 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
   };
 
+  const addComposerDraftTerminalContexts = useComposerDraftStore(
+    (store) => store.addTerminalContexts,
+  );
+  const addComposerDraftReviewComment = useComposerDraftStore((store) => store.addReviewComment);
+  const addComposerDraftPreviewAnnotation = useComposerDraftStore(
+    (store) => store.addPreviewAnnotation,
+  );
+  const buildContextClipboardFragment = useCallback(
+    (contextIds: ReadonlyArray<string>): string | null => {
+      const wanted = new Set(contextIds);
+      const records: ComposerContextRecord[] = [
+        ...composerTerminalContexts.filter((c) => wanted.has(c.id)).map(terminalContextRecord),
+        ...composerReviewComments.filter((c) => wanted.has(c.id)).map(reviewCommentContextRecord),
+        ...composerPreviewAnnotations
+          .filter((a) => wanted.has(a.id))
+          .map(previewAnnotationContextRecord),
+        ...[...composerImages, ...composerFiles]
+          .filter((attachment) => wanted.has(attachment.id))
+          .map((attachment) => {
+            // A hydrated file already lives on the server under its upload id.
+            const upload = uploadsByImageId[attachment.id];
+            const uploadId =
+              attachment.type === "file" && attachment.uploadedAttachmentId !== undefined
+                ? attachment.uploadedAttachmentId
+                : upload?.status === "ready"
+                  ? upload.attachmentId
+                  : undefined;
+            return attachmentContextRecord({ attachment, attachmentId: uploadId ?? attachment.id });
+          }),
+      ];
+      if (records.length === 0) return null;
+      return encodeComposerContextFragment({
+        version: 1,
+        source: { environmentId, ...(activeThread ? { threadId: activeThread.id } : {}) },
+        records,
+      });
+    },
+    [
+      activeThread,
+      composerFiles,
+      composerImages,
+      composerPreviewAnnotations,
+      composerReviewComments,
+      composerTerminalContexts,
+      environmentId,
+      uploadsByImageId,
+    ],
+  );
+  const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, { reportFailure: false });
+  const preparedConnection = usePreparedConnection(environmentId);
+  const httpBaseUrl =
+    preparedConnection._tag === "Some" ? preparedConnection.value.httpBaseUrl : null;
+  /**
+   * Bytes for a pasted image or file come back through the environment's asset URL and
+   * re-enter the draft as a normal attachment under a fresh id; the pasted chip is rewritten
+   * to that id and reads as unresolved until the bytes land.
+   */
+  const importAttachmentRecord = useCallback(
+    async (record: Extract<ComposerContextRecord, { kind: "image" | "file" }>, localId: string) => {
+      if (!httpBaseUrl) return;
+      const result = await createAssetUrl({
+        environmentId,
+        input: { resource: { _tag: "attachment", attachmentId: record.attachmentId } },
+      });
+      if (result._tag !== "Success") return;
+      const url = resolveAssetUrl(httpBaseUrl, result.value.relativeUrl);
+      if (!url) return;
+      const response = await fetch(url);
+      if (!response.ok) return;
+      const blob = await response.blob();
+      const file = new File([blob], record.name, { type: record.mimeType || blob.type });
+      if (record.kind === "image") {
+        addComposerImage({
+          type: "image",
+          id: localId,
+          name: record.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+          previewUrl: URL.createObjectURL(file),
+          file,
+        });
+      } else {
+        addComposerFilesToDraft([
+          {
+            type: "file",
+            id: localId,
+            name: record.name,
+            mimeType: file.type,
+            sizeBytes: file.size,
+            file,
+          },
+        ]);
+      }
+    },
+    [addComposerFilesToDraft, addComposerImage, createAssetUrl, environmentId, httpBaseUrl],
+  );
+  const importContextFragment = useCallback(
+    (fragment: ComposerContextClipboardFragment): ReadonlyMap<string, string> => {
+      const rewritten = new Map<string, string>();
+      if (!activeThread) return rewritten;
+      for (const candidate of fragment.records) {
+        if (composerContextRecords.has(candidate.contextId)) continue;
+        const record = asKnownContextRecord(candidate);
+        if (!record) continue;
+        switch (record.kind) {
+          case "terminal":
+            addComposerDraftTerminalContexts(
+              composerDraftTarget,
+              [terminalContextDraftFromRecord(record, activeThread.id)],
+              { appendReference: false },
+            );
+            break;
+          case "review-comment":
+            addComposerDraftReviewComment(composerDraftTarget, reviewCommentFromRecord(record), {
+              appendReference: false,
+            });
+            break;
+          case "preview-annotation":
+            addComposerDraftPreviewAnnotation(
+              composerDraftTarget,
+              previewAnnotationFromRecord(record),
+              { appendReference: false },
+            );
+            break;
+          case "image":
+          case "file": {
+            if (fragment.source.environmentId !== environmentId) break;
+            const localId = randomUUID();
+            rewritten.set(record.contextId, localId);
+            void importAttachmentRecord(record, localId);
+            break;
+          }
+          default:
+            break;
+        }
+      }
+      return rewritten;
+    },
+    [
+      activeThread,
+      addComposerDraftPreviewAnnotation,
+      addComposerDraftReviewComment,
+      addComposerDraftTerminalContexts,
+      composerContextRecords,
+      composerDraftTarget,
+      environmentId,
+      importAttachmentRecord,
+    ],
+  );
   /**
    * Chips for freshly attached files land at the caret; when the editor cannot take
    * input (approval, pending questions) they are appended so the file is never invisible.
@@ -5126,6 +5289,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     cursor={composerCursor}
                     contextRecords={composerContextRecords}
+                    buildContextClipboardFragment={buildContextClipboardFragment}
+                    importContextFragment={importContextFragment}
                     skills={selectedProviderSkills}
                     containerClassName={cn(isComposerResting && "min-w-0 flex-1")}
                     className={cn(

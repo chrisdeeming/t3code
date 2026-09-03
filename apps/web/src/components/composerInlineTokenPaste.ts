@@ -1,4 +1,9 @@
-import type { AssistantCitation } from "@t3tools/contracts";
+import type { AssistantCitation, ComposerContextClipboardFragment } from "@t3tools/contracts";
+import {
+  COMPOSER_CONTEXT_CLIPBOARD_MIME,
+  decodeComposerContextFragment,
+} from "@t3tools/shared/composerContextClipboard";
+import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import {
   $createLineBreakNode,
   $createTextNode,
@@ -22,6 +27,13 @@ interface ComposerInlineTokenPasteOptions {
     label: string;
   }) => LexicalNode;
   getExpandedAbsoluteOffsetForPoint: (node: LexicalNode, pointOffset: number) => number;
+  /**
+   * Imports the records behind a structured paste into the draft. Returns the ids that had
+   * to change (a re-attached binary gets a fresh local id) so the pasted links follow.
+   */
+  importContextFragment?: (
+    fragment: ComposerContextClipboardFragment,
+  ) => ReadonlyMap<string, string>;
 }
 
 export function registerComposerInlineTokenPaste(
@@ -37,10 +49,25 @@ export function registerComposerInlineTokenPaste(
       if (event.clipboardData.files.length > 0) {
         return false;
       }
-      const text = event.clipboardData.getData("text/plain");
-      if (text.length === 0) {
+      const pastedText = event.clipboardData.getData("text/plain");
+      if (pastedText.length === 0) {
         return false;
       }
+      const fragment = options.importContextFragment
+        ? decodeComposerContextFragment(
+            event.clipboardData.getData(COMPOSER_CONTEXT_CLIPBOARD_MIME),
+          )
+        : null;
+      const rewrittenIds = fragment ? options.importContextFragment!(fragment) : null;
+      const text =
+        rewrittenIds && rewrittenIds.size > 0
+          ? replaceComposerContextReferences(pastedText, (occurrence) => {
+              const nextId = rewrittenIds.get(occurrence.contextId);
+              return nextId
+                ? occurrence.source.replace(`/${occurrence.contextId})`, `/${nextId})`)
+                : occurrence.source;
+            })
+          : pastedText;
       // Token grammar requires trailing whitespace; a virtual newline lets a
       // mention at the very end of the pasted text still parse.
       const tokens = collectComposerPromptInlineTokens(`${text}\n`).filter(
