@@ -140,7 +140,6 @@ import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
 } from "../../lib/terminalContext";
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
-import { type ElementContextDraft } from "../../lib/elementContext";
 import {
   COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX,
   COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX,

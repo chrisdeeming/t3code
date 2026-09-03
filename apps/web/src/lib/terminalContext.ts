@@ -1,10 +1,5 @@
 import type { ComposerContextId, ThreadId } from "@t3tools/contracts";
-import {
-  formatComposerContextReference,
-  replaceComposerContextReferences,
-} from "@t3tools/shared/composerContextReferences";
-
-import { extractTrailingElementContexts, type ParsedElementContextEntry } from "./elementContext";
+import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 
 export interface TerminalContextSelection {
   terminalId: string;
@@ -18,32 +13,6 @@ export interface TerminalContextDraft extends TerminalContextSelection {
   id: string;
   threadId: ThreadId;
   createdAt: string;
-}
-
-export interface ExtractedTerminalContexts {
-  promptText: string;
-  contextCount: number;
-  previewTitle: string | null;
-  contexts: ParsedTerminalContextEntry[];
-}
-
-export interface DisplayedUserMessageState {
-  visibleText: string;
-  copyText: string;
-  contextCount: number;
-  previewTitle: string | null;
-  contexts: ParsedTerminalContextEntry[];
-  /**
-   * Element-context entries extracted from the trailing `<element_context>`
-   * block (if any). Stripped from `visibleText` so the raw block doesn't
-   * leak into the user's bubble.
-   */
-  elementContexts: ParsedElementContextEntry[];
-}
-
-export interface ParsedTerminalContextEntry {
-  header: string;
-  body: string;
 }
 
 /** Legacy ordinal placeholder from drafts saved before context references. Migration only. */
@@ -65,9 +34,6 @@ export function formatTerminalContextReference(context: TerminalContextReference
   });
 }
 
-const TRAILING_TERMINAL_CONTEXT_BLOCK_PATTERN =
-  /\n*<terminal_context>\n([\s\S]*?)\n<\/terminal_context>\s*$/;
-
 export function normalizeTerminalContextText(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/^\n+|\n+$/g, "");
 }
@@ -84,20 +50,6 @@ export function filterTerminalContextsWithText<T extends { text: string }>(
   contexts: ReadonlyArray<T>,
 ): T[] {
   return contexts.filter((context) => hasTerminalContextText(context));
-}
-
-function previewTerminalContextText(text: string): string {
-  const normalized = normalizeTerminalContextText(text);
-  if (normalized.length === 0) {
-    return "";
-  }
-  const lines = normalized.split("\n");
-  const visibleLines = lines.slice(0, 3);
-  if (lines.length > 3) {
-    visibleLines.push("...");
-  }
-  const preview = visibleLines.join("\n");
-  return preview.length > 180 ? `${preview.slice(0, 177)}...` : preview;
 }
 
 export function normalizeTerminalContextSelection(
@@ -135,177 +87,6 @@ export function formatTerminalContextLabel(selection: {
   lineEnd: number;
 }): string {
   return `${selection.terminalLabel} ${formatTerminalContextRange(selection)}`;
-}
-
-export function formatInlineTerminalContextLabel(selection: {
-  terminalLabel: string;
-  lineStart: number;
-  lineEnd: number;
-}): string {
-  const terminalLabel = selection.terminalLabel.trim().toLowerCase().replace(/\s+/g, "-");
-  const range =
-    selection.lineStart === selection.lineEnd
-      ? `${selection.lineStart}`
-      : `${selection.lineStart}-${selection.lineEnd}`;
-  return `@${terminalLabel}:${range}`;
-}
-
-export function buildTerminalContextPreviewTitle(
-  contexts: ReadonlyArray<TerminalContextSelection>,
-): string | null {
-  if (contexts.length === 0) {
-    return null;
-  }
-  const previewParts: string[] = [];
-  for (const context of contexts) {
-    const normalized = normalizeTerminalContextSelection(context);
-    if (!normalized) continue;
-    const preview = previewTerminalContextText(normalized.text);
-    previewParts.push(
-      preview.length > 0
-        ? `${formatTerminalContextLabel(normalized)}\n${preview}`
-        : formatTerminalContextLabel(normalized),
-    );
-  }
-  const previews = previewParts.join("\n\n");
-  return previews.length > 0 ? previews : null;
-}
-
-function buildTerminalContextBodyLines(selection: TerminalContextSelection): string[] {
-  return normalizeTerminalContextText(selection.text)
-    .split("\n")
-    .map((line, index) => `  ${selection.lineStart + index} | ${line}`);
-}
-
-export function buildTerminalContextBlock(
-  contexts: ReadonlyArray<TerminalContextSelection>,
-): string {
-  const normalizedContexts: TerminalContextSelection[] = [];
-  for (const context of contexts) {
-    const normalized = normalizeTerminalContextSelection(context);
-    if (normalized !== null) {
-      normalizedContexts.push(normalized);
-    }
-  }
-  if (normalizedContexts.length === 0) {
-    return "";
-  }
-  const lines: string[] = [];
-  for (let index = 0; index < normalizedContexts.length; index += 1) {
-    const context = normalizedContexts[index]!;
-    lines.push(`- ${formatTerminalContextLabel(context)}:`);
-    lines.push(...buildTerminalContextBodyLines(context));
-    if (index < normalizedContexts.length - 1) {
-      lines.push("");
-    }
-  }
-  return ["<terminal_context>", ...lines, "</terminal_context>"].join("\n");
-}
-
-export function materializeInlineTerminalContextPrompt(
-  prompt: string,
-  contexts: ReadonlyArray<TerminalContextReferenceSource>,
-): string {
-  const contextsById = new Map(contexts.map((context) => [context.id, context]));
-  return replaceComposerContextReferences(prompt, (occurrence) => {
-    if (occurrence.kind !== "terminal") return occurrence.source;
-    const context = contextsById.get(occurrence.contextId);
-    return context ? formatInlineTerminalContextLabel(context) : "";
-  });
-}
-
-export function appendTerminalContextsToPrompt(
-  prompt: string,
-  contexts: ReadonlyArray<TerminalContextSelection & { id: string }>,
-): string {
-  const trimmedPrompt = materializeInlineTerminalContextPrompt(prompt, contexts).trim();
-  const contextBlock = buildTerminalContextBlock(contexts);
-  if (contextBlock.length === 0) {
-    return trimmedPrompt;
-  }
-  return trimmedPrompt.length > 0 ? `${trimmedPrompt}\n\n${contextBlock}` : contextBlock;
-}
-
-export function extractTrailingTerminalContexts(prompt: string): ExtractedTerminalContexts {
-  const match = TRAILING_TERMINAL_CONTEXT_BLOCK_PATTERN.exec(prompt);
-  if (!match) {
-    return {
-      promptText: prompt,
-      contextCount: 0,
-      previewTitle: null,
-      contexts: [],
-    };
-  }
-  const promptText = prompt.slice(0, match.index).replace(/\n+$/, "");
-  const parsedContexts = parseTerminalContextEntries(match[1] ?? "");
-  return {
-    promptText,
-    contextCount: parsedContexts.length,
-    previewTitle:
-      parsedContexts.length > 0
-        ? parsedContexts
-            .map(({ header, body }) => (body.length > 0 ? `${header}\n${body}` : header))
-            .join("\n\n")
-        : null,
-    contexts: parsedContexts,
-  };
-}
-
-export function deriveDisplayedUserMessageState(prompt: string): DisplayedUserMessageState {
-  // Order matters: send-time appends `<terminal_context>` first, then
-  // `<element_context>` last. Strip element first so the (now-trailing)
-  // terminal block can be matched by `extractTrailingTerminalContexts`.
-  const extractedElement = extractTrailingElementContexts(prompt);
-  const extractedTerminal = extractTrailingTerminalContexts(extractedElement.promptText);
-  return {
-    visibleText: extractedTerminal.promptText,
-    copyText: prompt,
-    contextCount: extractedTerminal.contextCount,
-    previewTitle: extractedTerminal.previewTitle,
-    contexts: extractedTerminal.contexts,
-    elementContexts: extractedElement.contexts,
-  };
-}
-
-function parseTerminalContextEntries(block: string): ParsedTerminalContextEntry[] {
-  const entries: ParsedTerminalContextEntry[] = [];
-  let current: { header: string; bodyLines: string[] } | null = null;
-
-  const commitCurrent = () => {
-    if (!current) {
-      return;
-    }
-    entries.push({
-      header: current.header,
-      body: current.bodyLines.join("\n").trimEnd(),
-    });
-    current = null;
-  };
-
-  for (const rawLine of block.split("\n")) {
-    const headerMatch = /^- (.+):$/.exec(rawLine);
-    if (headerMatch) {
-      commitCurrent();
-      current = {
-        header: headerMatch[1]!,
-        bodyLines: [],
-      };
-      continue;
-    }
-    if (!current) {
-      continue;
-    }
-    if (rawLine.startsWith("  ")) {
-      current.bodyLines.push(rawLine.slice(2));
-      continue;
-    }
-    if (rawLine.length === 0) {
-      current.bodyLines.push("");
-    }
-  }
-
-  commitCurrent();
-  return entries;
 }
 
 /** Binds legacy U+FFFC placeholders to contexts in array order; leftover placeholders vanish. */

@@ -2,19 +2,12 @@ import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  appendTerminalContextsToPrompt,
-  buildTerminalContextPreviewTitle,
-  buildTerminalContextBlock,
-  deriveDisplayedUserMessageState,
-  extractTrailingTerminalContexts,
   filterTerminalContextsWithText,
-  formatInlineTerminalContextLabel,
   formatTerminalContextLabel,
   formatTerminalContextReference,
   hasTerminalContextText,
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   isTerminalContextExpired,
-  materializeInlineTerminalContextPrompt,
   migrateLegacyTerminalContextPlaceholders,
   type TerminalContextDraft,
 } from "./terminalContext";
@@ -46,106 +39,6 @@ describe("terminalContext", () => {
     ).toBe("Terminal 1 line 9");
   });
 
-  it("builds a numbered terminal context block", () => {
-    expect(buildTerminalContextBlock([makeContext()])).toBe(
-      [
-        "<terminal_context>",
-        "- Terminal 1 lines 12-13:",
-        "  12 | git status",
-        "  13 | On branch main",
-        "</terminal_context>",
-      ].join("\n"),
-    );
-  });
-
-  it("appends terminal context blocks after prompt text", () => {
-    expect(appendTerminalContextsToPrompt("Investigate this", [makeContext()])).toBe(
-      [
-        "Investigate this",
-        "",
-        "<terminal_context>",
-        "- Terminal 1 lines 12-13:",
-        "  12 | git status",
-        "  13 | On branch main",
-        "</terminal_context>",
-      ].join("\n"),
-    );
-  });
-
-  it("replaces inline references with inline terminal labels before appending context blocks", () => {
-    expect(
-      appendTerminalContextsToPrompt(
-        `Investigate ${formatTerminalContextReference(makeContext())} carefully`,
-        [makeContext()],
-      ),
-    ).toBe(
-      [
-        "Investigate @terminal-1:12-13 carefully",
-        "",
-        "<terminal_context>",
-        "- Terminal 1 lines 12-13:",
-        "  12 | git status",
-        "  13 | On branch main",
-        "</terminal_context>",
-      ].join("\n"),
-    );
-  });
-
-  it("extracts terminal context blocks from message text", () => {
-    const prompt = appendTerminalContextsToPrompt("Investigate this", [makeContext()]);
-    expect(extractTrailingTerminalContexts(prompt)).toEqual({
-      promptText: "Investigate this",
-      contextCount: 1,
-      previewTitle: "Terminal 1 lines 12-13\n12 | git status\n13 | On branch main",
-      contexts: [
-        {
-          header: "Terminal 1 lines 12-13",
-          body: "12 | git status\n13 | On branch main",
-        },
-      ],
-    });
-  });
-
-  it("derives displayed user message state from terminal context prompts", () => {
-    const prompt = appendTerminalContextsToPrompt("Investigate this", [makeContext()]);
-    expect(deriveDisplayedUserMessageState(prompt)).toEqual({
-      visibleText: "Investigate this",
-      copyText: prompt,
-      contextCount: 1,
-      previewTitle: "Terminal 1 lines 12-13\n12 | git status\n13 | On branch main",
-      contexts: [
-        {
-          header: "Terminal 1 lines 12-13",
-          body: "12 | git status\n13 | On branch main",
-        },
-      ],
-      elementContexts: [],
-    });
-  });
-
-  it("preserves prompt text when no trailing terminal context block exists", () => {
-    expect(extractTrailingTerminalContexts("No attached context")).toEqual({
-      promptText: "No attached context",
-      contextCount: 0,
-      previewTitle: null,
-      contexts: [],
-    });
-  });
-
-  it("returns null preview title when every context is invalid", () => {
-    expect(
-      buildTerminalContextPreviewTitle([
-        makeContext({
-          terminalId: "   ",
-        }),
-        makeContext({
-          id: "context-2",
-          text: "\n\n",
-        }),
-      ]),
-    ).toBeNull();
-  });
-
   it("formats a terminal context as a canonical reference link", () => {
     expect(formatTerminalContextReference(makeContext())).toBe(
       "[Terminal 1 lines 12-13](t3-context://v1/terminal/context-1)",
@@ -174,16 +67,5 @@ describe("terminalContext", () => {
     expect(hasTerminalContextText(expiredContext)).toBe(false);
     expect(isTerminalContextExpired(expiredContext)).toBe(true);
     expect(filterTerminalContextsWithText([expiredContext, liveContext])).toEqual([liveContext]);
-  });
-
-  it("formats and materializes inline terminal labels from references by id", () => {
-    expect(formatInlineTerminalContextLabel(makeContext())).toBe("@terminal-1:12-13");
-    const known = formatTerminalContextReference(makeContext());
-    const unknown = formatTerminalContextReference(makeContext({ id: "gone" }));
-    expect(
-      materializeInlineTerminalContextPrompt(`Investigate ${known} carefully ${unknown}!`, [
-        makeContext(),
-      ]),
-    ).toBe("Investigate @terminal-1:12-13 carefully !");
   });
 });

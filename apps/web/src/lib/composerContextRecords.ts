@@ -2,6 +2,7 @@ import type {
   ComposerContextId,
   ComposerContextRecord,
   ElementContextDetails,
+  KnownComposerContextRecord,
   OrchestrationMessageContext,
   PreviewAnnotationContextRecord,
   PreviewAnnotationPayload,
@@ -151,6 +152,17 @@ export function buildMessageContext(input: {
     ...input.previewAnnotations.map(previewAnnotationContextRecord),
   ];
   return records.length === 0 ? undefined : { version: 1, records };
+}
+
+/**
+ * Narrows away the unknown-kind member. Its `kind` is an open string, so a plain
+ * `record.kind === "terminal"` check cannot discriminate the union on its own.
+ */
+export function asKnownContextRecord(
+  record: ComposerContextRecord | undefined,
+): KnownComposerContextRecord | undefined {
+  if (!record || "payload" in record) return undefined;
+  return record as KnownComposerContextRecord;
 }
 
 export interface ResolvedUserMessageContext {

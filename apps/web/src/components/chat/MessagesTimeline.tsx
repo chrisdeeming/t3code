@@ -95,7 +95,9 @@ import {
   WrenchIcon,
   XIcon,
   ZapIcon,
+  CircleDashedIcon,
 } from "lucide-react";
+import type { KnownComposerContextRecord } from "@t3tools/contracts";
 import { Button } from "../ui/button";
 import { useAssetUrlRefresh, useAssetUrlState } from "../../assets/assetUrls";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
@@ -145,33 +147,24 @@ import {
 } from "./MessagesTimeline.logic";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { asKnownContextRecord, resolveUserMessageContext } from "~/lib/composerContextRecords";
 import {
-  deriveDisplayedUserMessageState,
-  type ParsedTerminalContextEntry,
-} from "~/lib/terminalContext";
-import {
-  extractTrailingElementContexts,
-  type ParsedElementContextEntry,
-} from "~/lib/elementContext";
-import {
-  extractTrailingPreviewAnnotation,
-  type ParsedPreviewAnnotation,
-} from "~/lib/previewAnnotation";
+  CHAT_INLINE_CHIP_CLASS_NAME,
+  CHAT_INLINE_CHIP_LABEL_CLASS_NAME,
+  COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
+} from "../composerInlineChip";
+import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
-import {
-  buildInlineTerminalContextText,
-  formatInlineTerminalContextLabel,
-  textContainsInlineTerminalContextLabels,
-} from "./userMessageTerminalContexts";
+
 import { SkillInlineText } from "./SkillInlineText";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
   buildReviewCommentRenderablePatch,
   formatReviewCommentFence,
-  parseReviewCommentMessageSegments,
   type ReviewCommentContext,
 } from "../../reviewCommentContext";
 
@@ -1195,23 +1188,31 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const unknownAttachments = (row.message.attachments ?? []).filter(
     (attachment) => !isImageAttachment(attachment) && !isFileAttachment(attachment),
   );
-  const displayedUserMessage = deriveDisplayedUserMessageState(row.message.text);
-  const terminalContexts = displayedUserMessage.contexts;
-  const previewAnnotations: ParsedPreviewAnnotation[] = [];
-  let visibleText = displayedUserMessage.visibleText;
-  while (true) {
-    const extracted = extractTrailingPreviewAnnotation(visibleText);
-    if (!extracted.annotation) break;
-    previewAnnotations.unshift(extracted.annotation);
-    visibleText = extracted.promptText;
-  }
-  const elementContextState = extractTrailingElementContexts(visibleText);
-  const elementContexts = [
-    ...displayedUserMessage.elementContexts,
-    ...elementContextState.contexts,
-  ];
+  const resolvedContext = resolveUserMessageContext(row.message);
   const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
   const regularImages = userImages.filter((image) => !image.name.startsWith("preview-annotation-"));
+  const annotationRecordIds = resolvedContext.records
+    .filter((record) => record.kind === "preview-annotation")
+    .map((record) => record.contextId);
+  const renderContextReference = (reference: ChatMarkdownContextReference) => {
+    const record = asKnownContextRecord(resolvedContext.recordsById.get(reference.contextId));
+    // Screenshots keep the annotation id in their filename; older messages only have order.
+    const annotationImage =
+      record?.kind === "preview-annotation"
+        ? (previewImages.find(
+            (image) => image.name === `preview-annotation-${record.annotationId}.png`,
+          ) ??
+          previewImages[annotationRecordIds.indexOf(record.contextId)] ??
+          null)
+        : null;
+    return (
+      <UserMessageContextReferenceChip
+        reference={reference}
+        record={record}
+        annotationImage={annotationImage}
+      />
+    );
+  };
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
 
   return (
@@ -1253,13 +1254,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             ))}
           </div>
         )}
-        {previewAnnotations.map((annotation, index) => (
-          <UserMessagePreviewAnnotationCard
-            key={annotation.id}
-            annotation={annotation}
-            image={previewImages[index] ?? null}
-          />
-        ))}
         {otherUserFiles.length > 0 || unknownAttachments.length > 0 ? (
           <div className="mb-2 flex flex-col gap-1">
             {otherUserFiles.map((file) => {
@@ -1346,19 +1340,9 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             ))}
           </div>
         ) : null}
-        {elementContexts.length > 0 ? (
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {elementContexts.map((context) => (
-              <UserMessageElementContextChip
-                key={`${context.header}:${context.body}`}
-                context={context}
-              />
-            ))}
-          </div>
-        ) : null}
         <CollapsibleUserMessageBody
-          text={elementContextState.promptText}
-          terminalContexts={terminalContexts}
+          text={resolvedContext.text}
+          renderContextReference={renderContextReference}
           skills={ctx.skills}
           markdownCwd={ctx.markdownCwd}
         />
@@ -1375,8 +1359,8 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           </Tooltip>
           <div className="flex items-center gap-0.5">
             {canRevertAgentWork && <RevertUserMessageButton messageId={row.message.id} />}
-            {displayedUserMessage.copyText && (
-              <MessageCopyButton text={displayedUserMessage.copyText} variant="ghost" />
+            {resolvedContext.text && (
+              <MessageCopyButton text={resolvedContext.text} variant="ghost" />
             )}
           </div>
         </div>
@@ -2100,47 +2084,57 @@ function AssistantChangedFilesSectionInner({
 // Leaf components
 // ---------------------------------------------------------------------------
 
-const UserMessageTerminalContextInlineLabel = memo(
-  function UserMessageTerminalContextInlineLabel(props: { context: ParsedTerminalContextEntry }) {
-    const tooltipText =
-      props.context.body.length > 0
-        ? `${props.context.header}\n${props.context.body}`
-        : props.context.header;
-
-    return <TerminalContextInlineChip label={props.context.header} tooltipText={tooltipText} />;
-  },
-);
-
-const UserMessageElementContextChip = memo(function UserMessageElementContextChip(props: {
-  context: ParsedElementContextEntry;
+function UserMessageContextChip(props: {
+  icon: ReactNode;
+  label: string;
+  tooltip?: string;
+  unresolved?: boolean;
 }) {
-  const tooltipText = props.context.body
-    ? `${props.context.header}\n${props.context.body}`
-    : props.context.header;
+  const chip = (
+    <span
+      className={cn(
+        CHAT_INLINE_CHIP_CLASS_NAME,
+        props.unresolved && "border-dashed text-muted-foreground",
+      )}
+      data-context-unresolved={props.unresolved ? "true" : undefined}
+    >
+      {props.icon}
+      <span className={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}>{props.label}</span>
+    </span>
+  );
+  if (!props.tooltip) return chip;
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <span className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/70 bg-background/70 px-1.5 py-0.5 text-foreground/85 text-xs">
-            <MousePointerClickIcon className="size-3 shrink-0" />
-            <span className="truncate">{props.context.header}</span>
-          </span>
-        }
-      />
+      <TooltipTrigger render={chip} />
       <TooltipPopup side="top" className="max-w-96 whitespace-pre-wrap leading-tight">
-        {tooltipText}
+        {props.tooltip}
       </TooltipPopup>
     </Tooltip>
   );
-});
+}
 
-function UserMessagePreviewAnnotationCard(props: {
-  annotation: ParsedPreviewAnnotation;
+function UserMessageContextPopover(props: { chip: ReactNode; children: ReactNode }) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={<button type="button" className="inline-flex max-w-full align-baseline" />}
+      >
+        {props.chip}
+      </PopoverTrigger>
+      <PopoverPopup side="top" className="w-[min(36rem,calc(100vw-2rem))] p-2">
+        {props.children}
+      </PopoverPopup>
+    </Popover>
+  );
+}
+
+function UserMessagePreviewAnnotationDetails(props: {
+  record: Extract<KnownComposerContextRecord, { kind: "preview-annotation" }>;
   image: ChatImageAttachment | null;
 }) {
   const ctx = use(TimelineRowCtx);
   return (
-    <div className="mb-2 flex max-w-full items-center overflow-hidden rounded-lg border border-border/70 bg-background/70">
+    <div className="flex max-w-full items-center overflow-hidden rounded-lg border border-border/70 bg-background/70">
       {props.image?.previewUrl ? (
         <button
           type="button"
@@ -2160,29 +2154,102 @@ function UserMessagePreviewAnnotationCard(props: {
         </button>
       ) : null}
       <div className="min-w-0 px-2.5 py-2">
-        {props.annotation.comment ? (
-          <div className="max-w-80 truncate text-foreground text-xs font-medium">
-            {props.annotation.comment}
+        <div className="text-message-foreground text-xs font-medium">
+          {props.record.pageTitle?.trim() || props.record.pageUrl || "Preview annotation"}
+        </div>
+        {props.record.comment ? (
+          <div className="mt-1 whitespace-pre-wrap wrap-break-word text-sm">
+            {props.record.comment}
           </div>
         ) : null}
-        <div
-          className={cn(
-            "flex items-center gap-2 text-secondary-label text-[10px]",
-            props.annotation.comment && "mt-1",
-          )}
-        >
-          {props.annotation.targetSummary ? (
-            <span className="truncate">{props.annotation.targetSummary}</span>
+        <div className="mt-1 flex items-center gap-2 text-secondary-label text-[10px]">
+          {props.record.targetSummary ? (
+            <span className="truncate">{props.record.targetSummary}</span>
           ) : null}
-          {props.annotation.styleChanges.length > 0 ? (
+          {props.record.styleChanges.length > 0 ? (
             <span className="inline-flex shrink-0 items-center gap-1">
               <PaintbrushIcon className="size-3" />
-              {props.annotation.styleChanges.length}
+              {props.record.styleChanges.length}
             </span>
           ) : null}
         </div>
       </div>
     </div>
+  );
+}
+
+/** One inline context chip in a sent message: label always, details by hover or click. */
+function UserMessageContextReferenceChip(props: {
+  reference: ChatMarkdownContextReference;
+  record: KnownComposerContextRecord | undefined;
+  annotationImage: ChatImageAttachment | null;
+}) {
+  const { reference, record } = props;
+  const iconClassName = cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5");
+  if (record?.kind === "terminal") {
+    const tooltipText = record.text.length > 0 ? `${record.label}\n${record.text}` : record.label;
+    return <TerminalContextInlineChip label={record.label} tooltipText={tooltipText} />;
+  }
+  if (record?.kind === "element") {
+    const lines = [record.label, record.pageUrl];
+    if (record.selector) lines.push(record.selector);
+    if (record.htmlPreview.trim()) lines.push("", record.htmlPreview.trim().slice(0, 600));
+    return (
+      <UserMessageContextChip
+        icon={<MousePointerClickIcon className={iconClassName} />}
+        label={record.label}
+        tooltip={lines.join("\n")}
+      />
+    );
+  }
+  if (record?.kind === "review-comment") {
+    return (
+      <UserMessageContextPopover
+        chip={
+          <UserMessageContextChip
+            icon={<MessageCircleIcon className={iconClassName} />}
+            label={record.label}
+          />
+        }
+      >
+        <UserMessageReviewCommentCard
+          comment={{
+            id: record.contextId,
+            sectionId: record.sectionId,
+            sectionTitle: record.sectionTitle,
+            filePath: record.filePath,
+            startIndex: record.startIndex,
+            endIndex: record.endIndex,
+            rangeLabel: record.rangeLabel,
+            text: record.text,
+            diff: record.diff,
+            ...(record.fenceLanguage !== undefined ? { fenceLanguage: record.fenceLanguage } : {}),
+          }}
+        />
+      </UserMessageContextPopover>
+    );
+  }
+  if (record?.kind === "preview-annotation") {
+    return (
+      <UserMessageContextPopover
+        chip={
+          <UserMessageContextChip
+            icon={<MousePointerClickIcon className={iconClassName} />}
+            label={record.label}
+          />
+        }
+      >
+        <UserMessagePreviewAnnotationDetails record={record} image={props.annotationImage} />
+      </UserMessageContextPopover>
+    );
+  }
+  return (
+    <UserMessageContextChip
+      icon={<CircleDashedIcon className={iconClassName} />}
+      label={reference.label}
+      tooltip="This context is no longer available."
+      unresolved
+    />
   );
 }
 
@@ -2204,13 +2271,13 @@ function shouldCollapseUserMessage(text: string): boolean {
 
 const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(props: {
   text: string;
-  terminalContexts: ParsedTerminalContextEntry[];
+  renderContextReference: (reference: ChatMarkdownContextReference) => ReactNode;
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   markdownCwd: string | undefined;
   footer?: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const hasVisibleBody = props.text.trim().length > 0 || props.terminalContexts.length > 0;
+  const hasVisibleBody = props.text.trim().length > 0;
   const canCollapse = hasVisibleBody && shouldCollapseUserMessage(props.text);
   const isCollapsed = canCollapse && !expanded;
 
@@ -2234,7 +2301,7 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
         >
           <UserMessageBody
             text={props.text}
-            terminalContexts={props.terminalContexts}
+            renderContextReference={props.renderContextReference}
             skills={props.skills}
             markdownCwd={props.markdownCwd}
           />
@@ -2272,161 +2339,14 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
 
 const UserMessageBody = memo(function UserMessageBody(props: {
   text: string;
-  terminalContexts: ParsedTerminalContextEntry[];
+  renderContextReference: (reference: ChatMarkdownContextReference) => ReactNode;
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   markdownCwd: string | undefined;
 }) {
   const ctx = use(TimelineRowCtx);
-  const renderInlineMarkdownSegment = (text: string, key: string) => {
-    const leadingWhitespace = /^\s+/.exec(text)?.[0] ?? "";
-    const textWithoutLeadingWhitespace = text.slice(leadingWhitespace.length);
-    const trailingWhitespace = /\s+$/.exec(textWithoutLeadingWhitespace)?.[0] ?? "";
-    const content = textWithoutLeadingWhitespace.slice(
-      0,
-      textWithoutLeadingWhitespace.length - trailingWhitespace.length,
-    );
-
-    return (
-      <Fragment key={key}>
-        {leadingWhitespace ? <span aria-hidden="true">{leadingWhitespace}</span> : null}
-        {content ? (
-          <ChatMarkdown
-            text={content}
-            cwd={props.markdownCwd}
-            threadRef={ctx.threadRef ?? undefined}
-            skills={props.skills}
-            className="text-message-foreground"
-            lineBreaks
-            parseRawHtml={false}
-          />
-        ) : null}
-        {trailingWhitespace ? <span aria-hidden="true">{trailingWhitespace}</span> : null}
-      </Fragment>
-    );
-  };
-
-  const reviewCommentSegments = parseReviewCommentMessageSegments(props.text);
-  if (reviewCommentSegments.some((segment) => segment.kind === "review-comment")) {
-    return (
-      <div className="space-y-3 text-message-foreground text-sm leading-relaxed">
-        {reviewCommentSegments.map((segment) =>
-          segment.kind === "text" ? (
-            segment.text.trim().length > 0 ? (
-              <div key={segment.id} className="wrap-break-word">
-                <ChatMarkdown
-                  text={segment.text.trim()}
-                  cwd={props.markdownCwd}
-                  threadRef={ctx.threadRef ?? undefined}
-                  skills={props.skills}
-                  className="text-message-foreground"
-                  lineBreaks
-                  parseRawHtml={false}
-                />
-              </div>
-            ) : null
-          ) : (
-            <UserMessageReviewCommentCard key={segment.comment.id} comment={segment.comment} />
-          ),
-        )}
-      </div>
-    );
-  }
-
-  if (props.terminalContexts.length > 0) {
-    const hasEmbeddedInlineLabels = textContainsInlineTerminalContextLabels(
-      props.text,
-      props.terminalContexts,
-    );
-    const inlinePrefix = buildInlineTerminalContextText(props.terminalContexts);
-    const inlineNodes: ReactNode[] = [];
-
-    if (hasEmbeddedInlineLabels) {
-      let cursor = 0;
-
-      for (const context of props.terminalContexts) {
-        const label = formatInlineTerminalContextLabel(context.header);
-        const matchIndex = props.text.indexOf(label, cursor);
-        if (matchIndex === -1) {
-          inlineNodes.length = 0;
-          break;
-        }
-        if (matchIndex > cursor) {
-          inlineNodes.push(
-            renderInlineMarkdownSegment(
-              props.text.slice(cursor, matchIndex),
-              `user-terminal-context-inline-before:${context.header}:${cursor}`,
-            ),
-          );
-        }
-        inlineNodes.push(
-          <UserMessageTerminalContextInlineLabel
-            key={`user-terminal-context-inline:${context.header}`}
-            context={context}
-          />,
-        );
-        cursor = matchIndex + label.length;
-      }
-
-      if (inlineNodes.length > 0) {
-        if (cursor < props.text.length) {
-          inlineNodes.push(
-            renderInlineMarkdownSegment(
-              props.text.slice(cursor),
-              `user-message-terminal-context-inline-rest:${cursor}`,
-            ),
-          );
-        }
-
-        return (
-          <div className="whitespace-pre-wrap wrap-break-word text-message-foreground text-sm leading-relaxed">
-            {inlineNodes}
-          </div>
-        );
-      }
-    }
-
-    for (const context of props.terminalContexts) {
-      inlineNodes.push(
-        <UserMessageTerminalContextInlineLabel
-          key={`user-terminal-context-inline:${context.header}`}
-          context={context}
-        />,
-      );
-      inlineNodes.push(
-        <span key={`user-terminal-context-inline-space:${context.header}`} aria-hidden="true">
-          {" "}
-        </span>,
-      );
-    }
-
-    if (props.text.length > 0) {
-      inlineNodes.push(
-        <ChatMarkdown
-          key="user-message-terminal-context-inline-text"
-          text={props.text}
-          cwd={props.markdownCwd}
-          threadRef={ctx.threadRef ?? undefined}
-          skills={props.skills}
-          className="text-message-foreground"
-          lineBreaks
-          parseRawHtml={false}
-        />,
-      );
-    } else if (inlinePrefix.length === 0) {
-      return null;
-    }
-
-    return (
-      <div className="whitespace-pre-wrap wrap-break-word text-message-foreground text-sm leading-relaxed">
-        {inlineNodes}
-      </div>
-    );
-  }
-
   if (props.text.length === 0) {
     return null;
   }
-
   return (
     <ChatMarkdown
       text={props.text}
@@ -2436,6 +2356,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
       className="text-message-foreground"
       lineBreaks
       parseRawHtml={false}
+      renderContextReference={props.renderContextReference}
     />
   );
 });

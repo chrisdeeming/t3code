@@ -918,8 +918,8 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("Terminal 1 lines 1-5");
     expect(markup).toContain("lucide-terminal");
-    expect(markup).toContain("yoo what&#x27;s</p>");
-    expect(markup).toContain('<span aria-hidden="true"> </span>');
+    expect(markup).toContain("yoo what&#x27;s");
+    expect(markup).not.toContain("terminal_context");
     expect(markup).toContain("Show full message");
   }, 20_000);
 
@@ -1392,9 +1392,8 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("contextWindow.test.ts");
-    expect(markup).toContain("Wadduo");
-    expect(markup).toContain('data-testid="file-diff"');
+    expect(markup).toContain("contextWindow.test.ts +47 to +58");
+    expect(markup).toContain("lucide-message-circle");
     expect(markup).not.toContain(">Review comment<");
     expect(markup).not.toContain("&lt;review_comment");
     expect(markup).not.toContain("&lt;/review_comment&gt;");
@@ -1431,10 +1430,55 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("plan.md");
-    expect(markup).toContain("Clarify this.");
-    expect(markup).toContain("# Plan");
+    expect(markup).toContain("plan.md L1 to L2");
+    expect(markup).not.toContain("review_comment");
     expect(markup).not.toContain('data-testid="file-diff"');
+  });
+
+  it("renders structured context records as chips without reparsing text", () => {
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-structured",
+            kind: "message",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            message: {
+              id: MessageId.make("message-structured"),
+              role: "user",
+              text: "Compare [Terminal 1 line 4](t3-context://v1/terminal/ctx-t) with [gone](t3-context://v1/future/ctx-x).",
+              context: {
+                version: 1,
+                records: [
+                  {
+                    version: 1,
+                    contextId: "ctx-t" as never,
+                    kind: "terminal",
+                    label: "Terminal 1 line 4",
+                    terminalId: "default",
+                    terminalLabel: "Terminal 1",
+                    lineStart: 4,
+                    lineEnd: 4,
+                    text: "boom",
+                  },
+                ],
+              },
+              turnId: null,
+              createdAt: "2026-03-17T19:12:28.000Z",
+              updatedAt: "2026-03-17T19:12:28.000Z",
+              streaming: false,
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("lucide-terminal");
+    expect(markup).toContain("Terminal 1 line 4");
+    expect(markup).toContain('data-context-unresolved="true"');
+    expect(markup).toContain(">gone<");
+    expect(markup).not.toContain("t3-context://");
   });
 
   it("keeps failed lifecycle entries discoverable in mixed activity summaries", () => {

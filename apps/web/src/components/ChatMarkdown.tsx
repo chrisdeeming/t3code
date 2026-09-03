@@ -71,6 +71,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import { parseAssistantCitationHref } from "@t3tools/shared/assistantCitations";
+import { parseComposerContextHref } from "@t3tools/shared/composerContextReferences";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
 import remarkGfm from "remark-gfm";
 import { remarkGithubAlerts } from "../markdown-github-alerts";
@@ -196,6 +197,14 @@ interface ChatMarkdownProps {
   imageBaseDir?: string | undefined;
   onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
   extraRemarkPlugins?: NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
+  /** Renders a `t3-context://` link as a chip; without it the link shows its label as text. */
+  renderContextReference?: ((reference: ChatMarkdownContextReference) => ReactNode) | undefined;
+}
+
+export interface ChatMarkdownContextReference {
+  kind: string;
+  contextId: string;
+  label: string;
 }
 
 export function canUseMarkdownFileShellActions(
@@ -386,7 +395,7 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
   },
   protocols: {
     ...defaultSchema.protocols,
-    href: [...(defaultSchema.protocols?.href ?? []), "file", "t3-citation"],
+    href: [...(defaultSchema.protocols?.href ?? []), "file", "t3-citation", "t3-context"],
     src: [...(defaultSchema.protocols?.src ?? []), "file"],
   },
 } satisfies Parameters<typeof rehypeSanitize>[0];
@@ -1967,6 +1976,7 @@ function ChatMarkdown({
   imageBaseDir,
   onImageExpand,
   extraRemarkPlugins = EMPTY_REMARK_PLUGINS,
+  renderContextReference,
 }: ChatMarkdownProps) {
   const { resolvedTheme } = useTheme();
   const [localMediaPreview, setLocalMediaPreview] = useState<ExpandedImagePreview | null>(null);
@@ -2077,6 +2087,7 @@ function ChatMarkdown({
       NonNullable<ReturnType<typeof resolveMarkdownFileLinkMeta>>
     >();
     for (const href of extractMarkdownLinkHrefs(renderCodexFileCitationsAsMarkdown(text))) {
+      if (parseComposerContextHref(href)) continue;
       const normalizedHref = normalizeMarkdownLinkHrefKey(href);
       if (metaByHref.has(normalizedHref)) continue;
       const meta = resolveMarkdownFileLinkMeta(normalizedHref, cwd, imageBaseDir ?? cwd);
@@ -2106,6 +2117,7 @@ function ChatMarkdown({
   }, [inlineCodeFileLinkMetaByText, markdownFileLinkMetaByHref]);
   const markdownUrlTransform = useCallback((href: string) => {
     if (parseAssistantCitationHref(href)) return href;
+    if (parseComposerContextHref(href)) return href;
     if (isWindowsDrivePathHref(href)) return href;
     return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
   }, []);
@@ -2425,6 +2437,15 @@ function ChatMarkdown({
       a({ node, href, children, title: _title, ...props }) {
         const citation = href ? parseAssistantCitationHref(href) : null;
         if (citation) return <AssistantCitationChip citation={citation} />;
+        const contextReference = href ? parseComposerContextHref(href) : null;
+        if (contextReference) {
+          const label = plainHastText(node) ?? contextReference.contextId;
+          return renderContextReference ? (
+            renderContextReference({ ...contextReference, label })
+          ) : (
+            <span>{label}</span>
+          );
+        }
         const normalizedHref = href ? normalizeMarkdownLinkHrefKey(href) : "";
         const fileLinkMeta = normalizedHref
           ? (markdownFileLinkMetaByHref.get(normalizedHref) ??
@@ -2747,6 +2768,7 @@ function ChatMarkdown({
     onTaskListChange,
     onUseArtifactTemplate,
     onImageExpand,
+    renderContextReference,
     expandMedia,
     openMarkdownMedia,
     openFileInPanel,
