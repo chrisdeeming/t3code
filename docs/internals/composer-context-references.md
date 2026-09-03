@@ -145,3 +145,21 @@ gain image chips.
 
 In the transcript an image chip opens the gallery preview and a file chip opens or downloads the
 file. The gallery still shows every image; file rows remain only for files no chip references.
+
+## Clipboard
+
+Every copy path writes the canonical Markdown as `text/plain` and, when the selection holds
+chips, a structured fragment under `web application/x-t3-context-fragment+json`
+(`ComposerContextClipboardFragment`: version, source environment/thread/message, records; no
+bytes, no URLs). Composer copy and cut add it through a Lexical command listener; transcript
+selection copy adds it from an `onCopyCapture` on the user message body while chips re-emit their
+links through `data-markdown-copy`; the whole-message button writes both through `ClipboardItem`
+and falls back to plain text.
+
+On paste the composer decodes the fragment before the plain text. Records the draft does not
+already hold are imported: terminal excerpts and review comments as they are, preview
+annotations rebuilt from their record, and images or files re-fetched through the source
+environment's asset URL and attached under a fresh local id, with the pasted link rewritten to
+that id. A pasted binary reads as an unresolved chip until its bytes arrive; a fragment from
+another environment leaves binaries unresolved. Rendered chips and sent messages are never
+mutated by a paste.
