@@ -1138,6 +1138,8 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
 export interface ChatComposerHandle {
   focusAtEnd: () => void;
   focusAt: (cursor: number) => void;
+  /** Undo only a scroll-triggered collapse when the timeline returns to its live edge. */
+  restoreAfterTimelineReachedEnd: () => void;
   addDroppedFiles: (files: File[]) => void;
   insertTextAtEnd: (text: string, options?: { ensureLeadingBoundary?: boolean }) => boolean;
   citeAssistantText: (
@@ -3815,7 +3817,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ) : (
     <>
       {composerControlsInStrip && restingControlsHaveLeadingContext ? (
-        <ComposerControlSeparator size="xs" data-resting-controls-separator="true" />
+        <ComposerControlSeparator
+          size="xs"
+          className="@max-[400px]/composer-surface:hidden"
+          data-resting-controls-separator="true"
+        />
       ) : null}
       <ProviderModelPicker
         isComposerOwned
@@ -3828,7 +3834,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         keybindings={keybindings}
         modelOptionsByInstance={modelOptionsByInstance}
         size={composerControlsInStrip ? "xs" : "sm"}
-        triggerClassName={composerControlsInStrip ? "min-w-26 shrink" : "-ms-2.5"}
+        triggerClassName={
+          composerControlsInStrip
+            ? "min-w-13 shrink text-xs! @max-[640px]/composer-surface:[&_[data-chat-provider-model-picker-label]]:w-0 @max-[640px]/composer-surface:[&_[data-chat-provider-model-picker-label]]:flex-none"
+            : "-ms-2.5"
+        }
         terminalOpen={terminalOpen}
         open={isComposerModelPickerOpen}
         instanceIndicatorBackground={
@@ -4244,8 +4254,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
 
   const insertComposerTextAtEnd = useCallback<ChatComposerHandle["insertTextAtEnd"]>(
-    (text, options) => insertComposerText(text, "end", options),
-    [insertComposerText],
+    (text, options) => {
+      const inserted = insertComposerText(text, "end", options);
+      if (inserted && isComposerCollapsedMobile) {
+        // The expanded editor is hidden at phone widths, so its scheduled
+        // focus cannot expand the composer by itself. Reveal it before the
+        // focus frame runs to preserve type-to-focus and external inserts.
+        expandMobileComposer();
+      }
+      return inserted;
+    },
+    [expandMobileComposer, insertComposerText, isComposerCollapsedMobile],
   );
 
   // File-tree drags land as mentions. Handled in the capture phase so the
@@ -4413,6 +4432,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       },
       focusAt: (cursor: number) => {
         composerEditorRef.current?.focusAt(cursor);
+      },
+      restoreAfterTimelineReachedEnd: () => {
+        setIsComposerScrollCollapsed(false);
       },
       addDroppedFiles: (files: File[]) => {
         void addComposerAttachments(files);
@@ -4626,7 +4648,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               aria-hidden={restingControlsVisible ? undefined : true}
               inert={restingControlsVisible ? undefined : true}
               className={cn(
-                "relative flex w-max min-w-0 max-w-full items-center gap-1 font-normal text-muted-foreground/70",
+                "relative flex w-max min-w-0 max-w-full items-center gap-1 font-normal text-muted-foreground/70 [&_button]:text-xs!",
                 !restingControlsVisible && "invisible",
               )}
             >

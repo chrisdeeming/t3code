@@ -121,15 +121,26 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   const triggerContent = (
     <>
       {icon}
-      <span className="min-w-0 truncate">
-        {showEnvironmentIndicator ? (activeEnvironment?.label ?? "Run on") : workspaceLabel}
+      <span
+        data-composer-label
+        className="min-w-0 max-w-[240px] group-data-[compact]/composer-context:max-w-0"
+      >
+        <span
+          data-composer-label-motion
+          className="block w-full min-w-0 max-w-[240px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity"
+        >
+          {showEnvironmentIndicator ? (activeEnvironment?.label ?? "Run on") : workspaceLabel}
+        </span>
       </span>
     </>
   );
 
   if (isLocked) {
     return (
-      <span className="inline-flex h-7 min-w-0 max-w-[48%] flex-initial items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] text-sm font-normal text-muted-foreground/70 sm:h-6 sm:text-xs">
+      <span
+        className="inline-flex h-7 min-w-0 max-w-[48%] flex-initial items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] font-normal text-muted-foreground/70 text-xs sm:h-6"
+        data-composer-context-control
+      >
         {triggerContent}
       </span>
     );
@@ -139,7 +150,8 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
     <Menu>
       <MenuTrigger
         render={<Button variant="ghost" size="xs" />}
-        className="min-w-0 max-w-[48%] flex-initial justify-start font-normal text-muted-foreground/70 hover:text-foreground/80"
+        className="min-w-0 max-w-[48%] flex-initial justify-start font-normal text-muted-foreground/70 text-xs! hover:text-foreground/80"
+        data-composer-context-control
       >
         {triggerContent}
         <ChevronDownIcon className="size-3 shrink-0 opacity-50" />
@@ -255,10 +267,14 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
       let counted = 0;
       for (const child of parent.children) {
         if (!(child instanceof HTMLElement)) continue;
-        if (child.offsetWidth <= 1) continue;
-        const position = getComputedStyle(child).position;
+        if (child.offsetWidth === 0) continue;
+        const style = getComputedStyle(child);
+        const position = style.position;
         if (position === "absolute" || position === "fixed") continue;
-        width += child.offsetWidth;
+        width +=
+          child.offsetWidth +
+          (Number.parseFloat(style.marginInlineStart) || 0) +
+          (Number.parseFloat(style.marginInlineEnd) || 0);
         counted += 1;
       }
       return width + gap * Math.max(0, counted - 1);
@@ -268,12 +284,15 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
     let groups = 0;
     for (const child of current.children) {
       if (!(child instanceof HTMLElement)) continue;
-      const width = contentWidth(child);
+      // The host itself flexes into all remaining room. Measure the controls
+      // inside it so Git labels compact before squeezing out the model picker.
+      const hostedControls = child.matches('[data-chat-resting-composer-controls-host="true"]')
+        ? child.querySelector<HTMLElement>('[data-chat-composer-resting-controls="true"]')
+        : null;
+      const width = hostedControls ? contentWidth(hostedControls) : contentWidth(child);
       if (width <= 1) continue;
       groups += 1;
-      if (!child.matches('[data-chat-resting-composer-controls-host="true"]')) {
-        needed += width;
-      }
+      needed += width;
     }
     needed += stripGap * Math.max(0, groups - 1);
     for (const label of current.querySelectorAll<HTMLElement>("[data-composer-label]")) {
