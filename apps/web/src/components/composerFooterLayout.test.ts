@@ -78,7 +78,6 @@ describe("shouldUseRestingComposerLayout", () => {
     isMobileViewport: false,
     isFocused: false,
     hasExpandedChrome: false,
-    hasInlineAccessories: false,
   };
 
   it("uses the resting layout for an unfocused desktop composer", () => {
@@ -99,10 +98,6 @@ describe("shouldUseRestingComposerLayout", () => {
 
   it("keeps drawers and composer-owned menus expanded", () => {
     expect(shouldUseRestingComposerLayout({ ...resting, hasExpandedChrome: true })).toBe(false);
-  });
-
-  it("keeps inline task and stash accessories at full height", () => {
-    expect(shouldUseRestingComposerLayout({ ...resting, hasInlineAccessories: true })).toBe(false);
   });
 });
 

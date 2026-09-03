@@ -28,12 +28,12 @@ export function shouldUseRestingComposerLayout(input: {
   isMobileViewport: boolean;
   isFocused: boolean;
   hasExpandedChrome: boolean;
-  hasInlineAccessories: boolean;
 }): boolean {
   // Passive draft content is deliberately absent here. Resting only clamps
   // the prompt row and overlays its actions; non-image attachment and context
   // rows keep their natural height above it while image previews move inline.
-  // Whether the context strip can host the relocated controls is
+  // Banners and the tasks badge dock above the surface, so they are absent
+  // too. Whether the context strip can host the relocated controls is
   // deliberately absent here: resting reclaims vertical space at every
   // desktop width, and where the strip is missing or too narrow the controls
   // simply return when the composer is focused.
@@ -41,8 +41,7 @@ export function shouldUseRestingComposerLayout(input: {
     input.isExistingThread &&
     !input.isMobileViewport &&
     !input.isFocused &&
-    !input.hasExpandedChrome &&
-    !input.hasInlineAccessories
+    !input.hasExpandedChrome
   );
 }
 

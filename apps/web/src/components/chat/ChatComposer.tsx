@@ -3606,8 +3606,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     // its collapsed thumbnail is enough to signal that the draft has images.
     return nonPersistedComposerImageIdSet.has(image.id) && !failedInCurrentEnvironment;
   });
+  // Banners and the tasks badge dock above the surface rather than inside
+  // it, so they do not hold the composer open; only surface-internal chrome
+  // does.
   const composerHasExpandedChrome =
-    hasBannerItems ||
     showComposerTopDrawer ||
     isTasksDrawerOpen ||
     composerMenuOpen ||
@@ -3625,7 +3627,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isMobileViewport,
     isFocused: isComposerFocused && !isComposerScrollCollapsed,
     hasExpandedChrome: composerHasExpandedChrome,
-    hasInlineAccessories: showInlineTasksBadge,
   });
   // The relocated controls live in the context strip whenever the composer is
   // collapsed for any reason, the desktop resting layout or the phone
