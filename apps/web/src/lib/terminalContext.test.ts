@@ -5,9 +5,7 @@ import {
   appendTerminalContextsToPrompt,
   buildTerminalContextPreviewTitle,
   buildTerminalContextBlock,
-  collectInlineTerminalContextIds,
   deriveDisplayedUserMessageState,
-  ensureInlineTerminalContextReferences,
   extractTrailingTerminalContexts,
   filterTerminalContextsWithText,
   formatInlineTerminalContextLabel,
@@ -15,12 +13,9 @@ import {
   formatTerminalContextReference,
   hasTerminalContextText,
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
-  insertInlineTerminalContextReference,
   isTerminalContextExpired,
   materializeInlineTerminalContextPrompt,
   migrateLegacyTerminalContextPlaceholders,
-  removeInlineTerminalContextReference,
-  stripInlineContextReferences,
   type TerminalContextDraft,
 } from "./terminalContext";
 
@@ -155,56 +150,6 @@ describe("terminalContext", () => {
     expect(formatTerminalContextReference(makeContext())).toBe(
       "[Terminal 1 lines 12-13](t3-context://v1/terminal/context-1)",
     );
-  });
-
-  it("inserts a reference at the cursor with spacing and lands the cursor after it", () => {
-    const link = formatTerminalContextReference(makeContext());
-    expect(insertInlineTerminalContextReference("abc", 1, makeContext())).toEqual({
-      prompt: `a ${link} bc`,
-      cursor: 2 + link.length + 1,
-    });
-    expect(
-      insertInlineTerminalContextReference("Inspect @package.json ", 22, makeContext()),
-    ).toEqual({ prompt: `Inspect @package.json ${link} `, cursor: 22 + link.length + 1 });
-    // Consumes an existing trailing space at the insertion point.
-    expect(insertInlineTerminalContextReference("yo whats", 3, makeContext())).toEqual({
-      prompt: `yo ${link} whats`,
-      cursor: 3 + link.length + 1,
-    });
-  });
-
-  it("removes a reference by id together with one adjacent space", () => {
-    const first = formatTerminalContextReference(makeContext());
-    const second = formatTerminalContextReference(makeContext({ id: "context-2" }));
-    expect(removeInlineTerminalContextReference(`a ${first} ${second} c`, "context-2")).toEqual({
-      prompt: `a ${first} c`,
-      cursor: 2 + first.length + 1,
-    });
-    expect(removeInlineTerminalContextReference("plain", "context-9")).toEqual({
-      prompt: "plain",
-      cursor: 5,
-    });
-  });
-
-  it("collects referenced ids and strips references for content checks", () => {
-    const first = formatTerminalContextReference(makeContext());
-    const second = formatTerminalContextReference(makeContext({ id: "context-2" }));
-    const prompt = `see ${first} and ${second} and [img](t3-context://v1/image/ctx_9)`;
-    expect(collectInlineTerminalContextIds(prompt)).toEqual(["context-1", "context-2"]);
-    expect(stripInlineContextReferences(prompt)).toBe("see  and  and ");
-  });
-
-  it("prepends references for contexts the prompt does not mention yet", () => {
-    const first = formatTerminalContextReference(makeContext());
-    const second = formatTerminalContextReference(makeContext({ id: "context-2" }));
-    const contexts = [makeContext(), makeContext({ id: "context-2" })];
-    expect(ensureInlineTerminalContextReferences(`x ${second}`, contexts)).toBe(
-      `${first} x ${second}`,
-    );
-    expect(ensureInlineTerminalContextReferences(`${first} ${second}`, contexts)).toBe(
-      `${first} ${second}`,
-    );
-    expect(ensureInlineTerminalContextReferences("", contexts)).toBe(`${first} ${second} `);
   });
 
   it("migrates legacy placeholders to references in order and drops extras", () => {

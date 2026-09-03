@@ -78,10 +78,11 @@ import {
   DraftId,
 } from "./composerDraftStore";
 import { removeLocalStorageItem, setLocalStorageItem } from "./hooks/useLocalStorage";
+import { insertInlineContextReference } from "./lib/composerContextReferences";
+import { terminalContextReference } from "./lib/composerContextRecords";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   formatTerminalContextReference,
-  insertInlineTerminalContextReference,
   type TerminalContextDraft,
 } from "./lib/terminalContext";
 import { createDebouncedStorage } from "./lib/storage";
@@ -778,8 +779,16 @@ describe("composerDraftStore terminal contexts", () => {
       lineStart: 9,
       lineEnd: 10,
     });
-    const firstInsertion = insertInlineTerminalContextReference("alpha beta", 6, first);
-    const secondInsertion = insertInlineTerminalContextReference(firstInsertion.prompt, 0, second);
+    const firstInsertion = insertInlineContextReference(
+      "alpha beta",
+      6,
+      terminalContextReference(first),
+    );
+    const secondInsertion = insertInlineContextReference(
+      firstInsertion.prompt,
+      0,
+      terminalContextReference(second),
+    );
 
     expect(
       useComposerDraftStore
@@ -908,99 +917,6 @@ describe("composerDraftStore terminal contexts", () => {
     expect(mergedState.draftsByThreadKey[threadKeyFor(threadId)]).toBeUndefined();
     expect(mergedState.draftThreadsByThreadKey).toEqual({});
     expect(mergedState.logicalProjectDraftThreadKeyByLogicalProjectKey).toEqual({});
-  });
-});
-
-describe("composerDraftStore element contexts", () => {
-  const threadId = ThreadId.make("thread-element");
-  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
-  const baseSelection = {
-    pageUrl: "https://example.com/dashboard",
-    pageTitle: "Dashboard",
-    tagName: "button",
-    selector: "button.submit",
-    htmlPreview: "<button>Save</button>",
-    componentName: "SubmitButton",
-    source: {
-      functionName: "SubmitButton",
-      fileName: "/repo/Button.tsx",
-      lineNumber: 12,
-      columnNumber: 5,
-    },
-    styles: ".submit { color: white; }",
-  } as const;
-
-  beforeEach(() => {
-    resetComposerDraftStore();
-  });
-
-  it("adds an element context and stamps id + threadId + pickedAt", () => {
-    const accepted = useComposerDraftStore.getState().addElementContext(threadRef, baseSelection);
-    expect(accepted).toBe(true);
-    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
-    expect(draft?.elementContexts).toHaveLength(1);
-    const entry = draft?.elementContexts[0]!;
-    expect(entry.id.startsWith("el_")).toBe(true);
-    expect(entry.threadId).toBe(threadId);
-    expect(entry.pickedAt.length).toBeGreaterThan(0);
-    expect(entry.componentName).toBe("SubmitButton");
-  });
-
-  it("dedupes by selector + tag + componentName + pageUrl signature", () => {
-    const store = useComposerDraftStore.getState();
-    expect(store.addElementContext(threadRef, baseSelection)).toBe(true);
-    const second = store.addElementContext(threadRef, {
-      ...baseSelection,
-      htmlPreview: "<button>Save 2</button>",
-    });
-    expect(second).toBe(false);
-    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.elementContexts).toHaveLength(1);
-  });
-
-  it("removeElementContext drops by id + leaves siblings intact", () => {
-    const store = useComposerDraftStore.getState();
-    store.addElementContext(threadRef, baseSelection);
-    store.addElementContext(threadRef, { ...baseSelection, selector: "button.cancel" });
-    const ids = draftFor(threadId, TEST_ENVIRONMENT_ID)!.elementContexts.map((c) => c.id);
-    store.removeElementContext(threadRef, ids[0]!);
-    const remaining = draftFor(threadId, TEST_ENVIRONMENT_ID)?.elementContexts;
-    expect(remaining?.map((c) => c.id)).toEqual([ids[1]]);
-  });
-
-  it("setElementContexts replaces the slice and clearComposerContent wipes it", () => {
-    const store = useComposerDraftStore.getState();
-    store.addElementContext(threadRef, baseSelection);
-    store.setElementContexts(threadRef, []);
-    // Fully empty draft should be removed via shouldRemoveDraft.
-    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
-
-    store.addElementContext(threadRef, baseSelection);
-    store.clearComposerContent(threadRef);
-    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
-  });
-
-  it("persists element contexts via the partializer (round-trippable)", () => {
-    useComposerDraftStore.getState().addElementContext(threadRef, baseSelection);
-    const persistApi = useComposerDraftStore.persist as unknown as {
-      getOptions: () => {
-        partialize: (state: ReturnType<typeof useComposerDraftStore.getState>) => unknown;
-      };
-    };
-    const persisted = persistApi.getOptions().partialize(useComposerDraftStore.getState()) as {
-      draftsByThreadKey?: Record<string, { elementContexts?: Array<Record<string, unknown>> }>;
-    };
-    const entry =
-      persisted.draftsByThreadKey?.[threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]
-        ?.elementContexts?.[0];
-    expect(entry).toMatchObject({
-      pageUrl: baseSelection.pageUrl,
-      tagName: baseSelection.tagName,
-      selector: baseSelection.selector,
-      componentName: baseSelection.componentName,
-    });
-    // Persistence does NOT include htmlPreview / styles oversize-clamping —
-    // that happens at normalization time, before the value reaches the store.
-    expect(typeof entry?.htmlPreview).toBe("string");
   });
 });
 
@@ -2607,5 +2523,87 @@ describe("createDebouncedStorage", () => {
     vi.advanceTimersByTime(300);
     expect(base.setItem).toHaveBeenCalledTimes(1);
     expect(base.setItem).toHaveBeenCalledWith("key", "v2");
+  });
+});
+
+describe("composerDraftStore inline context references", () => {
+  const threadId = ThreadId.make("thread-inline-context");
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
+  const reviewComment = {
+    id: "rc-1",
+    sectionId: "file:a/b.ts",
+    sectionTitle: "File comment",
+    filePath: "a/b.ts",
+    startIndex: 3,
+    endIndex: 3,
+    rangeLabel: "L4",
+    text: "Why?",
+    diff: "const x = 1;",
+  };
+  const reviewLink = "[b.ts L4](t3-context://v1/review-comment/rc-1)";
+  const annotation = {
+    id: "ann-1",
+    pageUrl: "http://localhost:3000/",
+    pageTitle: "Home",
+    comment: "Bigger",
+    elements: [],
+    regions: [],
+    strokes: [],
+    styleChanges: [],
+    screenshot: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+  const annotationLink = "[Bigger](t3-context://v1/preview-annotation/ann-1)";
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  it("appends a link when a review comment is added and strips it on removal", () => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadRef, "look");
+    store.addReviewComment(threadRef, reviewComment);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(`look ${reviewLink} `);
+    // Re-adding the same comment replaces the record without a second link.
+    store.addReviewComment(threadRef, { ...reviewComment, text: "edited" });
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(`look ${reviewLink} `);
+    store.removeReviewComment(threadRef, "rc-1");
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("look");
+  });
+
+  it("appends a link when a preview annotation is added and strips it on removal", () => {
+    const store = useComposerDraftStore.getState();
+    store.addPreviewAnnotation(threadRef, annotation);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(`${annotationLink} `);
+    store.removePreviewAnnotation(threadRef, "ann-1");
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
+  });
+
+  it("adds links for persisted review comments that predate references", () => {
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        merge: (
+          persistedState: unknown,
+          currentState: ReturnType<typeof useComposerDraftStore.getState>,
+        ) => ReturnType<typeof useComposerDraftStore.getState>;
+      };
+    };
+    const mergedState = persistApi.getOptions().merge(
+      {
+        draftsByThreadId: {
+          [threadId]: {
+            prompt: "old draft",
+            attachments: [],
+            reviewComments: [reviewComment],
+          },
+        },
+        draftThreadsByThreadId: {},
+        projectDraftThreadIdByProjectKey: {},
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(mergedState.draftsByThreadKey[threadKeyFor(threadId)]?.prompt).toBe(
+      `old draft ${reviewLink} `,
+    );
   });
 });
