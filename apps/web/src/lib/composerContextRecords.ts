@@ -2,6 +2,8 @@ import type {
   ComposerContextId,
   ComposerContextRecord,
   ElementContextDetails,
+  FileContextRecord,
+  ImageContextRecord,
   KnownComposerContextRecord,
   OrchestrationMessageContext,
   PreviewAnnotationContextRecord,
@@ -13,6 +15,7 @@ import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLega
 import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
 
 import type { ComposerContextReference } from "./composerContextReferences";
+import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
 import { normalizeElementContextSelection } from "./elementContext";
 import {
   formatTerminalContextLabel,
@@ -141,15 +144,47 @@ export function previewAnnotationContextRecord(
   };
 }
 
+export function imageContextReference(image: ComposerImageAttachment): ComposerContextReference {
+  return { kind: "image", contextId: image.id, label: image.name };
+}
+
+export function fileContextReference(file: ComposerFileAttachment): ComposerContextReference {
+  return { kind: "file", contextId: file.id, label: file.name };
+}
+
+/** Binds a draft attachment to the id the receiving side will know it by. */
+export interface BoundComposerAttachment {
+  attachment: ComposerImageAttachment | ComposerFileAttachment;
+  attachmentId: string;
+}
+
+export function attachmentContextRecord(
+  bound: BoundComposerAttachment,
+): ImageContextRecord | FileContextRecord {
+  const { attachment, attachmentId } = bound;
+  const base = {
+    version: 1 as const,
+    contextId: attachment.id as ComposerContextId,
+    label: sanitizeComposerContextLabel(attachment.name, attachment.type),
+    attachmentId,
+    name: attachment.name,
+    mimeType: attachment.mimeType,
+    sizeBytes: attachment.sizeBytes,
+  };
+  return attachment.type === "image" ? { ...base, kind: "image" } : { ...base, kind: "file" };
+}
+
 export function buildMessageContext(input: {
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   reviewComments: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
+  attachments?: ReadonlyArray<BoundComposerAttachment>;
 }): OrchestrationMessageContext | undefined {
   const records: ComposerContextRecord[] = [
     ...input.terminalContexts.map(terminalContextRecord),
     ...input.reviewComments.map(reviewCommentContextRecord),
     ...input.previewAnnotations.map(previewAnnotationContextRecord),
+    ...(input.attachments ?? []).map(attachmentContextRecord),
   ];
   return records.length === 0 ? undefined : { version: 1, records };
 }

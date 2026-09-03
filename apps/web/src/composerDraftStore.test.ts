@@ -2607,3 +2607,92 @@ describe("composerDraftStore inline context references", () => {
     );
   });
 });
+
+describe("composerDraftStore attachment references", () => {
+  const threadId = ThreadId.make("thread-attachment-refs");
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
+  const fileLink = "[notes.txt](t3-context://v1/file/file-1)";
+  const imageLink = "[shot.png](t3-context://v1/image/img-1)";
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  it("strips references when an image or file is removed", () => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadRef, `see ${imageLink} and ${fileLink} ok`);
+    store.addImages(threadRef, [
+      makeImage({ id: "img-1", previewUrl: "blob:img-1", name: "shot.png" }),
+    ]);
+    store.addFiles(threadRef, [
+      {
+        type: "file",
+        id: "file-1",
+        name: "notes.txt",
+        mimeType: "text/plain",
+        sizeBytes: 3,
+        file: null,
+        uploadedAttachmentId: "pending-1",
+        uploadEnvironmentId: TEST_ENVIRONMENT_ID,
+      },
+    ]);
+    store.removeImage(threadRef, "img-1");
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(`see and ${fileLink} ok`);
+    store.removeFile(threadRef, "file-1");
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("see and ok");
+  });
+
+  it("moves a needs-reattach marker's chip to the re-picked file", () => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadRef, "see [notes.txt](t3-context://v1/file/marker-1) ok");
+    store.addFiles(threadRef, [
+      {
+        type: "file",
+        id: "marker-1",
+        name: "notes.txt",
+        mimeType: "text/plain",
+        sizeBytes: 3,
+        file: null,
+      },
+    ]);
+    store.addFiles(threadRef, [
+      {
+        type: "file",
+        id: "fresh-1",
+        name: "notes.txt",
+        mimeType: "text/plain",
+        sizeBytes: 3,
+        file: new File(["abc"], "notes.txt", { type: "text/plain" }),
+      },
+    ]);
+    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
+    expect(draft?.files.map((file) => file.id)).toEqual(["fresh-1"]);
+    expect(draft?.prompt).toBe("see [notes.txt](t3-context://v1/file/fresh-1) ok");
+  });
+
+  it("appends chips for persisted files that predate references", () => {
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        merge: (
+          persistedState: unknown,
+          currentState: ReturnType<typeof useComposerDraftStore.getState>,
+        ) => ReturnType<typeof useComposerDraftStore.getState>;
+      };
+    };
+    const mergedState = persistApi.getOptions().merge(
+      {
+        draftsByThreadId: {
+          [threadId]: {
+            prompt: "old",
+            attachments: [],
+            files: [{ id: "file-1", name: "notes.txt", mimeType: "text/plain", sizeBytes: 3 }],
+          },
+        },
+        draftThreadsByThreadId: {},
+        projectDraftThreadIdByProjectKey: {},
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(mergedState.draftsByThreadKey[threadKeyFor(threadId)]?.prompt).toBe(`old ${fileLink} `);
+  });
+});

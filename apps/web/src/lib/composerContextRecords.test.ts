@@ -2,6 +2,7 @@ import { ThreadId, type PreviewAnnotationPayload } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  attachmentContextRecord,
   buildMessageContext,
   previewAnnotationContextLabel,
   previewAnnotationContextRecord,
@@ -149,5 +150,64 @@ describe("composerContextRecords", () => {
     });
     expect(legacy.text).toBe("hi\n\n[T line 1](t3-context://v1/terminal/legacy_terminal_1)");
     expect(legacy.recordsById.get("legacy_terminal_1")?.kind).toBe("terminal");
+  });
+});
+
+describe("attachment context records", () => {
+  it("binds image and file records to the given attachment id", () => {
+    const image = attachmentContextRecord({
+      attachment: {
+        type: "image",
+        id: "img-1",
+        name: "shot.png",
+        mimeType: "image/png",
+        sizeBytes: 10,
+        previewUrl: "blob:x",
+        file: new File(["x"], "shot.png", { type: "image/png" }),
+      },
+      attachmentId: "pending-abc",
+    });
+    expect(image).toEqual({
+      version: 1,
+      contextId: "img-1",
+      kind: "image",
+      label: "shot.png",
+      attachmentId: "pending-abc",
+      name: "shot.png",
+      mimeType: "image/png",
+      sizeBytes: 10,
+    });
+    const file = attachmentContextRecord({
+      attachment: {
+        type: "file",
+        id: "file-1",
+        name: "notes.txt",
+        mimeType: "text/plain",
+        sizeBytes: 3,
+        file: null,
+        uploadedAttachmentId: "pending-def",
+      },
+      attachmentId: "pending-def",
+    });
+    expect(file).toMatchObject({ kind: "file", contextId: "file-1", attachmentId: "pending-def" });
+    const context = buildMessageContext({
+      terminalContexts: [],
+      reviewComments: [],
+      previewAnnotations: [],
+      attachments: [
+        {
+          attachment: {
+            type: "file",
+            id: "file-1",
+            name: "n",
+            mimeType: "text/plain",
+            sizeBytes: 1,
+            file: null,
+          },
+          attachmentId: "file-1",
+        },
+      ],
+    });
+    expect(context?.records.map((record) => record.kind)).toEqual(["file"]);
   });
 });

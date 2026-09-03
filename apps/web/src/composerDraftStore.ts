@@ -49,9 +49,11 @@ import {
 import {
   appendInlineContextReference,
   ensureInlineContextReferences,
+  formatInlineContextReference,
   removeInlineContextReference,
 } from "./lib/composerContextReferences";
 import {
+  fileContextReference,
   previewAnnotationContextReference,
   reviewCommentContextReference,
   terminalContextReference,
@@ -61,6 +63,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
 import { createDebouncedStorage, createMemoryStorage } from "./lib/storage";
 import { getDefaultServerModel } from "./providerModels";
+import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { UnifiedSettings } from "@t3tools/contracts/settings";
 import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewCommentContext";
 const isRuntimeMode = Schema.is(RuntimeMode);
@@ -2227,28 +2230,31 @@ function toHydratedThreadDraft(
   const modelSelectionByProvider: Partial<Record<ProviderInstanceId, ModelSelection>> =
     persistedDraft.modelSelectionByProvider ?? {};
   const activeProvider = normalizeProviderInstanceId(persistedDraft.activeProvider) ?? null;
+  const files: ComposerFileAttachment[] =
+    persistedDraft.files?.map((file) => ({
+      type: "file" as const,
+      id: file.id,
+      name: file.name,
+      mimeType: file.mimeType,
+      sizeBytes: file.sizeBytes,
+      file: null,
+      // A marker without an attachment id hydrates as needs-reattach: no
+      // bytes, no server-side upload, only the metadata to tell the user
+      // what to attach again.
+      ...(file.attachmentId !== undefined && file.environmentId !== undefined
+        ? { uploadedAttachmentId: file.attachmentId, uploadEnvironmentId: file.environmentId }
+        : {}),
+    })) ?? [];
 
   return {
+    // Files predating inline references get a chip appended; images stay shelf-only.
     prompt: ensureInlineContextReferences(persistedDraft.prompt, [
       ...(persistedDraft.reviewComments ?? []).map(reviewCommentContextReference),
       ...(persistedDraft.previewAnnotations ?? []).map(previewAnnotationContextReference),
+      ...files.map(fileContextReference),
     ]),
     images: hydrateImagesFromPersisted(persistedDraft.attachments),
-    files:
-      persistedDraft.files?.map((file) => ({
-        type: "file" as const,
-        id: file.id,
-        name: file.name,
-        mimeType: file.mimeType,
-        sizeBytes: file.sizeBytes,
-        file: null,
-        // A marker without an attachment id hydrates as needs-reattach: no
-        // bytes, no server-side upload, only the metadata to tell the user
-        // what to attach again.
-        ...(file.attachmentId !== undefined && file.environmentId !== undefined
-          ? { uploadedAttachmentId: file.attachmentId, uploadEnvironmentId: file.environmentId }
-          : {}),
-      })) ?? [],
+    files,
     nonPersistedImageIds: [],
     persistedAttachments: [...persistedDraft.attachments],
     terminalContexts:
@@ -3117,6 +3123,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft: ComposerThreadDraftState = {
               ...current,
+              prompt: removeInlineContextReference(current.prompt, imageId).prompt,
               images: current.images.filter((image) => image.id !== imageId),
               nonPersistedImageIds: current.nonPersistedImageIds.filter((id) => id !== imageId),
               persistedAttachments: current.persistedAttachments.filter(
@@ -3184,10 +3191,20 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               return state;
             }
             const retained = existing.files.map((file) => replacements.get(file.id) ?? file);
+            // A replaced marker's chip follows the file to its new id.
+            const prompt =
+              replacements.size === 0
+                ? existing.prompt
+                : replaceComposerContextReferences(existing.prompt, (occurrence) => {
+                    const replacement = replacements.get(occurrence.contextId);
+                    return replacement
+                      ? formatInlineContextReference(fileContextReference(replacement))
+                      : occurrence.source;
+                  });
             return {
               draftsByThreadKey: {
                 ...state.draftsByThreadKey,
-                [threadKey]: { ...existing, files: [...retained, ...accepted] },
+                [threadKey]: { ...existing, prompt, files: [...retained, ...accepted] },
               },
             };
           });
@@ -3204,6 +3221,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft = {
               ...current,
+              prompt: removeInlineContextReference(current.prompt, fileId).prompt,
               files: current.files.filter((file) => file.id !== fileId),
             } satisfies ComposerThreadDraftState;
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
