@@ -12,6 +12,7 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 - [Provider runtime](#provider-runtime)
 - [Checkpointing](#checkpointing)
 - [Appearance](#appearance)
+- [Composer context](#composer-context)
 
 ## Concepts
 
@@ -175,6 +176,24 @@ ships T3 Code already matching it.
 - [Permission modes][18]
 - [Workspace layout][2]
 
+### Composer context
+
+#### Context record
+
+The typed payload behind a composer chip: an image, file, terminal excerpt, picked element, preview annotation, review comment, mention, or skill. Defined by `ComposerContextRecord` in [composerContext.ts][27] and carried in `message.context.records`, keyed by `contextId`. Never holds bytes. See [composer-context-references.md][28].
+
+#### Context reference
+
+One occurrence of a context record in message text, written as `[label](t3-context://v1/<kind>/<contextId>)`. Carries position and identity only; several references can share one record. See [composer-context-references.md][28].
+
+#### Attachment binding
+
+The link from an image or file context record to the server-owned `ChatAttachment` that holds its bytes. The binding can be re-pointed (pending upload to final id, or a clone into another thread) without changing the record's `contextId`.
+
+#### Attachment inventory
+
+The composer's ordered list of image records shown as thumbnails above the prose. It owns the image while it is listed, even with zero inline references, and is not a second identity model.
+
 [1]: ../../packages/contracts/src/orchestration.ts
 [2]: ./workspace-layout.md
 [3]: ../../apps/server/src/vcs/GitVcsDriverCore.ts
@@ -201,3 +220,5 @@ ships T3 Code already matching it.
 [24]: ./overview.md
 [25]: ../../apps/server/src/environmentTheme.ts
 [26]: ../user/environment-theme.md
+[27]: ../../packages/contracts/src/composerContext.ts
+[28]: ./composer-context-references.md
