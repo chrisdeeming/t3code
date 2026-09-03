@@ -2636,6 +2636,30 @@ describe("composerDraftStore attachment references", () => {
     resetComposerDraftStore();
   });
 
+  it("reports which attachments it accepted so only those get chips", () => {
+    const store = useComposerDraftStore.getState();
+    const file = {
+      type: "file" as const,
+      id: "file-1",
+      name: "notes.txt",
+      mimeType: "text/plain",
+      sizeBytes: 3,
+      file: null,
+      uploadedAttachmentId: "p",
+      uploadEnvironmentId: TEST_ENVIRONMENT_ID,
+    };
+    expect(store.addFiles(threadRef, [file])).toEqual(["file-1"]);
+    expect(store.addFiles(threadRef, [{ ...file, id: "file-2" }])).toEqual([]);
+    const image = makeImage({ id: "img-1", previewUrl: "blob:img-1", name: "shot.png" });
+    expect(store.addImages(threadRef, [image])).toEqual(["img-1"]);
+    expect(
+      store.addImage(
+        threadRef,
+        makeImage({ id: "img-2", previewUrl: "blob:img-2", name: "shot.png" }),
+      ),
+    ).toEqual([]);
+  });
+
   it("strips references when an image or file is removed", () => {
     const store = useComposerDraftStore.getState();
     store.setPrompt(threadRef, `see ${imageLink} and ${fileLink} ok`);

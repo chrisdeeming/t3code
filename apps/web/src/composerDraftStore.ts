@@ -555,10 +555,12 @@ interface ComposerDraftStoreState {
     threadRef: ComposerThreadTarget,
     interactionMode: ProviderInteractionMode | null | undefined,
   ) => void;
-  addImage: (threadRef: ComposerThreadTarget, image: ComposerImageAttachment) => void;
-  addImages: (threadRef: ComposerThreadTarget, images: ComposerImageAttachment[]) => void;
+  /** Returns the ids the draft accepted; duplicates and over-cap attachments are left out. */
+  addImage: (threadRef: ComposerThreadTarget, image: ComposerImageAttachment) => string[];
+  addImages: (threadRef: ComposerThreadTarget, images: ComposerImageAttachment[]) => string[];
   removeImage: (threadRef: ComposerThreadTarget, imageId: string) => void;
-  addFiles: (threadRef: ComposerThreadTarget, files: ComposerFileAttachment[]) => void;
+  /** Returns the ids of files appended; a re-pick that replaces a marker is not listed. */
+  addFiles: (threadRef: ComposerThreadTarget, files: ComposerFileAttachment[]) => string[];
   removeFile: (threadRef: ComposerThreadTarget, fileId: string) => void;
   setFileUpload: (
     threadRef: ComposerThreadTarget,
@@ -3080,17 +3082,19 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           const threadKey = resolveComposerDraftKey(get(), threadRef);
           const threadId = resolveComposerThreadId(get(), threadRef);
           if (!threadKey || !threadId) {
-            return;
+            return [];
           }
-          get().addImages(typeof threadRef === "string" ? DraftId.make(threadKey) : threadRef, [
-            image,
-          ]);
+          return get().addImages(
+            typeof threadRef === "string" ? DraftId.make(threadKey) : threadRef,
+            [image],
+          );
         },
         addImages: (threadRef, images) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
           if (threadKey.length === 0 || images.length === 0) {
-            return;
+            return [];
           }
+          let acceptedIds: string[] = [];
           set((state) => {
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
             const existingIds = new Set(existing.images.map((image) => image.id));
@@ -3125,6 +3129,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             if (dedupedIncoming.length === 0) {
               return state;
             }
+            acceptedIds = dedupedIncoming.map((image) => image.id);
             return {
               draftsByThreadKey: {
                 ...state.draftsByThreadKey,
@@ -3135,6 +3140,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               },
             };
           });
+          return acceptedIds;
         },
         removeImage: (threadRef, imageId) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
@@ -3175,8 +3181,9 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
         addFiles: (threadRef, files) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
           if (threadKey.length === 0 || files.length === 0) {
-            return;
+            return [];
           }
+          let acceptedIds: string[] = [];
           set((state) => {
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
             const knownIds = new Set(existing.files.map((file) => file.id));
@@ -3223,6 +3230,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             if (accepted.length === 0 && replacements.size === 0) {
               return state;
             }
+            acceptedIds = accepted.map((file) => file.id);
             const retained = existing.files.map((file) => replacements.get(file.id) ?? file);
             // A replaced marker's chip follows the file to its new id.
             const prompt =
@@ -3241,6 +3249,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               },
             };
           });
+          return acceptedIds;
         },
         removeFile: (threadRef, fileId) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";

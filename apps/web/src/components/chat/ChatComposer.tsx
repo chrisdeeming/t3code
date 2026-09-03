@@ -2130,23 +2130,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
 
   const addComposerImage = useCallback(
-    (image: ComposerImageAttachment) => {
-      addComposerDraftImage(composerDraftTarget, image);
-    },
+    (image: ComposerImageAttachment) => addComposerDraftImage(composerDraftTarget, image),
     [composerDraftTarget, addComposerDraftImage],
   );
 
   const addComposerImagesToDraft = useCallback(
-    (images: ComposerImageAttachment[]) => {
-      addComposerDraftImages(composerDraftTarget, images);
-    },
+    (images: ComposerImageAttachment[]) => addComposerDraftImages(composerDraftTarget, images),
     [composerDraftTarget, addComposerDraftImages],
   );
 
   const addComposerFilesToDraft = useCallback(
-    (files: ComposerFileAttachment[]) => {
-      addComposerDraftFiles(composerDraftTarget, files);
-    },
+    (files: ComposerFileAttachment[]) => addComposerDraftFiles(composerDraftTarget, files),
     [addComposerDraftFiles, composerDraftTarget],
   );
 
@@ -4291,9 +4285,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setThreadError(threadId, error);
     let insertedAny = false;
     if (acceptedFiles.length > 0) {
-      addComposerFilesToDraft(acceptedFiles);
-      insertAttachmentReferences(acceptedFiles.map(fileContextReference));
-      insertedAny = true;
+      // Only files the draft actually took get a chip; a duplicate is deduped by the store
+      // and a chip for it would point at nothing.
+      const storedIds = new Set(addComposerFilesToDraft(acceptedFiles));
+      const storedFiles = acceptedFiles.filter((file) => storedIds.has(file.id));
+      if (storedFiles.length > 0) {
+        insertAttachmentReferences(storedFiles.map(fileContextReference));
+        insertedAny = true;
+      }
     }
     if (acceptedImages.length === 0) return insertedAny;
 
@@ -4327,13 +4326,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           file: attachmentFile,
         });
       }
-      if (nextImages.length === 1 && nextImages[0]) {
-        addComposerImage(nextImages[0]);
-      } else if (nextImages.length > 1) {
-        addComposerImagesToDraft(nextImages);
-      }
-      if (nextImages.length > 0) {
-        insertAttachmentReferences(nextImages.map(imageContextReference));
+      const storedImageIds = new Set(
+        nextImages.length === 1 && nextImages[0]
+          ? addComposerImage(nextImages[0])
+          : nextImages.length > 1
+            ? addComposerImagesToDraft(nextImages)
+            : [],
+      );
+      const storedImages = nextImages.filter((image) => storedImageIds.has(image.id));
+      if (storedImages.length > 0) {
+        insertAttachmentReferences(storedImages.map(imageContextReference));
         insertedAny = true;
       }
       // Only failures are reported here. Success must not pass `null`: by
