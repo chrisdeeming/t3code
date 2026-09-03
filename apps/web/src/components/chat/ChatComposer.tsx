@@ -1906,6 +1906,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const desktopOutsidePointerReleaseTimeoutRef = useRef<number | null>(null);
   const composerScrollCollapseTimeoutRef = useRef<number | null>(null);
   const composerScrollCollapseEligibleRef = useRef(false);
+  const windowRefocusInFlightRef = useRef(false);
   const composerScrollGestureRef = useRef(createComposerScrollGestureState());
   const stashPulseKeyRef = useRef(0);
   const stashPulseTimeoutRef = useRef<number | null>(null);
@@ -2670,6 +2671,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       setComposerTrigger(detectComposerTrigger(next.text, nextExpandedCursor));
       if (options?.focusEditorAfterReplace !== false) {
         window.requestAnimationFrame(() => {
+          // Type-to-focus routes only the first key through here; once the
+          // controlled update focuses the editor, later keys land natively.
+          // Skip the deferred caret placement when the draft has moved on,
+          // or it drags the caret back behind what was typed since.
+          if (promptRef.current !== next.text) return;
           composerEditorRef.current?.focusAt(nextCursor);
         });
       }
@@ -3707,6 +3713,28 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
   }, [canScrollCollapseComposer]);
 
+  // Returning to the window re-fires focus on the element that already held
+  // it. That focus arrives after the window's own event, so a window focus
+  // marks the frame in which it should be ignored by the form's capture.
+  useEffect(() => {
+    if (!isComposerScrollCollapsed) return;
+    let frame: number | null = null;
+    const onWindowFocus = () => {
+      windowRefocusInFlightRef.current = true;
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        windowRefocusInFlightRef.current = false;
+      });
+    };
+    window.addEventListener("focus", onWindowFocus);
+    return () => {
+      window.removeEventListener("focus", onWindowFocus);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      windowRefocusInFlightRef.current = false;
+    };
+  }, [isComposerScrollCollapsed]);
+
   useEffect(() => {
     if (!canTrackComposerScrollGesture) return;
 
@@ -4622,7 +4650,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ) {
           return;
         }
-        setIsComposerScrollCollapsed(false);
+        // Focus returning from another window or tab lands on the element
+        // that already held it, which is not a request to expand a
+        // scroll-collapsed composer.
+        if (!windowRefocusInFlightRef.current) {
+          setIsComposerScrollCollapsed(false);
+        }
         if (composerBlurFrameRef.current !== null) {
           window.cancelAnimationFrame(composerBlurFrameRef.current);
           composerBlurFrameRef.current = null;
