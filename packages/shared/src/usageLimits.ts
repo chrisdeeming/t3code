@@ -7,6 +7,9 @@
  */
 import {
   type EnvironmentId,
+  type UsageLimitsReport,
+  type ProviderInstanceId,
+  type ServerProviderSlashCommand,
   isProviderAvailable,
   type ServerProvider,
   type ServerProviderUsageLimits,
@@ -14,6 +17,8 @@ import {
   type UsageLimitSourceSnapshot,
   type UsageLimitSourceSnapshots,
 } from "@t3tools/contracts";
+
+import * as DateTime from "effect/DateTime";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -144,7 +149,7 @@ function accountKey(driver: ServerProvider["driver"], email: string | undefined)
 
 /** The instance's configured name, else the driver's, else its raw kind. */
 export function providerLimitsLabel(
-  provider: ServerProvider,
+  provider: Pick<ServerProvider, "driver" | "displayName">,
   driverLabel: (driver: ServerProvider["driver"]) => string | undefined,
 ): string {
   return provider.displayName?.trim() || driverLabel(provider.driver) || String(provider.driver);
@@ -208,4 +213,108 @@ export function formatResetsIn(window: ServerProviderUsageWindow, now: number): 
   const resetsAt = resetMillis(window);
   if (resetsAt === null) return null;
   return resetsAt <= now ? "resets now" : `resets in ${formatDuration(resetsAt - now)}`;
+}
+
+/** Limit commands are served by T3 from the same snapshots as Usage → Limits. */
+export const USAGE_LIMITS_COMMAND = {
+  name: "usage-limits",
+  description: "Show this provider's usage limits",
+} satisfies ServerProviderSlashCommand;
+
+/** Handled by the client without sending a turn; anything with arguments stays an ordinary prompt. */
+export function isUsageLimitsCommand(prompt: string): boolean {
+  return prompt.trim().toLowerCase() === "/usage-limits";
+}
+
+export function hasProviderUsageLimits(
+  driver: ServerProvider["driver"],
+  providers: readonly ServerProvider[],
+  sources: UsageLimitSourceSnapshots,
+): boolean {
+  return (
+    providersWithLimits(providers).some((provider) => provider.driver === driver) ||
+    sources.some((source) => source.accounts.some((account) => account.driver === driver))
+  );
+}
+
+/** Advertise on workspace catalogs too, which replace the global command list. */
+export function withUsageLimitsCommands(
+  providers: readonly ServerProvider[],
+  sources: UsageLimitSourceSnapshots,
+): ServerProvider[] {
+  return providers.map((provider) => {
+    if (!hasProviderUsageLimits(provider.driver, providers, sources)) return provider;
+    const commands = (items: readonly ServerProviderSlashCommand[]) => [
+      ...items.filter((command) => command.name !== USAGE_LIMITS_COMMAND.name),
+      USAGE_LIMITS_COMMAND,
+    ];
+    return {
+      ...provider,
+      slashCommands: commands(provider.slashCommands),
+      ...(provider.workspaceSnapshots
+        ? {
+            workspaceSnapshots: provider.workspaceSnapshots.map((snapshot) => ({
+              ...snapshot,
+              slashCommands: commands(snapshot.slashCommands),
+            })),
+          }
+        : {}),
+    };
+  });
+}
+
+/** A point-in-time report; never refreshes or guesses which pooled account serves a turn. */
+export function collectProviderUsageLimits(
+  instanceId: ProviderInstanceId,
+  providers: readonly ServerProvider[],
+  sources: UsageLimitSourceSnapshots,
+  now: number,
+): UsageLimitsReport | null {
+  const selected = providers.find((provider) => provider.instanceId === instanceId);
+  if (!selected || !hasProviderUsageLimits(selected.driver, providers, sources)) return null;
+  const native = providersWithLimits(providers).filter(
+    (provider) => provider.driver === selected.driver,
+  );
+  const nativeAccounts = new Set(
+    native.flatMap((provider) => {
+      const key = accountKey(provider.driver, provider.auth.email);
+      return key && provider.usageLimits?.windows.length && !provider.usageLimits.unavailable
+        ? [key]
+        : [];
+    }),
+  );
+  const accounts: Array<UsageLimitsReport["accounts"][number]> = [];
+  const notices: string[] = [];
+  for (const provider of native) {
+    if (!provider.usageLimits) continue;
+    accounts.push({
+      id: provider.instanceId,
+      driver: provider.driver,
+      label: `${providerLimitsLabel(provider, () => undefined)} [${provider.instanceId}]`,
+      ...(provider.auth.label ? { plan: provider.auth.label } : {}),
+      instanceId: provider.instanceId,
+      ...(provider.displayName ? { displayName: provider.displayName } : {}),
+      ...(provider.accentColor ? { accentColor: provider.accentColor } : {}),
+      ...(provider.auth.email ? { email: provider.auth.email } : {}),
+      limits: provider.usageLimits,
+    });
+  }
+  for (const source of sources) {
+    const matching = source.accounts.filter((account) => account.driver === selected.driver);
+    for (const account of matching) {
+      const key = accountKey(account.driver, account.email);
+      if (key && nativeAccounts.has(key)) continue;
+      accounts.push({
+        id: `${source.id}:${account.id}`,
+        driver: account.driver,
+        label: `${source.label} · ${account.id}`,
+        sourceLabel: "CLI Proxy",
+        ...(account.plan ? { plan: account.plan } : {}),
+        ...(account.email ? { email: account.email } : {}),
+        limits: account.usageLimits,
+      });
+    }
+    if (matching.length > 0 && source.error) notices.push(`${source.label}: ${source.error}`);
+  }
+  return { createdAt: DateTime.formatIso(DateTime.makeUnsafe(now)), accounts, notices };
 }
