@@ -750,7 +750,7 @@ const buildAppUnderTest = (options?: {
           }),
           Layer.mock(UsageLimitSources.UsageLimitSources)({
             current: Effect.succeed([]),
-            streamChanges: Stream.empty,
+            streamChanges: Stream.make([]),
             refresh: Effect.void,
           }),
         ),
@@ -6135,58 +6135,84 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("routes websocket rpc subscribeServerConfig emits provider status updates", () =>
-    Effect.gen(function* () {
-      const nextProviders = [
-        {
-          instanceId: ProviderInstanceId.make("codex"),
-          driver: ProviderDriverKind.make("codex"),
-          enabled: true,
-          installed: true,
-          version: "1.0.0",
-          status: "ready" as const,
-          auth: { status: "authenticated" as const },
-          checkedAt: "2026-04-11T00:00:00.000Z",
-          models: [],
-          slashCommands: [],
-          skills: [],
-        },
-      ] as const;
-
-      yield* buildAppUnderTest({
-        layers: {
-          keybindings: {
-            loadConfigState: Effect.succeed({
-              keybindings: [],
-              issues: [],
-            }),
-            streamChanges: Stream.empty,
+  it.effect.each([false, true])(
+    "routes websocket rpc subscribeServerConfig emits provider status updates (limits: %s)",
+    (hasLimits) =>
+      Effect.gen(function* () {
+        const nextProviders = [
+          {
+            instanceId: ProviderInstanceId.make("codex"),
+            driver: ProviderDriverKind.make("codex"),
+            enabled: true,
+            installed: true,
+            version: "1.0.0",
+            status: "ready" as const,
+            auth: { status: "authenticated" as const },
+            checkedAt: "2026-04-11T00:00:00.000Z",
+            models: [],
+            slashCommands: [],
+            skills: [],
+            ...(hasLimits
+              ? {
+                  usageLimits: {
+                    checkedAt: "2026-04-11T00:00:00.000Z",
+                    windows: [
+                      { id: "weekly", kind: "weekly" as const, label: "Weekly", usedPercent: 25 },
+                    ],
+                  },
+                }
+              : {}),
           },
-          providerRegistry: {
-            getProviders: Effect.succeed([]),
-            streamChanges: Stream.succeed(nextProviders),
+        ] as const;
+
+        yield* buildAppUnderTest({
+          layers: {
+            keybindings: {
+              loadConfigState: Effect.succeed({
+                keybindings: [],
+                issues: [],
+              }),
+              streamChanges: Stream.empty,
+            },
+            providerRegistry: {
+              getProviders: Effect.succeed([]),
+              streamChanges: Stream.succeed(nextProviders),
+            },
           },
-        },
-      });
+        });
 
-      const wsUrl = yield* getWsServerUrl("/ws");
-      const events = yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) =>
-          client[WS_METHODS.subscribeServerConfig]({}).pipe(Stream.take(2), Stream.runCollect),
-        ),
-      );
+        const wsUrl = yield* getWsServerUrl("/ws");
+        const events = yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[WS_METHODS.subscribeServerConfig]({}).pipe(Stream.take(2), Stream.runCollect),
+          ),
+        );
 
-      const [first, second] = Array.from(events);
-      assert.equal(first?.type, "snapshot");
-      if (first?.type === "snapshot") {
-        assert.deepEqual(first.config.providers, []);
-      }
-      assert.deepEqual(second, {
-        version: 1,
-        type: "providerStatuses",
-        payload: { providers: nextProviders },
-      });
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+        const [first, second] = Array.from(events);
+        assert.equal(first?.type, "snapshot");
+        if (first?.type === "snapshot") {
+          assert.deepEqual(first.config.providers, []);
+        }
+        assert.deepEqual(second, {
+          version: 1,
+          type: "providerStatuses",
+          payload: {
+            providers: hasLimits
+              ? [
+                  {
+                    ...nextProviders[0],
+                    slashCommands: [
+                      {
+                        name: "usage-limits",
+                        description: "Show this provider's usage limits",
+                      },
+                    ],
+                  },
+                ]
+              : nextProviders,
+          },
+        });
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect(

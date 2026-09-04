@@ -7,7 +7,9 @@ import type {
   ProviderInteractionMode,
   RuntimeMode,
   ServerConfig as T3ServerConfig,
+  UsageLimitsReport,
 } from "@t3tools/contracts";
+import { collectProviderUsageLimits, isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
 import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { ReactNode } from "react";
 import {
@@ -20,7 +22,7 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { ActivityIndicator, Platform, Pressable, View, type ViewStyle } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, View, type ViewStyle } from "react-native";
 import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
 import {
   composerAttachmentUploadBlockReason,
@@ -124,6 +126,8 @@ export interface ThreadComposerProps {
   readonly onRemoveDraftImage: (imageId: string) => void;
   readonly onStopThread: () => void;
   readonly onSendMessage: () => Promise<MessageId | null>;
+  /** `/usage-limits` resolves locally; the host decides where the report shows. */
+  readonly onShowUsageLimits: (report: UsageLimitsReport) => void;
   readonly onUpdateModelSelection: (modelSelection: ModelSelection) => void;
   readonly onUpdateRuntimeMode: (runtimeMode: RuntimeMode) => void;
   readonly onUpdateInteractionMode: (interactionMode: ProviderInteractionMode) => void;
@@ -428,9 +432,25 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     }
     onEditorFocusChange?.(false);
   }, [onEditorFocusChange, onExpandedChange, settingsSheetPresentation.isActive]);
-  const { onSendMessage } = props;
+  const { onSendMessage, onChangeDraftMessage, onShowUsageLimits } = props;
 
   const handleSend = useCallback(async () => {
+    // Answered locally from the last Limits snapshot; the agent never sees it.
+    if (isUsageLimitsCommand(props.draftMessage)) {
+      const report = collectProviderUsageLimits(
+        currentModelSelection.instanceId,
+        props.serverConfig?.providers ?? [],
+        props.serverConfig?.usageLimitSources ?? [],
+        Date.now(),
+      );
+      if (report) {
+        onChangeDraftMessage("");
+        onShowUsageLimits(report);
+      } else {
+        Alert.alert("Usage limits unavailable", "This provider does not currently report limits.");
+      }
+      return;
+    }
     if (voiceInput.blocksSubmission) return;
     const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
     if (inFlightThreadIdsRef.current.has(threadKey)) return;
@@ -453,6 +473,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       inFlightThreadIdsRef.current.delete(threadKey);
     }
   }, [
+    props.draftMessage,
+    props.serverConfig,
+    onChangeDraftMessage,
+    onShowUsageLimits,
+    currentModelSelection.instanceId,
     onSendMessage,
     props.environmentId,
     props.environmentLabel,

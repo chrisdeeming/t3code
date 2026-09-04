@@ -19,6 +19,7 @@ import type {
   RuntimeMode,
   ServerConfig as T3ServerConfig,
   ThreadId,
+  UsageLimitsReport,
   UserInputQuestion,
 } from "@t3tools/contracts";
 import * as Haptics from "expo-haptics";
@@ -70,6 +71,7 @@ import type {
   ThreadFeedEntry,
 } from "../../lib/threadActivity";
 import { PendingApprovalCard } from "./PendingApprovalCard";
+import { ComposerUsageLimits } from "./ComposerUsageLimits";
 import { PendingUserInputCard } from "./PendingUserInputCard";
 import {
   FLOATING_WORKING_CONTROL_COVERAGE,
@@ -359,6 +361,19 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const [collapsedUserInputRequestId, setCollapsedUserInputRequestId] =
     useState<ApprovalRequestId | null>(null);
   const activeUserInputRequestId = props.activePendingUserInput?.requestId ?? null;
+  // A /usage-limits snapshot for this thread and model; sending or switching clears it.
+  const [usageLimitsPanel, setUsageLimitsPanel] = useState<{
+    readonly key: string;
+    readonly report: UsageLimitsReport;
+  } | null>(null);
+  const usageLimitsKey = `${selectedThreadKey}:${props.selectedThread.modelSelection.instanceId}`;
+  const usageLimitsReport =
+    usageLimitsPanel?.key === usageLimitsKey ? usageLimitsPanel.report : null;
+  const showUsageLimits = useCallback(
+    (report: UsageLimitsReport) => setUsageLimitsPanel({ key: usageLimitsKey, report }),
+    [usageLimitsKey],
+  );
+  const dismissUsageLimits = useCallback(() => setUsageLimitsPanel(null), []);
   const userInputCollapsed =
     activeUserInputRequestId !== null && collapsedUserInputRequestId === activeUserInputRequestId;
   // The card's height RESERVES keyboard space at all times instead of
@@ -614,6 +629,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   ]);
 
   const handleSendMessage = useCallback(async () => {
+    setUsageLimitsPanel(null);
     const targetThreadKey = selectedThreadKey;
     const hasUserMessage = selectedThreadFeed.some(
       (entry) => entry.type === "message" && entry.message.role === "user",
@@ -778,6 +794,19 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                 onScrollToEnd={handleScrollToEnd}
               />
               <View className="w-full self-center" style={{ maxWidth: contentMaxWidth }}>
+                {usageLimitsReport && activeUserInputRequestId === null ? (
+                  <Animated.View
+                    className="shrink-0 px-4 pb-3"
+                    entering={FadeInDown.duration(220)}
+                    exiting={FadeOut.duration(140)}
+                  >
+                    <ComposerUsageLimits
+                      report={usageLimitsReport}
+                      environmentId={props.environmentId}
+                      onClose={dismissUsageLimits}
+                    />
+                  </Animated.View>
+                ) : null}
                 {props.activePendingApproval || props.activePendingUserInput ? (
                   <Animated.View
                     className="shrink-0 gap-3 px-4 pb-3"
@@ -846,6 +875,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                   onRemoveDraftImage={props.onRemoveDraftImage}
                   onStopThread={props.onStopThread}
                   onSendMessage={handleSendMessage}
+                  onShowUsageLimits={showUsageLimits}
                   onReconnectEnvironment={props.onReconnectEnvironment}
                   onUpdateModelSelection={props.onUpdateThreadModelSelection}
                   onUpdateRuntimeMode={props.onUpdateThreadRuntimeMode}
