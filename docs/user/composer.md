@@ -111,6 +111,9 @@ its brief details. Select a terminal excerpt to open its captured output, or sel
 comment, picked element, or preview annotation to open its full details. Chips read as "Terminal
 excerpt, Terminal 1 lines 3-4" and similar to screen readers.
 
+A pull request appears as its icon and number. Its colour reflects whether it was open, draft,
+merged, or closed when it was attached; select it to see the title and branches.
+
 Images keep their thumbnail shelf above the text and also get a chip at your cursor, so you can
 say exactly which image you mean. Deleting an image chip leaves the image on the shelf; removing
 the thumbnail asks first when the image is still mentioned in your text, then removes both. Files

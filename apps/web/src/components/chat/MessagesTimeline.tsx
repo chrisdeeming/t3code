@@ -159,6 +159,8 @@ import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popov
 import {
   asKnownContextRecord,
   isPullRequestSummaryContext,
+  pullRequestContextDisplayState,
+  pullRequestContextKindLabel,
   resolveUserMessageContext,
   reviewCommentContextLabel,
 } from "~/lib/composerContextRecords";
@@ -178,9 +180,11 @@ import {
   CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES,
   CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
   CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES,
+  PULL_REQUEST_INLINE_CHIP_TONE_CLASS_NAMES,
   middleTruncateAttachmentName,
 } from "../composerInlineChip";
 import { createContextPresentationRegistry } from "../contextPresentationRegistry";
+import { PullRequestContextDetails } from "../PullRequestContextDetails";
 import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
@@ -2632,9 +2636,11 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         }
         const isPullRequest = isPullRequestSummaryContext(record);
         const label = reviewCommentContextLabel(record);
+        const kindLabel = isPullRequest ? pullRequestContextKindLabel(record) : "Review comment";
+        const pullRequestState = pullRequestContextDisplayState(record) ?? "unknown";
         return (
           <UserMessageContextPopover
-            accessibleLabel={`${isPullRequest ? "Pull request" : "Review comment"}, ${label}`}
+            accessibleLabel={`${kindLabel}, ${label}${record.pullRequest ? `, ${record.pullRequest.title}` : ""}`}
             chip={
               <UserMessageContextChip
                 icon={
@@ -2657,33 +2663,38 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
                   )
                 }
                 label={label}
-                kindLabel={isPullRequest ? "Pull request" : "Review comment"}
+                kindLabel={kindLabel}
                 copyMarkdown={context.copyMarkdown}
                 interactive
                 toneClassName={
-                  CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES[
-                    isPullRequest ? "pull-request" : "review-comment"
-                  ]
+                  isPullRequest
+                    ? PULL_REQUEST_INLINE_CHIP_TONE_CLASS_NAMES[pullRequestState]
+                    : CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES["review-comment"]
                 }
               />
             }
           >
-            <UserMessageReviewCommentCard
-              comment={{
-                id: record.contextId,
-                sectionId: record.sectionId,
-                sectionTitle: record.sectionTitle,
-                filePath: record.filePath,
-                startIndex: record.startIndex,
-                endIndex: record.endIndex,
-                rangeLabel: record.rangeLabel,
-                text: record.text,
-                diff: record.diff,
-                ...(record.fenceLanguage !== undefined
-                  ? { fenceLanguage: record.fenceLanguage }
-                  : {}),
-              }}
-            />
+            {isPullRequest && record.pullRequest !== undefined ? (
+              <PullRequestContextDetails metadata={record.pullRequest} />
+            ) : (
+              <UserMessageReviewCommentCard
+                comment={{
+                  id: record.contextId,
+                  sectionId: record.sectionId,
+                  sectionTitle: record.sectionTitle,
+                  filePath: record.filePath,
+                  startIndex: record.startIndex,
+                  endIndex: record.endIndex,
+                  rangeLabel: record.rangeLabel,
+                  text: record.text,
+                  diff: record.diff,
+                  ...(record.fenceLanguage !== undefined
+                    ? { fenceLanguage: record.fenceLanguage }
+                    : {}),
+                  ...(record.pullRequest !== undefined ? { pullRequest: record.pullRequest } : {}),
+                }}
+              />
+            )}
           </UserMessageContextPopover>
         );
       },

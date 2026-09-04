@@ -21,6 +21,8 @@ import {
 import { cn } from "~/lib/utils";
 import {
   isPullRequestSummaryContext,
+  pullRequestContextDisplayState,
+  pullRequestContextKindLabel,
   previewAnnotationContextId,
   previewAnnotationContextLabel,
   reviewCommentContextId,
@@ -42,8 +44,10 @@ import {
   CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES,
   CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
   CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES,
+  PULL_REQUEST_INLINE_CHIP_TONE_CLASS_NAMES,
   middleTruncateAttachmentName,
 } from "./composerInlineChip";
+import { PullRequestContextDetails } from "./PullRequestContextDetails";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "./ui/popover";
 
@@ -468,6 +472,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
           return <UnresolvedContextChip label={context.label} />;
         }
         const isPullRequest = isPullRequestSummaryContext(entry.record);
+        const pullRequestState = pullRequestContextDisplayState(entry.record) ?? "unknown";
         return (
           <ContextChip
             icon={
@@ -490,13 +495,19 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
               )
             }
             label={reviewCommentContextLabel(entry.record)}
-            kindLabel={isPullRequest ? "Pull request" : "Review comment"}
-            details={<ComposerReviewCommentDetails comment={entry.record} />}
+            kindLabel={isPullRequest ? pullRequestContextKindLabel(entry.record) : "Review comment"}
+            details={
+              isPullRequest && entry.record.pullRequest !== undefined ? (
+                <PullRequestContextDetails metadata={entry.record.pullRequest} />
+              ) : (
+                <ComposerReviewCommentDetails comment={entry.record} />
+              )
+            }
             detailsMode={definition.capabilities.details}
             toneClassName={
-              CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES[
-                isPullRequest ? "pull-request" : "review-comment"
-              ]
+              isPullRequest
+                ? PULL_REQUEST_INLINE_CHIP_TONE_CLASS_NAMES[pullRequestState]
+                : CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES["review-comment"]
             }
           />
         );

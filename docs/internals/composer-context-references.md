@@ -139,6 +139,12 @@ rejects duplicate surface handlers, and provides the unresolved fallback. Termin
 elements, review comments, and preview annotations open structured details popovers; images and
 videos use the shared media modal. Mobile renders context links as their labels.
 
+Pull-request summaries currently travel as review-comment records with optional typed
+`pullRequest` metadata. The metadata is a snapshot of the number, title, URL, branches, state, and
+draft flag at attachment time. Web and desktop render the compact `#number` label and derive its
+status tone from that snapshot; records written before the metadata was added retain their legacy
+details and neutral pull-request tone.
+
 ## Attachments
 
 Image and file records use the draft attachment's local id as `contextId` and carry an

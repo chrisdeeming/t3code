@@ -5,6 +5,8 @@ import {
   attachmentContextRecord,
   buildMessageContext,
   isPullRequestSummaryContext,
+  pullRequestContextDisplayState,
+  pullRequestContextKindLabel,
   previewAnnotationContextLabel,
   previewAnnotationContextRecord,
   resolveUserMessageContext,
@@ -78,12 +80,31 @@ describe("composerContextRecords", () => {
       rangeLabel: "Improve context chips",
       text: "Pull request details",
       diff: "",
+      pullRequest: {
+        number: 42,
+        title: "Improve context chips",
+        url: "https://github.com/pingdotgg/t3code/pull/42",
+        headBranch: "feat/context-chips",
+        baseBranch: "main",
+        state: "open" as const,
+        isDraft: false,
+      },
     };
 
     expect(isPullRequestSummaryContext(summary)).toBe(true);
+    expect(reviewCommentContextLabel(summary)).toBe("#42");
+    expect(pullRequestContextDisplayState(summary)).toBe("open");
+    expect(pullRequestContextKindLabel(summary)).toBe("Open pull request");
+    expect(
+      pullRequestContextDisplayState({
+        ...summary,
+        pullRequest: { ...summary.pullRequest, isDraft: true },
+      }),
+    ).toBe("draft");
     expect(
       isPullRequestSummaryContext({
         ...summary,
+        pullRequest: undefined,
         filePath: "src/a.ts",
         rangeLabel: "+12",
         diff: "+const answer = 42;",

@@ -53,6 +53,14 @@ export const CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES = {
   citation: `${CONTEXT_INLINE_CHIP_TONE_CLASS_NAME} [--context-chip-accent:var(--color-blue-500)]`,
 } as const;
 
+export const PULL_REQUEST_INLINE_CHIP_TONE_CLASS_NAMES = {
+  open: `${CONTEXT_INLINE_CHIP_TONE_CLASS_NAME} [--context-chip-accent:var(--color-emerald-500)]`,
+  draft: `${CONTEXT_INLINE_CHIP_TONE_CLASS_NAME} [--context-chip-accent:var(--color-slate-500)]`,
+  merged: `${CONTEXT_INLINE_CHIP_TONE_CLASS_NAME} [--context-chip-accent:var(--color-violet-500)]`,
+  closed: `${CONTEXT_INLINE_CHIP_TONE_CLASS_NAME} [--context-chip-accent:var(--color-red-500)]`,
+  unknown: CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES["pull-request"],
+} as const;
+
 export const CHAT_INLINE_CHIP_LABEL_CLASS_NAME = "truncate leading-tight";
 
 export const COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME =
