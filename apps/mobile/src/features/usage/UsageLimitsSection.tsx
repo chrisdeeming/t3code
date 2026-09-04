@@ -34,27 +34,35 @@ const DRIVER_LABEL: Partial<Record<string, string>> = { codex: "Codex", claudeAg
  * One window as a bar spanning its whole duration: the fill is quota spent,
  * the hairline is how far into the window the clock is.
  */
-function WindowBar(props: { readonly window: ServerProviderUsageWindow; readonly now: number }) {
-  const { window, now } = props;
+export function WindowBar(props: {
+  readonly window: ServerProviderUsageWindow;
+  readonly now: number;
+  /** The same row one type size down, for the composer card. */
+  readonly dense?: boolean;
+}) {
+  const { window, now, dense = false } = props;
   const used = Math.round(Math.max(0, Math.min(100, window.usedPercent)));
   const elapsed = elapsedShare(window, now);
   const pace = paceOf(window, now);
   const resetsIn = formatResetsIn(window, now);
   const detail = [pace ? PACE_LABEL[pace] : null, resetsIn].filter(Boolean).join(" · ");
+  const valueClass = dense ? "text-sm" : "text-base";
   return (
-    <View className="gap-1.5">
+    <View className={dense ? "gap-1" : "gap-1.5"}>
       <View className="flex-row items-baseline justify-between gap-3">
-        <Text className="text-base text-foreground">{window.label}</Text>
-        <Text className="text-base tabular-nums text-foreground">{used}% used</Text>
+        <Text numberOfLines={1} className={`shrink ${valueClass} text-foreground`}>
+          {window.label}
+        </Text>
+        <Text className={`${valueClass} tabular-nums text-foreground`}>{used}% used</Text>
       </View>
       <View className="h-3 justify-center">
         <View className="h-1.5 flex-row overflow-hidden rounded-full bg-subtle">
           <View
             className={
               used >= 90
-                ? "h-full rounded-full bg-destructive"
+                ? "h-full rounded-full bg-red-500"
                 : used >= 70
-                  ? "h-full rounded-full bg-warning"
+                  ? "h-full rounded-full bg-amber-500"
                   : "h-full rounded-full bg-foreground"
             }
             style={{ flex: used }}
@@ -73,33 +81,59 @@ function WindowBar(props: { readonly window: ServerProviderUsageWindow; readonly
   );
 }
 
-function AccountLimits(props: {
+export function AccountLimits(props: {
   readonly label: string;
   readonly instanceLabel: string;
   readonly detail: string | undefined;
   readonly limits: ServerProvider["usageLimits"];
   readonly now: number;
   readonly first: boolean;
+  /** Tighter type and spacing for the composer card. */
+  readonly dense?: boolean;
+  /** Sits at the end of the heading row, such as a close control. */
+  readonly trailing?: ReactNode;
   readonly footer?: ReactNode;
 }) {
-  const { limits, now } = props;
+  const { limits, now, dense = false } = props;
   if (!limits) return null;
   const notice = limitsNotice(limits);
+  const padding = dense ? "px-4 py-3" : "p-4";
   return (
-    <View className={props.first ? "gap-3 p-4" : "gap-3 border-t border-border-subtle p-4"}>
-      <View className="flex-row flex-wrap items-baseline gap-x-2 gap-y-1">
-        <Text className="text-lg text-foreground">{props.label}</Text>
-        {props.instanceLabel !== props.label ? (
-          <Text className="shrink text-xs text-foreground-tertiary">· {props.instanceLabel}</Text>
-        ) : null}
-        {props.detail ? (
-          <Text className="shrink text-sm text-foreground-muted">· {props.detail}</Text>
-        ) : null}
+    <View
+      className={
+        props.first
+          ? `${dense ? "gap-2.5" : "gap-3"} ${padding}`
+          : `${dense ? "gap-2.5" : "gap-3"} border-t border-border-subtle ${padding}`
+      }
+    >
+      <View className="flex-row items-center gap-3">
+        <View className="min-w-0 flex-1 flex-row flex-wrap items-baseline gap-x-2 gap-y-1">
+          <Text className={dense ? "text-base text-foreground" : "text-lg text-foreground"}>
+            {props.label}
+          </Text>
+          {props.instanceLabel !== props.label ? (
+            <Text className="shrink text-xs text-foreground-tertiary">· {props.instanceLabel}</Text>
+          ) : null}
+          {props.detail ? (
+            <Text
+              className={
+                dense
+                  ? "shrink text-xs text-foreground-muted"
+                  : "shrink text-sm text-foreground-muted"
+              }
+            >
+              · {props.detail}
+            </Text>
+          ) : null}
+        </View>
+        {props.trailing}
       </View>
       {notice ? (
         <Text className="text-sm text-foreground-muted">{notice}</Text>
       ) : (
-        limits.windows.map((window) => <WindowBar key={window.id} window={window} now={now} />)
+        limits.windows.map((window) => (
+          <WindowBar key={window.id} window={window} now={now} dense={dense} />
+        ))
       )}
       {props.footer}
     </View>
@@ -118,13 +152,15 @@ const OUTCOME_TEXT: Record<ProviderConsumeResetCreditOutcome, string> = {
  * credit the provider granted the user, so it goes through the native
  * confirm alert rather than firing on a bare tap.
  */
-function ResetCredits(props: {
+export function ResetCredits(props: {
   readonly environmentId: EnvironmentId;
   readonly instanceId: ProviderInstanceId;
   readonly credits: ServerProviderResetCredits;
   readonly now: number;
+  /** Summary and button share one line, for the composer card. */
+  readonly dense?: boolean;
 }) {
-  const { environmentId, instanceId, credits, now } = props;
+  const { environmentId, instanceId, credits, now, dense = false } = props;
   const consume = useAtomCommand(serverEnvironment.consumeResetCredit, {
     reportFailure: false,
   });
@@ -169,22 +205,43 @@ function ResetCredits(props: {
     );
   };
 
+  const button =
+    credits.availableCount > 0 ? (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ disabled: busy }}
+        disabled={busy}
+        onPress={confirm}
+        className={
+          dense
+            ? "shrink-0 rounded-full bg-subtle-strong px-2.5 py-1"
+            : "self-start rounded-full bg-subtle-strong px-3 py-1.5"
+        }
+      >
+        <Text
+          className={
+            dense
+              ? "text-xs font-t3-medium text-foreground"
+              : "text-sm font-t3-medium text-foreground"
+          }
+        >
+          {busy ? "Using…" : "Use reset"}
+        </Text>
+      </Pressable>
+    ) : null;
   return (
     <View className="gap-2">
-      <Text className="text-xs tabular-nums text-foreground-tertiary">{summary}</Text>
-      {credits.availableCount > 0 ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: busy }}
-          disabled={busy}
-          onPress={confirm}
-          className="self-start rounded-full bg-subtle-strong px-3 py-1.5"
-        >
-          <Text className="text-sm font-t3-medium text-foreground">
-            {busy ? "Using credit…" : "Use a reset credit"}
-          </Text>
-        </Pressable>
-      ) : null}
+      {dense ? (
+        <View className="flex-row items-center justify-between gap-3">
+          <Text className="shrink text-xs tabular-nums text-foreground-tertiary">{summary}</Text>
+          {button}
+        </View>
+      ) : (
+        <>
+          <Text className="text-xs tabular-nums text-foreground-tertiary">{summary}</Text>
+          {button}
+        </>
+      )}
       {status ? <Text className="text-sm text-foreground">{status}</Text> : null}
     </View>
   );

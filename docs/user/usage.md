@@ -18,6 +18,11 @@ update model pricing.
 compares quota consumed with time elapsed in each window, so you can judge your pace before the
 next reset.
 
+Send `/usage-limits` in a thread to check the current model's limits without leaving the
+conversation. The result opens above the composer and closes when you dismiss it or send your next
+message. It uses the same snapshot as **Usage → Limits**, so it does not run the agent or refresh
+anything. The command is offered only for providers that appear under **Usage → Limits**.
+
 API-key accounts may not report subscription limits. This also applies to Claude connections
 using a proxy through `ANTHROPIC_AUTH_TOKEN`.
 

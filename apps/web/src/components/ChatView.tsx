@@ -1,3 +1,6 @@
+import type { UsageLimitsReport } from "@t3tools/contracts";
+import { collectProviderUsageLimits, isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
+import { usageLimitsBannerItem } from "./chat/ComposerUsageLimits";
 import {
   type AssistantCitation,
   type ApprovalRequestId,
@@ -2512,6 +2515,25 @@ export default function ChatView(props: ChatViewProps) {
   );
   const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
   const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
+  // A /usage-limits snapshot for this thread and model; sending or switching clears it.
+  const [usageLimitsPanel, setUsageLimitsPanel] = useState<{
+    readonly key: string;
+    readonly report: UsageLimitsReport;
+  } | null>(null);
+  const usageLimitsKey = `${routeThreadKey}:${activeProviderInstanceId ?? ""}`;
+  const usageLimitsBanner = useMemo(
+    () =>
+      usageLimitsPanel?.key === usageLimitsKey
+        ? // A fresh id per snapshot: the stack keeps the last dismissed id as "exiting".
+          usageLimitsBannerItem(
+            `usage-limits:${usageLimitsKey}:${usageLimitsPanel.report.createdAt}`,
+            usageLimitsPanel.report,
+            environmentId,
+            () => setUsageLimitsPanel(null),
+          )
+        : null,
+    [environmentId, usageLimitsKey, usageLimitsPanel],
+  );
   const activeProviderStatus = selectedProviderEntry?.snapshot ?? null;
   const { enabled: interactionModeEnabled, interactionMode } = resolveComposerInteractionMode({
     planModeEnabled: settings.planModeEnabled,
@@ -5586,8 +5608,11 @@ export default function ChatView(props: ChatViewProps) {
       resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
     const wokeThreadItems = wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
     const parkedThreadItems = parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
+    // The user asked for this one, so it leads the notice tier instead of trailing it.
+    const usageLimitsItems = usageLimitsBanner === null ? [] : [usageLimitsBanner];
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
       return [
+        ...usageLimitsItems,
         ...systemComposerBannerItems,
         ...backgroundLivenessItems,
         ...resumeCompactionItems,
@@ -5596,6 +5621,7 @@ export default function ChatView(props: ChatViewProps) {
       ];
     }
     return [
+      ...usageLimitsItems,
       ...systemComposerBannerItems,
       ...backgroundLivenessItems,
       ...resumeCompactionItems,
@@ -5650,6 +5676,7 @@ export default function ChatView(props: ChatViewProps) {
     resumeCompactionBannerItem,
     showBranchMismatchBanner,
     systemComposerBannerItems,
+    usageLimitsBanner,
     wokeThreadBannerItem,
   ]);
   useEffect(() => {
@@ -6063,6 +6090,28 @@ export default function ChatView(props: ChatViewProps) {
     },
   ) => {
     e?.preventDefault();
+    // Answered locally from the last Limits snapshot; the agent never sees it.
+    if (!directAnnotation && isUsageLimitsCommand(promptRef.current)) {
+      const report = activeProviderInstanceId
+        ? collectProviderUsageLimits(
+            activeProviderInstanceId,
+            providerStatuses,
+            serverConfig?.usageLimitSources ?? [],
+            Date.now(),
+          )
+        : null;
+      if (report) {
+        setUsageLimitsPanel({ key: usageLimitsKey, report });
+        promptRef.current = "";
+        setComposerDraftPrompt(composerDraftTarget, "");
+        composerRef.current?.resetCursorState();
+      } else {
+        toastManager.add({ type: "info", title: "Usage limits are unavailable for this provider" });
+      }
+      return;
+    }
+    setUsageLimitsPanel(null);
+
     const notifyDirectAnnotationAttached = () => {
       if (!directAnnotation) return;
       toastManager.add(
