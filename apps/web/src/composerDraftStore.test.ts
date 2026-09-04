@@ -2571,6 +2571,27 @@ describe("composerDraftStore inline context references", () => {
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("look");
   });
 
+  it("can add another reference while upserting one backing review record", () => {
+    const store = useComposerDraftStore.getState();
+    store.addReviewComment(threadRef, reviewComment);
+    const insertionHandler = vi.fn(() => true);
+    store.setContextInsertionHandler(threadRef, insertionHandler);
+    store.addReviewComment(
+      threadRef,
+      { ...reviewComment, text: "edited" },
+      {
+        allowDuplicateReference: true,
+        insertAtCaret: false,
+      },
+    );
+
+    expect(insertionHandler).not.toHaveBeenCalled();
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(`${reviewLink} ${reviewLink} `);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.reviewComments).toEqual([
+      { ...reviewComment, text: "edited" },
+    ]);
+  });
+
   it("keeps bulk-set review records and their inline references in sync", () => {
     const store = useComposerDraftStore.getState();
     store.setPrompt(threadRef, "Explain this pull request.");

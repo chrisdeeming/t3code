@@ -583,10 +583,11 @@ const HANDOFF_COMMENT_ID_PREFIX = "pull-request-";
 export function stripPullRequestHandoffReferences(
   prompt: string,
   comments: ReadonlyArray<ReviewCommentContext>,
+  retainedIds: ReadonlySet<string> = new Set(),
 ): string {
   let next = prompt;
   for (const comment of comments) {
-    if (!comment.id.startsWith(HANDOFF_COMMENT_ID_PREFIX)) continue;
+    if (!comment.id.startsWith(HANDOFF_COMMENT_ID_PREFIX) || retainedIds.has(comment.id)) continue;
     next = removeInlineContextReference(next, reviewCommentContextId(comment.id)).prompt;
   }
   return next;

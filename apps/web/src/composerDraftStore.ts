@@ -312,9 +312,14 @@ const PersistedComposerDraftStoreStorage = Schema.Struct({
  * Composer content keyed by either a draft session (`DraftId`) or a real server
  * thread (`ScopedThreadRef`). This is the editable payload shown in the composer.
  */
-/** `appendReference: false` when the caller already placed the chip (paste, caret insertion). */
+/** Options for adding a context record and, independently, a reference to it. */
 export interface ComposerContextAddOptions {
+  /** `false` when the caller already placed the chip (paste, caret insertion). */
   appendReference?: boolean;
+  /** `true` when this action intentionally adds another reference to an existing record. */
+  allowDuplicateReference?: boolean;
+  /** `false` to append synchronously instead of asking a mounted editor for its current caret. */
+  insertAtCaret?: boolean;
 }
 
 /**
@@ -3572,11 +3577,14 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           const current = get().draftsByThreadKey[threadKey];
           const alreadyPresent =
             current?.reviewComments.some((entry) => entry.id === comment.id) ?? false;
+          const shouldPlaceReference =
+            options?.appendReference !== false &&
+            (!alreadyPresent || options?.allowDuplicateReference === true);
           // See addPreviewAnnotation: editor insertion writes the prompt through this store and
           // must complete before the record update reads the draft it is extending.
           const placedAtCaret =
-            !alreadyPresent &&
-            options?.appendReference !== false &&
+            shouldPlaceReference &&
+            options?.insertAtCaret !== false &&
             (contextInsertionHandlers.get(threadKey)?.([reference]) ?? false);
           set((state) => {
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
@@ -3589,7 +3597,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 [threadKey]: {
                   ...existing,
                   prompt:
-                    alreadyPresent || placedAtCaret || options?.appendReference === false
+                    !shouldPlaceReference || placedAtCaret
                       ? existing.prompt
                       : appendInlineContextReference(existing.prompt, reference),
                   reviewComments: [...reviewComments, { ...comment }],
