@@ -43,7 +43,7 @@ const netServiceLayer = Layer.succeed(NetService.NetService, {
 
 function mockProcessWithExitCode(
   exitCode: Effect.Effect<ChildProcessSpawner.ExitCode, PlatformError.PlatformError>,
-  kill: () => Effect.Effect<void> = () => Effect.void,
+  kill: ChildProcessSpawner.ChildProcessHandle["kill"] = () => Effect.void,
 ) {
   return ChildProcessSpawner.makeHandle({
     pid: ChildProcessSpawner.ProcessId(1),
@@ -951,6 +951,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       Effect.gen(function* () {
         let spawnCount = 0;
         let killCount = 0;
+        const killOptions: Array<unknown> = [];
         const allSpawned = yield* Deferred.make<void>();
         const spawnerLayer = Layer.succeed(
           ChildProcessSpawner.ChildProcessSpawner,
@@ -966,7 +967,11 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
                 childIndex === 0
                   ? Deferred.await(allSpawned).pipe(Effect.as(ChildProcessSpawner.ExitCode(0)))
                   : Effect.never,
-                () => Effect.sync(() => void (killCount += 1)),
+                (options) =>
+                  Effect.sync(() => {
+                    killCount += 1;
+                    killOptions.push(options);
+                  }),
               );
             }),
           ),
@@ -985,6 +990,39 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         assert.equal(error._tag, "DevRunnerProcessExitError");
         assert.equal(spawnCount, 3);
         assert.equal(killCount, 3);
+        assert.deepStrictEqual(killOptions, [
+          { forceKillAfter: "1500 millis" },
+          { forceKillAfter: "1500 millis" },
+          { forceKillAfter: "1500 millis" },
+        ]);
+      }),
+    );
+
+    it.effect("does not detach child processes into new Windows consoles", () =>
+      Effect.gen(function* () {
+        const detachedFor = (platform: NodeJS.Platform) =>
+          Effect.gen(function* () {
+            let detached: boolean | undefined;
+            const spawnerLayer = Layer.succeed(
+              ChildProcessSpawner.ChildProcessSpawner,
+              ChildProcessSpawner.make((command) => {
+                if (command._tag === "StandardCommand") {
+                  detached = command.options.detached;
+                }
+                return Effect.succeed(mockProcess(0));
+              }),
+            );
+
+            yield* runDevRunnerWithInput({ ...devServerInput, port: undefined }).pipe(
+              Effect.provide(Layer.mergeAll(emptyConfigLayer, netServiceLayer, spawnerLayer)),
+              Effect.provideService(HostProcessPlatform, platform),
+            );
+
+            return detached;
+          });
+
+        assert.equal(yield* detachedFor("linux"), true);
+        assert.equal(yield* detachedFor("win32"), false);
       }),
     );
 

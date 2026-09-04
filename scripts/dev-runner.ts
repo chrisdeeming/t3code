@@ -6,7 +6,11 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NetService from "@t3tools/shared/Net";
 import { resolveGitWorktreePath, resolveWorktreeT3Home } from "@t3tools/shared/devHome";
-import { HostProcessEnvironment, HostProcessWorkingDirectory } from "@t3tools/shared/hostProcess";
+import {
+  HostProcessEnvironment,
+  HostProcessPlatform,
+  HostProcessWorkingDirectory,
+} from "@t3tools/shared/hostProcess";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
@@ -809,6 +813,7 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
 
     const modeCommands = MODE_COMMANDS[input.mode];
     const exitIsTerminal = modeCommands.length > 1;
+    const hostPlatform = yield* HostProcessPlatform;
     yield* Effect.all(
       modeCommands.map((modeArgs) =>
         Effect.gen(function* () {
@@ -828,9 +833,10 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
             env,
             extendEnv: false,
             shell: spawnCommand.shell,
-            // Give each Vite+ task its own process group. Closing this scoped
-            // child then terminates the task and its complete descendant tree.
-            detached: true,
+            // On Unix, give each Vite+ task its own process group so cleanup
+            // terminates its complete descendant tree. Windows uses taskkill
+            // /T for tree cleanup; detached children would open new consoles.
+            detached: hostPlatform !== "win32",
             forceKillAfter: "1500 millis",
           }).pipe(
             Effect.mapError(
@@ -842,7 +848,9 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
                 }),
             ),
           );
-          yield* Effect.addFinalizer(() => child.kill().pipe(Effect.ignore));
+          yield* Effect.addFinalizer(() =>
+            child.kill({ forceKillAfter: "1500 millis" }).pipe(Effect.ignore),
+          );
 
           const exitCode = yield* child.exitCode.pipe(
             Effect.mapError(
