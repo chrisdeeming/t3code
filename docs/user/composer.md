@@ -112,7 +112,8 @@ comment, picked element, or preview annotation to open its full details. Chips r
 excerpt, Terminal 1 lines 3-4" and similar to screen readers.
 
 A pull request appears as its icon and number. Its colour reflects whether it was open, draft,
-merged, or closed when it was attached; select it to see the title and branches.
+merged, or closed when it was attached. Hover it to see the title and branches, or select it to
+open that pull request beside the current thread.
 
 Images keep their thumbnail shelf above the text and also get a chip at your cursor, so you can
 say exactly which image you mean. Deleting an image chip leaves the image on the shelf; removing

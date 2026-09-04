@@ -153,6 +153,7 @@ import {
   ComposerContextActionsContext,
   composerContextRecordsFromDraft,
 } from "../composerContextPresentation";
+import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import {
   collectInlineContextIds,
   type ComposerContextReference,
@@ -1380,6 +1381,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [composerImages, composerPreviewAnnotations]);
   const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
   const uploadsByImageId = useAttachmentUploadStore((state) => state.uploadsByImageId);
+  const openPrLink = useOpenPrLink(routeKind === "server" ? routeThreadRef : undefined);
   const composerContextActions = useMemo(
     () => ({
       expandImage: (imageId: string) => {
@@ -1406,8 +1408,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
         if (persistedPreview) onExpandImage(persistedPreview);
       },
+      openPullRequest: (event: React.MouseEvent<HTMLElement>, url: string) => {
+        openPrLink(event, url);
+      },
     }),
-    [composerFiles, composerImages, environmentId, onExpandImage],
+    [composerFiles, composerImages, environmentId, onExpandImage, openPrLink],
   );
   const composerContextRecords = useMemo(
     () =>

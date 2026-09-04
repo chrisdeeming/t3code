@@ -9,7 +9,7 @@ import {
   MessageCircleIcon,
   MousePointerClickIcon,
 } from "lucide-react";
-import { createContext, type ReactElement, type ReactNode, use } from "react";
+import { createContext, type MouseEvent, type ReactElement, type ReactNode, use } from "react";
 
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
 import { composerFileNeedsReattach } from "~/composerDraftStore";
@@ -66,11 +66,13 @@ export type ComposerDraftContextRecord =
 export interface ComposerContextActions {
   expandImage: (imageId: string) => void;
   expandVideo: (fileId: string) => void;
+  openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
 }
 
 export const ComposerContextActionsContext = createContext<ComposerContextActions>({
   expandImage: () => {},
   expandVideo: () => {},
+  openPullRequest: () => {},
 });
 
 export type ComposerDraftContextRecords = ReadonlyMap<string, ComposerDraftContextRecord>;
@@ -329,6 +331,45 @@ function FileContextChip(props: {
   );
 }
 
+function PullRequestContextChip(props: { record: ReviewCommentContext; toneClassName: string }) {
+  const actions = use(ComposerContextActionsContext);
+  const metadata = props.record.pullRequest;
+  if (metadata === undefined) return null;
+  const label = reviewCommentContextLabel(props.record);
+  const kindLabel = pullRequestContextKindLabel(props.record);
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            className={cn(
+              COMPOSER_INLINE_CHIP_CLASS_NAME,
+              props.toneClassName,
+              CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
+              "cursor-pointer",
+            )}
+            aria-label={`${kindLabel} ${label}: ${metadata.title}. Open in pull request panel.`}
+            onClick={(event) => actions.openPullRequest(event, metadata.url)}
+          >
+            <GitPullRequestIcon
+              className={cn(
+                COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
+                CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES["pull-request"],
+                "size-3.5",
+              )}
+            />
+            <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{label}</span>
+          </button>
+        }
+      />
+      <TooltipPopup side="top" className="max-w-96 leading-tight">
+        <PullRequestContextDetails metadata={metadata} />
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
 function previewAnnotationTooltip(annotation: PreviewAnnotationPayload): string {
   const lines = [annotation.pageTitle?.trim() || annotation.pageUrl];
   if (annotation.comment.trim()) lines.push("", annotation.comment.trim());
@@ -473,6 +514,14 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
         }
         const isPullRequest = isPullRequestSummaryContext(entry.record);
         const pullRequestState = pullRequestContextDisplayState(entry.record) ?? "unknown";
+        if (isPullRequest && entry.record.pullRequest !== undefined) {
+          return (
+            <PullRequestContextChip
+              record={entry.record}
+              toneClassName={PULL_REQUEST_INLINE_CHIP_TONE_CLASS_NAMES[pullRequestState]}
+            />
+          );
+        }
         return (
           <ContextChip
             icon={
@@ -496,13 +545,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
             }
             label={reviewCommentContextLabel(entry.record)}
             kindLabel={isPullRequest ? pullRequestContextKindLabel(entry.record) : "Review comment"}
-            details={
-              isPullRequest && entry.record.pullRequest !== undefined ? (
-                <PullRequestContextDetails metadata={entry.record.pullRequest} />
-              ) : (
-                <ComposerReviewCommentDetails comment={entry.record} />
-              )
-            }
+            details={<ComposerReviewCommentDetails comment={entry.record} />}
             detailsMode={definition.capabilities.details}
             toneClassName={
               isPullRequest

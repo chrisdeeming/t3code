@@ -34,14 +34,14 @@ const STATE_PRESENTATION = {
 export function PullRequestContextDetails({ metadata }: { metadata: PullRequestContextMetadata }) {
   const state = STATE_PRESENTATION[displayState(metadata)];
   return (
-    <div className="space-y-2 overflow-hidden rounded-lg border border-border/70 bg-background/70 p-3">
+    <div className="max-w-80 space-y-1 overflow-hidden py-0.5 text-left">
       <div className="flex items-center gap-1.5 text-xs font-medium">
         <GitPullRequestIcon className={cn("size-3.5 shrink-0", state.className)} />
         <span className="text-foreground">Pull request #{metadata.number}</span>
         <span className={state.className}>{state.label}</span>
       </div>
-      <div className="wrap-break-word text-sm font-medium text-foreground">{metadata.title}</div>
-      <div className="flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+      <div className="wrap-break-word text-foreground">{metadata.title}</div>
+      <div className="flex min-w-0 items-center gap-1 text-secondary-label text-[10px]">
         <code className="truncate">{metadata.headBranch}</code>
         <ArrowRightIcon className="size-3 shrink-0" aria-hidden="true" />
         <code className="truncate">{metadata.baseBranch}</code>

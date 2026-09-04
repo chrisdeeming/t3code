@@ -185,6 +185,7 @@ import {
 } from "../composerInlineChip";
 import { createContextPresentationRegistry } from "../contextPresentationRegistry";
 import { PullRequestContextDetails } from "../PullRequestContextDetails";
+import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
@@ -222,6 +223,7 @@ interface TimelineRowSharedState {
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onFileOpen: (attachment: ChatFileAttachment) => void;
   onFileDownload: (attachment: ChatFileAttachment) => void;
+  openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onToggleTurnFold: (turnId: TurnId) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
@@ -402,6 +404,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 }: MessagesTimelineProps) {
   const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(new Set());
   const citationThreadRef = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
+  const openPullRequest = useOpenPrLink(citationThreadRef ?? undefined);
   const expandCitedTurn = useCallback((turnId: TurnId) => {
     setExpandedTurnIds((current) =>
       current.has(turnId) ? current : new Set([...current, turnId]),
@@ -673,6 +676,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onImageExpand,
       onFileOpen,
       onFileDownload,
+      openPullRequest,
       onOpenTurnDiff,
       onToggleTurnFold,
       onToggleWorkGroup,
@@ -697,6 +701,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onImageExpand,
       onFileOpen,
       onFileDownload,
+      openPullRequest,
       onOpenTurnDiff,
       onToggleTurnFold,
       onToggleWorkGroup,
@@ -2292,6 +2297,50 @@ function UserMessageContextPopover(props: {
   );
 }
 
+function UserMessagePullRequestContextChip(props: {
+  record: Extract<KnownComposerContextRecord, { kind: "review-comment" }>;
+  copyMarkdown: string;
+  toneClassName: string;
+}) {
+  const { openPullRequest } = use(TimelineRowCtx);
+  const metadata = props.record.pullRequest;
+  if (metadata === undefined) return null;
+  const label = reviewCommentContextLabel(props.record);
+  const kindLabel = pullRequestContextKindLabel(props.record);
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            className={cn(
+              CHAT_INLINE_CHIP_CLASS_NAME,
+              props.toneClassName,
+              CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
+              "cursor-pointer",
+            )}
+            aria-label={`${kindLabel} ${label}: ${metadata.title}. Open in pull request panel.`}
+            data-markdown-copy={props.copyMarkdown}
+            onClick={(event) => openPullRequest(event, metadata.url)}
+          >
+            <GitPullRequestIcon
+              className={cn(
+                COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
+                CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES["pull-request"],
+                "size-3.5",
+              )}
+            />
+            <span className={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}>{label}</span>
+          </button>
+        }
+      />
+      <TooltipPopup side="top" className="max-w-96 leading-tight">
+        <PullRequestContextDetails metadata={metadata} />
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
 function UserMessagePreviewAnnotationDetails(props: {
   record: Extract<KnownComposerContextRecord, { kind: "preview-annotation" }>;
   image: ChatImageAttachment | null;
@@ -2638,6 +2687,15 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         const label = reviewCommentContextLabel(record);
         const kindLabel = isPullRequest ? pullRequestContextKindLabel(record) : "Review comment";
         const pullRequestState = pullRequestContextDisplayState(record) ?? "unknown";
+        if (isPullRequest && record.pullRequest !== undefined) {
+          return (
+            <UserMessagePullRequestContextChip
+              record={record}
+              copyMarkdown={context.copyMarkdown}
+              toneClassName={PULL_REQUEST_INLINE_CHIP_TONE_CLASS_NAMES[pullRequestState]}
+            />
+          );
+        }
         return (
           <UserMessageContextPopover
             accessibleLabel={`${kindLabel}, ${label}${record.pullRequest ? `, ${record.pullRequest.title}` : ""}`}
@@ -2674,27 +2732,23 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
               />
             }
           >
-            {isPullRequest && record.pullRequest !== undefined ? (
-              <PullRequestContextDetails metadata={record.pullRequest} />
-            ) : (
-              <UserMessageReviewCommentCard
-                comment={{
-                  id: record.contextId,
-                  sectionId: record.sectionId,
-                  sectionTitle: record.sectionTitle,
-                  filePath: record.filePath,
-                  startIndex: record.startIndex,
-                  endIndex: record.endIndex,
-                  rangeLabel: record.rangeLabel,
-                  text: record.text,
-                  diff: record.diff,
-                  ...(record.fenceLanguage !== undefined
-                    ? { fenceLanguage: record.fenceLanguage }
-                    : {}),
-                  ...(record.pullRequest !== undefined ? { pullRequest: record.pullRequest } : {}),
-                }}
-              />
-            )}
+            <UserMessageReviewCommentCard
+              comment={{
+                id: record.contextId,
+                sectionId: record.sectionId,
+                sectionTitle: record.sectionTitle,
+                filePath: record.filePath,
+                startIndex: record.startIndex,
+                endIndex: record.endIndex,
+                rangeLabel: record.rangeLabel,
+                text: record.text,
+                diff: record.diff,
+                ...(record.fenceLanguage !== undefined
+                  ? { fenceLanguage: record.fenceLanguage }
+                  : {}),
+                ...(record.pullRequest !== undefined ? { pullRequest: record.pullRequest } : {}),
+              }}
+            />
           </UserMessageContextPopover>
         );
       },
