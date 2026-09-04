@@ -9,6 +9,7 @@ import {
   type PullRequestChecksState,
   type PullRequestComment,
   type PullRequestCommit,
+  type PullRequestContextMetadata,
   type PullRequestDetailView,
   type PullRequestMergeability,
   type PullRequestReaction,
@@ -880,6 +881,13 @@ function pullRequestContextComment(
       isDraft: input.isDraft,
     },
   };
+}
+
+/** A neutral pull request reference inserted directly from the message composer. */
+export function buildPullRequestReferenceContext(
+  input: PullRequestContextMetadata,
+): ReviewCommentContext {
+  return pullRequestContextComment(input, []);
 }
 
 /** What the agent is asked to do with a question, as opposed to a task. */
