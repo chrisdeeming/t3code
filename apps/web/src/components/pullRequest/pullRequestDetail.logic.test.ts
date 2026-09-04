@@ -1042,6 +1042,8 @@ describe("asking about a change rather than working on it", () => {
     url: "https://github.com/pingdotgg/t3code/pull/42",
     headBranch: "feat/page",
     baseBranch: "main",
+    state: "open" as const,
+    isDraft: false,
   };
 
   it("leaves the composer empty, and everything the agent needs in the chip", () => {
@@ -1052,6 +1054,15 @@ describe("asking about a change rather than working on it", () => {
         // What the chip reads as: which pull request, and what it is called.
         filePath: "PR #42",
         rangeLabel: "Add the pull requests page",
+        pullRequest: {
+          number: 42,
+          title: "Add the pull requests page",
+          url: "https://github.com/pingdotgg/t3code/pull/42",
+          headBranch: "feat/page",
+          baseBranch: "main",
+          state: "open",
+          isDraft: false,
+        },
       }),
     ]);
     const chip = handoff.reviewComments[0]!;

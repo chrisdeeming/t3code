@@ -1,6 +1,11 @@
 import * as Schema from "effect/Schema";
 
-import { ForwardCompatibleArray, NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  ForwardCompatibleArray,
+  NonNegativeInt,
+  PositiveInt,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 
 /**
  * Inline context records: the typed payload behind every composer chip.
@@ -66,6 +71,18 @@ const ContextLabel = Schema.String.check(Schema.isMaxLength(COMPOSER_CONTEXT_LAB
 const BoundedString = (max: number) => Schema.String.check(Schema.isMaxLength(max));
 const ShortString = BoundedString(2_048);
 const NullableShortString = Schema.NullOr(ShortString);
+
+/** Snapshot used to identify and present a pull request carried by a review-context record. */
+export const PullRequestContextMetadata = Schema.Struct({
+  number: PositiveInt,
+  title: ShortString,
+  url: ShortString,
+  headBranch: ShortString,
+  baseBranch: ShortString,
+  state: Schema.Literals(["open", "closed", "merged"]),
+  isDraft: Schema.Boolean,
+});
+export type PullRequestContextMetadata = typeof PullRequestContextMetadata.Type;
 
 const recordBase = {
   version: Schema.Literal(1),
@@ -161,6 +178,7 @@ export const ReviewCommentContextRecord = Schema.Struct({
   text: BoundedString(COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS),
   diff: BoundedString(COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS),
   fenceLanguage: Schema.optional(BoundedString(64)),
+  pullRequest: Schema.optional(PullRequestContextMetadata),
 }).check(Schema.makeFilter((record) => record.endIndex >= record.startIndex));
 export type ReviewCommentContextRecord = typeof ReviewCommentContextRecord.Type;
 

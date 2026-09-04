@@ -115,6 +115,7 @@ export function reviewCommentContextRecord(
     text: comment.text,
     diff: comment.diff,
     ...(comment.fenceLanguage !== undefined ? { fenceLanguage: comment.fenceLanguage } : {}),
+    ...(comment.pullRequest !== undefined ? { pullRequest: comment.pullRequest } : {}),
   };
 }
 
@@ -275,6 +276,7 @@ export function reviewCommentFromRecord(record: ReviewCommentContextRecord): Rev
     text: record.text,
     diff: record.diff,
     ...(record.fenceLanguage !== undefined ? { fenceLanguage: record.fenceLanguage } : {}),
+    ...(record.pullRequest !== undefined ? { pullRequest: record.pullRequest } : {}),
   };
 }
 

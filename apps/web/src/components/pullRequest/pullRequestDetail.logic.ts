@@ -847,6 +847,8 @@ function pullRequestContextComment(
     readonly url: string;
     readonly headBranch: string;
     readonly baseBranch: string;
+    readonly state: PullRequestState;
+    readonly isDraft: boolean;
   },
   instructions: ReadonlyArray<string>,
 ): ReviewCommentContext {
@@ -867,6 +869,15 @@ function pullRequestContextComment(
       ...instructions,
     ].join("\n"),
     diff: "",
+    pullRequest: {
+      number: input.number,
+      title: boundedField(input.title),
+      url: boundedField(input.url),
+      headBranch: boundedField(input.headBranch),
+      baseBranch: boundedField(input.baseBranch),
+      state: input.state,
+      isDraft: input.isDraft,
+    },
   };
 }
 
@@ -886,6 +897,8 @@ export function buildAskAboutPullRequestHandoff(input: {
   readonly url: string;
   readonly headBranch: string;
   readonly baseBranch: string;
+  readonly state: PullRequestState;
+  readonly isDraft: boolean;
 }): FixFindingsHandoff {
   return {
     prompt: "",
@@ -904,6 +917,8 @@ export function buildExplainPullRequestHandoff(input: {
   readonly url: string;
   readonly headBranch: string;
   readonly baseBranch: string;
+  readonly state: PullRequestState;
+  readonly isDraft: boolean;
 }): FixFindingsHandoff {
   return {
     prompt: "Explain this pull request.",
@@ -922,6 +937,8 @@ export function buildAddSelectionToAgentHandoff(input: {
   readonly url: string;
   readonly headBranch: string;
   readonly baseBranch: string;
+  readonly state: PullRequestState;
+  readonly isDraft: boolean;
   readonly comment: ReviewCommentContext;
   readonly request: string;
 }): FixFindingsHandoff {
