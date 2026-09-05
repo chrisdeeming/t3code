@@ -226,6 +226,11 @@ export function isUsageLimitsCommand(prompt: string): boolean {
   return prompt.trim().toLowerCase() === "/usage-limits";
 }
 
+/**
+ * Whether Limits has anything to say about this driver. A source that failed to
+ * read keeps no accounts, so its error counts for every driver rather than
+ * disappearing until the next successful refresh.
+ */
 export function hasProviderUsageLimits(
   driver: ServerProvider["driver"],
   providers: readonly ServerProvider[],
@@ -233,7 +238,11 @@ export function hasProviderUsageLimits(
 ): boolean {
   return (
     providersWithLimits(providers).some((provider) => provider.driver === driver) ||
-    sources.some((source) => source.accounts.some((account) => account.driver === driver))
+    sources.some(
+      (source) =>
+        source.accounts.some((account) => account.driver === driver) ||
+        (source.error !== undefined && source.accounts.length === 0),
+    )
   );
 }
 

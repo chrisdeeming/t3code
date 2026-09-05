@@ -6986,7 +6986,7 @@ export default function ChatView(props: ChatViewProps) {
           activeThreadId,
           error instanceof Error ? error.message : "Failed to submit approval decision.",
         );
-      } else {
+      } else if (result._tag === "Success") {
         // The agent resumes and spends quota, so any limits snapshot is stale.
         setUsageLimitsPanel(null);
       }
@@ -7017,7 +7017,7 @@ export default function ChatView(props: ChatViewProps) {
           activeThreadId,
           error instanceof Error ? error.message : "Failed to submit user input.",
         );
-      } else {
+      } else if (result._tag === "Success") {
         setUsageLimitsPanel(null);
       }
       setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));

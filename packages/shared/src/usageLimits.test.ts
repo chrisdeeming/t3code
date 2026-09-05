@@ -411,6 +411,15 @@ describe("/usage-limits", () => {
     expect(
       collectProviderUsageLimits(selected.instanceId, [selected], [unreadable], now)?.notices,
     ).toEqual(["Accounts: token expired"]);
+    // A source-only provider still gets the report, carrying only the error.
+    const sourceOnly = collectProviderUsageLimits(
+      selected.instanceId,
+      [provider({})],
+      [unreadable],
+      now,
+    );
+    expect(sourceOnly?.accounts).toEqual([]);
+    expect(sourceOnly?.notices).toEqual(["Accounts: token expired"]);
   });
 
   it("advertises global and workspace commands only for providers present in Limits", () => {
@@ -425,6 +434,12 @@ describe("/usage-limits", () => {
       supported?.workspaceSnapshots?.[0]?.slashCommands.map((command) => command.name),
     ).toEqual(["usage-limits"]);
     expect(withUsageLimitsCommands([withWorkspace], [])[0]?.slashCommands).toEqual([]);
+    const unreadable = { ...sources[0]!, accounts: [], error: "token expired" };
+    expect(
+      withUsageLimitsCommands([withWorkspace], [unreadable])[0]?.slashCommands.map(
+        (command) => command.name,
+      ),
+    ).toEqual(["usage-limits"]);
     expect(
       withUsageLimitsCommands([selected], [])[0]?.slashCommands.map((command) => command.name),
     ).toEqual(["usage-limits"]);

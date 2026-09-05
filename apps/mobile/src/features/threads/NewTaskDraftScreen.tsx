@@ -910,7 +910,8 @@ export function NewTaskDraftScreen(props: {
       return;
     }
     // The thread composer answers this locally; a new task would send it to the agent.
-    if (isUsageLimitsCommand(initialMessageText)) {
+    // Attachments mean the user is sending a prompt, so those go through as usual.
+    if (isUsageLimitsCommand(initialMessageText) && draft.attachments.length === 0) {
       Alert.alert(
         "Usage limits",
         "Send /usage-limits inside a thread, or open Settings → Usage → Limits.",
