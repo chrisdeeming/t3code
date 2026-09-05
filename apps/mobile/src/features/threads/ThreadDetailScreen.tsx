@@ -361,13 +361,15 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const [collapsedUserInputRequestId, setCollapsedUserInputRequestId] =
     useState<ApprovalRequestId | null>(null);
   const activeUserInputRequestId = props.activePendingUserInput?.requestId ?? null;
-  // A /usage-limits snapshot for this thread and model; sending or switching clears it.
+  // A /usage-limits snapshot for this thread, model and turn. Anything that spends
+  // quota afterwards makes it stale: a new turn from any source, or the agent
+  // resuming after an approval or answered question.
   const [usageLimitsPanel, setUsageLimitsPanel] = useState<{
     readonly key: string;
     readonly report: UsageLimitsReport;
   } | null>(null);
-  const usageLimitsKey = `${selectedThreadKey}:${props.selectedThread.modelSelection.instanceId}`;
-  // Drop the snapshot as soon as the thread or model changes so it cannot resurface stale.
+  const usageLimitsKey = `${selectedThreadKey}:${props.selectedThread.modelSelection.instanceId}:${props.selectedThread.latestTurn?.turnId ?? ""}`;
+  // Drop the snapshot as soon as the key changes so it cannot resurface stale.
   if (usageLimitsPanel !== null && usageLimitsPanel.key !== usageLimitsKey) {
     setUsageLimitsPanel(null);
   }
@@ -379,6 +381,20 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
     [usageLimitsKey],
   );
   const dismissUsageLimits = useCallback(() => setUsageLimitsPanel(null), []);
+  const { onRespondToApproval, onSubmitUserInput } = props;
+  const handleRespondToApproval = useCallback(
+    async (requestId: ApprovalRequestId, decision: ProviderApprovalDecision) => {
+      const result = await onRespondToApproval(requestId, decision);
+      setUsageLimitsPanel(null);
+      return result;
+    },
+    [onRespondToApproval],
+  );
+  const handleSubmitUserInput = useCallback(async () => {
+    const result = await onSubmitUserInput();
+    setUsageLimitsPanel(null);
+    return result;
+  }, [onSubmitUserInput]);
   const userInputCollapsed =
     activeUserInputRequestId !== null && collapsedUserInputRequestId === activeUserInputRequestId;
   // The card's height RESERVES keyboard space at all times instead of
@@ -831,7 +847,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                       <PendingApprovalCard
                         approval={props.activePendingApproval}
                         respondingApprovalId={props.respondingApprovalId}
-                        onRespond={props.onRespondToApproval}
+                        onRespond={handleRespondToApproval}
                       />
                     ) : null}
                     {props.activePendingUserInput ? (
@@ -849,7 +865,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                         respondingUserInputId={props.respondingUserInputId}
                         onSelectOption={props.onSelectUserInputOption}
                         onChangeCustomAnswer={props.onChangeUserInputCustomAnswer}
-                        onSubmit={props.onSubmitUserInput}
+                        onSubmit={handleSubmitUserInput}
                       />
                     ) : null}
                   </Animated.View>

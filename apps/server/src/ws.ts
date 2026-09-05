@@ -2676,7 +2676,13 @@ const makeWsRpcLayer = (
                 })),
               );
               const providerStatuses = Stream.zipLatestWith(
-                providerRegistry.streamChanges,
+                // The registry stream carries changes only. Seed it with the current
+                // providers so a source refresh that lands before any provider change
+                // still pairs up and reaches the client.
+                Stream.concat(
+                  Stream.fromEffect(providerRegistry.getProviders),
+                  providerRegistry.streamChanges,
+                ),
                 usageLimitSources.streamChanges.pipe(
                   // Quota updates already have their own stream. Republish the model
                   // catalog only when the set of source-backed providers changes.
@@ -2696,6 +2702,9 @@ const makeWsRpcLayer = (
                 ),
                 withUsageLimitsCommands,
               ).pipe(
+                // Both sides replay their current value, so the first pairing repeats
+                // the snapshot the client already holds.
+                Stream.drop(1),
                 Stream.map((providers) => ({
                   version: 1 as const,
                   type: "providerStatuses" as const,

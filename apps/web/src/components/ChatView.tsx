@@ -2520,7 +2520,9 @@ export default function ChatView(props: ChatViewProps) {
   );
   const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
   const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
-  // A /usage-limits snapshot for this thread and model; sending or switching clears it.
+  // A /usage-limits snapshot for this thread, model and turn. Anything that spends
+  // quota afterwards makes it stale: a new turn from any source, or the agent
+  // resuming after an approval or answered question.
   const [usageLimitsPanel, setUsageLimitsPanel] = useState<{
     readonly key: string;
     readonly report: UsageLimitsReport;
@@ -2528,7 +2530,9 @@ export default function ChatView(props: ChatViewProps) {
   // Null while the provider list is unavailable, such as during a reconnect; the
   // snapshot then stays hidden rather than being dropped for a transient blip.
   const usageLimitsKey =
-    activeProviderInstanceId === null ? null : `${routeThreadKey}:${activeProviderInstanceId}`;
+    activeProviderInstanceId === null
+      ? null
+      : `${routeThreadKey}:${activeProviderInstanceId}:${activeThread?.latestTurn?.turnId ?? ""}`;
   // Drop the snapshot as soon as the thread or model changes so it cannot resurface stale.
   if (
     usageLimitsPanel !== null &&
@@ -6952,6 +6956,9 @@ export default function ChatView(props: ChatViewProps) {
           activeThreadId,
           error instanceof Error ? error.message : "Failed to submit approval decision.",
         );
+      } else {
+        // The agent resumes and spends quota, so any limits snapshot is stale.
+        setUsageLimitsPanel(null);
       }
       setRespondingRequestIds((existing) => existing.filter((id) => id !== requestId));
       return result;
@@ -6980,6 +6987,8 @@ export default function ChatView(props: ChatViewProps) {
           activeThreadId,
           error instanceof Error ? error.message : "Failed to submit user input.",
         );
+      } else {
+        setUsageLimitsPanel(null);
       }
       setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
       return result;
