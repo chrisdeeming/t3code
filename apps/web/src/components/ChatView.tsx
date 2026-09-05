@@ -6673,9 +6673,6 @@ export default function ChatView(props: ChatViewProps) {
     } else {
       scrollToEnd();
     }
-    // The message is leaving, so that thread's limits snapshot is now stale. The
-    // uploads above may have outlasted a navigation, so only that thread's clears.
-    clearUsageLimitsFor(routeThreadKey);
     setOptimisticUserMessages((existing) => [
       ...existing,
       {
@@ -6842,6 +6839,10 @@ export default function ChatView(props: ChatViewProps) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
+        // The turn is under way and will spend quota, so that thread's limits
+        // snapshot is stale. Uploads may have outlasted a navigation, so only
+        // the sending thread's panel clears.
+        clearUsageLimitsFor(routeThreadKey);
         if (turnUsesAttachmentUploads) {
           releaseDraftAttachments(composerAttachmentsSnapshot);
         }
@@ -7221,7 +7222,6 @@ export default function ChatView(props: ChatViewProps) {
 
       scrollToEnd();
 
-      clearUsageLimitsFor(routeThreadKey);
       setOptimisticUserMessages((existing) => [
         ...existing,
         {
@@ -7285,6 +7285,7 @@ export default function ChatView(props: ChatViewProps) {
       }
 
       if (failure === null) {
+        clearUsageLimitsFor(routeThreadKey);
         acknowledgeActiveThreadWoke();
         sendInFlightRef.current = false;
         return;
