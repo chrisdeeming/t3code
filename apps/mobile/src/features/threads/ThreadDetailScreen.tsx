@@ -691,7 +691,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
     }
 
     // A sent message makes the snapshot stale; a refused send leaves it in place.
-    setUsageLimitsPanel(null);
+    clearUsageLimitsFor(targetThreadKey);
 
     setSubmittedMessageId(messageId);
     setAnchorMessageId(
@@ -707,6 +707,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
     return messageId;
   }, [
     anchorMessageId,
+    clearUsageLimitsFor,
     props.onSendMessage,
     props.selectedThread.latestTurn,
     props.selectedThreadQueueCount,

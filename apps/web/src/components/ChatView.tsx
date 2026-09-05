@@ -6666,8 +6666,9 @@ export default function ChatView(props: ChatViewProps) {
     } else {
       scrollToEnd();
     }
-    // The message is leaving, so the limits snapshot is now stale.
-    setUsageLimitsPanel(null);
+    // The message is leaving, so that thread's limits snapshot is now stale. The
+    // uploads above may have outlasted a navigation, so only that thread's clears.
+    clearUsageLimitsFor(routeThreadKey);
     setOptimisticUserMessages((existing) => [
       ...existing,
       {
@@ -7213,7 +7214,7 @@ export default function ChatView(props: ChatViewProps) {
 
       scrollToEnd();
 
-      setUsageLimitsPanel(null);
+      clearUsageLimitsFor(routeThreadKey);
       setOptimisticUserMessages((existing) => [
         ...existing,
         {
@@ -7313,6 +7314,8 @@ export default function ChatView(props: ChatViewProps) {
       startThreadTurn,
       environmentId,
       composerRef,
+      clearUsageLimitsFor,
+      routeThreadKey,
     ],
   );
 
