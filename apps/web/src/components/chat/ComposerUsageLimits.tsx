@@ -14,7 +14,10 @@ function accountLabel(account: UsageLimitsReport["accounts"][number]): string {
   const instance =
     account.displayName?.trim() ||
     (String(account.instanceId) !== String(account.driver) ? account.instanceId : "");
-  return instance ? `${driver} · ${instance}` : driver;
+  // The default instance is often named after its driver; saying it twice adds nothing.
+  return instance && instance.toLowerCase() !== driver.toLowerCase()
+    ? `${driver} · ${instance}`
+    : driver;
 }
 
 /** The /usage-limits result as a composer notice: it stacks under warnings and dismisses like one. */
