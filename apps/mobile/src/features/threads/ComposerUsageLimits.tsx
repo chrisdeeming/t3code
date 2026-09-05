@@ -77,10 +77,21 @@ export function ComposerUsageLimits({
             />
           );
         })}
+        {report.accounts.length === 0 ? (
+          // Nothing but notices, so the close control needs a row of its own.
+          <View className="flex-row items-center gap-3 px-4 pt-3">
+            <Text className="min-w-0 flex-1 text-base text-foreground">Usage limits</Text>
+            {close}
+          </View>
+        ) : null}
         {report.notices.map((notice) => (
           <Text
             key={notice}
-            className="border-t border-border-subtle px-4 py-3 text-xs text-foreground-muted"
+            className={
+              report.accounts.length === 0
+                ? "px-4 py-3 text-xs text-foreground-muted"
+                : "border-t border-border-subtle px-4 py-3 text-xs text-foreground-muted"
+            }
           >
             {notice}
           </Text>
