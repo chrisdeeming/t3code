@@ -225,6 +225,13 @@ function useStreamingHaptics(threadId: ThreadId, feed: ReadonlyArray<ThreadFeedE
   }, [threadId, feed]);
 }
 
+/** The atom command result shape: only a delivered response counts. */
+function succeeded(result: unknown): boolean {
+  return (
+    typeof result === "object" && result !== null && "_tag" in result && result._tag === "Success"
+  );
+}
+
 const USER_INPUT_TOGGLE_TIMING = {
   duration: USER_INPUT_TOGGLE_DURATION_MS,
   easing: Easing.out(Easing.cubic),
@@ -402,8 +409,9 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   );
   const dismissUsageLimits = useCallback(() => setUsageLimitsPanel(null), []);
   const { onRespondToApproval, onSubmitUserInput } = props;
-  // The response may resolve after navigating away, so only the originating
-  // thread's panel is cleared; a panel opened elsewhere in the meantime stays.
+  // Only a delivered response resumes the agent and spends quota; a failed one
+  // leaves the snapshot valid. The response may also resolve after navigating
+  // away, so only the originating thread's panel is cleared.
   const clearUsageLimitsFor = useCallback(
     (threadKey: string) =>
       setUsageLimitsPanel((current) =>
@@ -415,7 +423,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
     async (requestId: ApprovalRequestId, decision: ProviderApprovalDecision) => {
       const threadKey = selectedThreadKey;
       const result = await onRespondToApproval(requestId, decision);
-      clearUsageLimitsFor(threadKey);
+      if (succeeded(result)) clearUsageLimitsFor(threadKey);
       return result;
     },
     [clearUsageLimitsFor, onRespondToApproval, selectedThreadKey],
@@ -423,7 +431,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const handleSubmitUserInput = useCallback(async () => {
     const threadKey = selectedThreadKey;
     const result = await onSubmitUserInput();
-    clearUsageLimitsFor(threadKey);
+    if (succeeded(result)) clearUsageLimitsFor(threadKey);
     return result;
   }, [clearUsageLimitsFor, onSubmitUserInput, selectedThreadKey]);
   const userInputCollapsed =
