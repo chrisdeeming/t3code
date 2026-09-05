@@ -340,6 +340,21 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     );
   }, [props.serverConfig, props.selectedThread.modelSelection.instanceId]);
   const composerOwnerKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
+  const { onSendMessage, onChangeDraftMessage, onShowUsageLimits } = props;
+  // Answered locally from the last Limits snapshot; the agent never sees it.
+  const openUsageLimits = useCallback(() => {
+    const report = collectProviderUsageLimits(
+      currentModelSelection.instanceId,
+      props.serverConfig?.providers ?? [],
+      props.serverConfig?.usageLimitSources ?? [],
+      Date.now(),
+    );
+    onShowUsageLimits(report);
+    if (!report) {
+      Alert.alert("Usage limits unavailable", "This provider does not currently report limits.");
+    }
+    return report !== null;
+  }, [currentModelSelection.instanceId, onShowUsageLimits, props.serverConfig]);
 
   const composerMenu = useComposerCommandMenu({
     draftMessage: props.draftMessage,
@@ -354,6 +369,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       selectedProviderStatus?.showInteractionModeToggle === false
         ? undefined
         : props.onUpdateInteractionMode,
+    onUsageLimits: openUsageLimits,
   });
   const voiceInput = useVoiceInputController({
     ownerKey: composerOwnerKey,
@@ -432,24 +448,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     }
     onEditorFocusChange?.(false);
   }, [onEditorFocusChange, onExpandedChange, settingsSheetPresentation.isActive]);
-  const { onSendMessage, onChangeDraftMessage, onShowUsageLimits } = props;
-
   const handleSend = useCallback(async () => {
-    // Answered locally from the last Limits snapshot; the agent never sees it.
-    // Attachments mean the user is sending a prompt, so those go through as usual.
+    // Typed out in full rather than picked from the menu. Attachments mean the
+    // user is sending a prompt, so those go through as usual.
     if (isUsageLimitsCommand(props.draftMessage) && props.draftAttachments.length === 0) {
-      const report = collectProviderUsageLimits(
-        currentModelSelection.instanceId,
-        props.serverConfig?.providers ?? [],
-        props.serverConfig?.usageLimitSources ?? [],
-        Date.now(),
-      );
-      onShowUsageLimits(report);
-      if (report) {
-        onChangeDraftMessage("");
-      } else {
-        Alert.alert("Usage limits unavailable", "This provider does not currently report limits.");
-      }
+      if (openUsageLimits()) onChangeDraftMessage("");
       return;
     }
     if (voiceInput.blocksSubmission) return;
@@ -476,10 +479,8 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   }, [
     props.draftMessage,
     props.draftAttachments.length,
-    props.serverConfig,
     onChangeDraftMessage,
-    onShowUsageLimits,
-    currentModelSelection.instanceId,
+    openUsageLimits,
     onSendMessage,
     props.environmentId,
     props.environmentLabel,

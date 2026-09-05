@@ -2579,6 +2579,26 @@ export default function ChatView(props: ChatViewProps) {
         : null,
     [environmentId, usageLimitsPanel, usageLimitsReport],
   );
+  // Answered locally from the last Limits snapshot; the agent never sees it.
+  const openUsageLimits = useCallback(() => {
+    const now = Date.now();
+    const report =
+      activeProviderInstanceId !== null && usageLimitsKey !== null
+        ? collectProviderUsageLimits(
+            activeProviderInstanceId,
+            providerStatuses,
+            usageLimitSources,
+            now,
+          )
+        : null;
+    if (report && usageLimitsKey !== null) {
+      setUsageLimitsPanel({ key: usageLimitsKey, now });
+      return true;
+    }
+    setUsageLimitsPanel(null);
+    toastManager.add({ type: "info", title: "Usage limits are unavailable for this provider" });
+    return false;
+  }, [activeProviderInstanceId, providerStatuses, usageLimitSources, usageLimitsKey]);
   const activeProviderStatus = selectedProviderEntry?.snapshot ?? null;
   const { enabled: interactionModeEnabled, interactionMode } = resolveComposerInteractionMode({
     planModeEnabled: settings.planModeEnabled,
@@ -6147,31 +6167,17 @@ export default function ChatView(props: ChatViewProps) {
     },
   ) => {
     e?.preventDefault();
-    // Answered locally from the last Limits snapshot; the agent never sees it.
-    // Attachments or contexts mean the user is sending a prompt, so those go through as usual.
+    // Typed out in full rather than picked from the menu. Attachments or contexts
+    // mean the user is sending a prompt, so those go through as usual.
     if (
       !directAnnotation &&
       !composerHasNonPromptContent &&
       isUsageLimitsCommand(promptRef.current)
     ) {
-      const now = Date.now();
-      const report =
-        activeProviderInstanceId !== null && usageLimitsKey !== null
-          ? collectProviderUsageLimits(
-              activeProviderInstanceId,
-              providerStatuses,
-              usageLimitSources,
-              now,
-            )
-          : null;
-      if (report && usageLimitsKey !== null) {
-        setUsageLimitsPanel({ key: usageLimitsKey, now });
+      if (openUsageLimits()) {
         promptRef.current = "";
         setComposerDraftPrompt(composerDraftTarget, "");
         composerRef.current?.resetCursorState();
-      } else {
-        setUsageLimitsPanel(null);
-        toastManager.add({ type: "info", title: "Usage limits are unavailable for this provider" });
       }
       return;
     }
@@ -8056,6 +8062,7 @@ export default function ChatView(props: ChatViewProps) {
                             }
                             isPreparingWorktree={isPreparingWorktree}
                             bannerItems={composerBannerItems}
+                            onUsageLimitsCommand={openUsageLimits}
                             environmentUnavailable={activeEnvironmentUnavailableState}
                             activePendingApproval={activePendingApproval}
                             pendingApprovals={pendingApprovals}

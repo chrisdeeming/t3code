@@ -149,6 +149,7 @@ export function useComposerCommandMenu({
   enabled = true,
   onChangeDraftMessage,
   onUpdateInteractionMode,
+  onUsageLimits,
 }: {
   readonly draftMessage: string;
   readonly ownerKey: string | null;
@@ -160,6 +161,8 @@ export function useComposerCommandMenu({
   readonly enabled?: boolean;
   readonly onChangeDraftMessage: (value: string) => void;
   readonly onUpdateInteractionMode?: (mode: ProviderInteractionMode) => void;
+  /** Picking /usage-limits is the action itself; the draft keeps nothing of it. */
+  readonly onUsageLimits?: () => void;
 }) {
   const [selection, setSelection] = useState(() => composerSelectionAtEnd(draftMessage));
   const previousOwnerKeyRef = useRef(ownerKey);
@@ -399,6 +402,18 @@ export function useComposerCommandMenu({
     (item: ComposerCommandItem) => {
       if (!trigger) return;
 
+      if (
+        item.type === "provider-slash-command" &&
+        item.command.name === USAGE_LIMITS_COMMAND.name &&
+        onUsageLimits
+      ) {
+        const cleared = replaceTextRange(draftMessage, trigger.rangeStart, trigger.rangeEnd, "");
+        setSelection({ start: cleared.cursor, end: cleared.cursor });
+        onChangeDraftMessage(cleared.text);
+        onUsageLimits();
+        return;
+      }
+
       const result = resolveComposerCommandSelection({
         draftMessage,
         trigger,
@@ -417,6 +432,7 @@ export function useComposerCommandMenu({
       draftMessage,
       onChangeDraftMessage,
       onUpdateInteractionMode,
+      onUsageLimits,
       selectedProviderStatus?.showInteractionModeToggle,
       trigger,
     ],
