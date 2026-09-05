@@ -6187,7 +6187,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         const wsUrl = yield* getWsServerUrl("/ws");
         const events = yield* Effect.scoped(
           withWsRpcClient(wsUrl, (client) =>
-            client[WS_METHODS.subscribeServerConfig]({}).pipe(Stream.take(2), Stream.runCollect),
+            client[WS_METHODS.subscribeServerConfig]({ usageLimitsCommand: true }).pipe(
+              Stream.take(2),
+              Stream.runCollect,
+            ),
           ),
         );
 
@@ -6214,6 +6217,60 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 ]
               : nextProviders,
           },
+        });
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "routes websocket rpc subscribeServerConfig keeps the limits command from clients that do not ask for it",
+    () =>
+      Effect.gen(function* () {
+        const codex = {
+          instanceId: ProviderInstanceId.make("codex"),
+          driver: ProviderDriverKind.make("codex"),
+          enabled: true,
+          installed: true,
+          version: "1.0.0",
+          status: "ready" as const,
+          auth: { status: "authenticated" as const },
+          checkedAt: "2026-04-11T00:00:00.000Z",
+          models: [],
+          slashCommands: [],
+          skills: [],
+          usageLimits: {
+            checkedAt: "2026-04-11T00:00:00.000Z",
+            windows: [{ id: "weekly", kind: "weekly" as const, label: "Weekly", usedPercent: 25 }],
+          },
+        };
+        yield* buildAppUnderTest({
+          layers: {
+            keybindings: {
+              loadConfigState: Effect.succeed({ keybindings: [], issues: [] }),
+              streamChanges: Stream.empty,
+            },
+            providerRegistry: {
+              getProviders: Effect.succeed([codex]),
+              streamChanges: Stream.succeed([{ ...codex, version: "1.0.1" }]),
+            },
+          },
+        });
+
+        const wsUrl = yield* getWsServerUrl("/ws");
+        const events = yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[WS_METHODS.subscribeServerConfig]({}).pipe(Stream.take(2), Stream.runCollect),
+          ),
+        );
+
+        const [first, second] = Array.from(events);
+        assert.equal(first?.type, "snapshot");
+        if (first?.type === "snapshot") {
+          assert.deepEqual(first.config.providers, [codex]);
+        }
+        assert.deepEqual(second, {
+          version: 1,
+          type: "providerStatuses",
+          payload: { providers: [{ ...codex, version: "1.0.1" }] },
         });
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
@@ -6276,7 +6333,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         const wsUrl = yield* getWsServerUrl("/ws");
         const events = yield* Effect.scoped(
           withWsRpcClient(wsUrl, (client) =>
-            client[WS_METHODS.subscribeServerConfig]({}).pipe(Stream.take(2), Stream.runCollect),
+            client[WS_METHODS.subscribeServerConfig]({ usageLimitsCommand: true }).pipe(
+              Stream.take(2),
+              Stream.runCollect,
+            ),
           ),
         );
 
