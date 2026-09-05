@@ -104,7 +104,11 @@ import {
   FileIcon,
   ImageIcon,
 } from "lucide-react";
-import type { ComposerContextRecord, KnownComposerContextRecord } from "@t3tools/contracts";
+import type {
+  ComposerContextId,
+  ComposerContextRecord,
+  KnownComposerContextRecord,
+} from "@t3tools/contracts";
 import { Button } from "../ui/button";
 import { useAssetUrlRefresh, useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
@@ -159,7 +163,14 @@ import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { asKnownContextRecord, resolveUserMessageContext } from "~/lib/composerContextRecords";
-import { collectComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import {
+  collectComposerContextReferences,
+  formatComposerContextReference,
+} from "@t3tools/shared/composerContextReferences";
+import {
+  COMPOSER_CONTEXT_CLIPBOARD_MIME,
+  encodeComposerContextFragment,
+} from "@t3tools/shared/composerContextClipboard";
 import {
   CHAT_INLINE_CHIP_CLASS_NAME,
   CHAT_INLINE_CHIP_LABEL_CLASS_NAME,
@@ -1329,6 +1340,52 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const annotationRecordIds = resolvedContext.records
     .filter((record) => record.kind === "preview-annotation")
     .map((record) => record.contextId);
+  const contextClipboardFragment =
+    resolvedContext.records.length === 0
+      ? null
+      : encodeComposerContextFragment({
+          version: 1,
+          source: {
+            environmentId: ctx.activeThreadEnvironmentId,
+            ...(ctx.threadRef ? { threadId: ctx.threadRef.threadId } : {}),
+            messageId: row.message.id,
+          },
+          records: resolvedContext.records,
+        });
+  // Chips inside the selection copy as their links (data-markdown-copy); the structured
+  // fragment rides beside so a paste into a draft brings the payloads along. Only records
+  // for chips that are actually inside the selection travel, so copying prose next to an
+  // image never starts importing that image somewhere else.
+  const onBodyCopyCapture = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    if (resolvedContext.records.length === 0 || !event.clipboardData) return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+    const copiedMarkdown: string[] = [];
+    for (let index = 0; index < selection.rangeCount; index += 1) {
+      const container = document.createElement("div");
+      container.appendChild(selection.getRangeAt(index).cloneContents());
+      for (const element of container.querySelectorAll("[data-markdown-copy]")) {
+        copiedMarkdown.push(element.getAttribute("data-markdown-copy") ?? "");
+      }
+    }
+    const selectedIds = new Set(
+      collectComposerContextReferences(copiedMarkdown.join("\n")).map((o) => o.contextId),
+    );
+    const records = resolvedContext.records.filter((record) => selectedIds.has(record.contextId));
+    if (records.length === 0) return;
+    event.clipboardData.setData(
+      COMPOSER_CONTEXT_CLIPBOARD_MIME,
+      encodeComposerContextFragment({
+        version: 1,
+        source: {
+          environmentId: ctx.activeThreadEnvironmentId,
+          ...(ctx.threadRef ? { threadId: ctx.threadRef.threadId } : {}),
+          messageId: row.message.id,
+        },
+        records,
+      }),
+    );
+  };
   const renderContextReference = (reference: ChatMarkdownContextReference) => {
     const record = asKnownContextRecord(resolvedContext.recordsById.get(reference.contextId));
     // Structured annotations point at the image record, which in turn points at the persisted
@@ -1489,12 +1546,14 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             ))}
           </div>
         ) : null}
-        <CollapsibleUserMessageBody
-          text={resolvedContext.text}
-          renderContextReference={renderContextReference}
-          skills={ctx.skills}
-          markdownCwd={ctx.markdownCwd}
-        />
+        <div onCopyCapture={onBodyCopyCapture}>
+          <CollapsibleUserMessageBody
+            text={resolvedContext.text}
+            renderContextReference={renderContextReference}
+            skills={ctx.skills}
+            markdownCwd={ctx.markdownCwd}
+          />
+        </div>
       </div>
       <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
         <div className="flex shrink-0 items-center gap-2">
@@ -1511,7 +1570,15 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               <RevertUserMessageButton turnCount={revertTurnCount} />
             )}
             {resolvedContext.text && (
-              <MessageCopyButton text={resolvedContext.text} variant="ghost" />
+              <MessageCopyButton
+                text={resolvedContext.text}
+                {...(contextClipboardFragment
+                  ? {
+                      extraFlavors: { [COMPOSER_CONTEXT_CLIPBOARD_MIME]: contextClipboardFragment },
+                    }
+                  : {})}
+                variant="ghost"
+              />
             )}
           </div>
         </div>
@@ -2287,6 +2354,7 @@ function AssistantChangedFilesSectionInner({
 function UserMessageContextChip(props: {
   icon: ReactNode;
   label: string;
+  copyMarkdown: string;
   tooltip?: string;
   unresolved?: boolean;
 }) {
@@ -2297,6 +2365,7 @@ function UserMessageContextChip(props: {
         props.unresolved && "border-dashed text-muted-foreground",
       )}
       data-context-unresolved={props.unresolved ? "true" : undefined}
+      data-markdown-copy={props.copyMarkdown}
     >
       {props.icon}
       <span className={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}>{props.label}</span>
@@ -2389,12 +2458,18 @@ function UserMessageContextReferenceChip(props: {
 }) {
   const { reference, record, attachment } = props;
   const iconClassName = cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5");
+  const copyMarkdown = formatComposerContextReference({
+    kind: reference.kind,
+    contextId: reference.contextId as ComposerContextId,
+    label: reference.label,
+  });
   if (record?.kind === "image" && attachment && isImageAttachment(attachment)) {
     return (
       <button
         type="button"
         className={cn(CHAT_INLINE_CHIP_CLASS_NAME, "cursor-zoom-in")}
         aria-label={`Image attachment, ${record.name}`}
+        data-markdown-copy={copyMarkdown}
         onClick={() => props.onExpandImage(attachment)}
       >
         {attachment.previewUrl ? (
@@ -2418,6 +2493,7 @@ function UserMessageContextReferenceChip(props: {
         disabled={disabled}
         className={cn(CHAT_INLINE_CHIP_CLASS_NAME, !disabled && "cursor-pointer hover:underline")}
         aria-label={`File attachment, ${record.name}`}
+        data-markdown-copy={copyMarkdown}
         onClick={() => props.onOpenFile(attachment)}
       >
         <FileIcon className={iconClassName} />
@@ -2427,7 +2503,11 @@ function UserMessageContextReferenceChip(props: {
   }
   if (record?.kind === "terminal") {
     const tooltipText = record.text.length > 0 ? `${record.label}\n${record.text}` : record.label;
-    return <TerminalContextInlineChip label={record.label} tooltipText={tooltipText} />;
+    return (
+      <span data-markdown-copy={copyMarkdown}>
+        <TerminalContextInlineChip label={record.label} tooltipText={tooltipText} />
+      </span>
+    );
   }
   if (record?.kind === "element") {
     const lines = [record.label, record.pageUrl];
@@ -2437,6 +2517,7 @@ function UserMessageContextReferenceChip(props: {
       <UserMessageContextChip
         icon={<MousePointerClickIcon className={iconClassName} />}
         label={record.label}
+        copyMarkdown={copyMarkdown}
         tooltip={lines.join("\n")}
       />
     );
@@ -2448,6 +2529,7 @@ function UserMessageContextReferenceChip(props: {
           <UserMessageContextChip
             icon={<MessageCircleIcon className={iconClassName} />}
             label={record.label}
+            copyMarkdown={copyMarkdown}
           />
         }
       >
@@ -2475,6 +2557,7 @@ function UserMessageContextReferenceChip(props: {
           <UserMessageContextChip
             icon={<MousePointerClickIcon className={iconClassName} />}
             label={record.label}
+            copyMarkdown={copyMarkdown}
           />
         }
       >
@@ -2486,6 +2569,7 @@ function UserMessageContextReferenceChip(props: {
     <UserMessageContextChip
       icon={<CircleDashedIcon className={iconClassName} />}
       label={reference.label}
+      copyMarkdown={copyMarkdown}
       tooltip="This context is no longer available."
       unresolved
     />
