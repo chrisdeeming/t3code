@@ -1,4 +1,4 @@
-import type { UsageLimitsReport } from "@t3tools/contracts";
+import type { UsageLimitSourceSnapshots } from "@t3tools/contracts";
 import { collectProviderUsageLimits, isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
 import { usageLimitsBannerItem } from "./chat/ComposerUsageLimits";
 import {
@@ -452,6 +452,7 @@ import { ATTACHMENT_ONLY_BOOTSTRAP_PROMPT } from "./chat/composerPromptHistory";
 
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
+const EMPTY_USAGE_LIMIT_SOURCES: UsageLimitSourceSnapshots = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
 function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
@@ -2520,12 +2521,14 @@ export default function ChatView(props: ChatViewProps) {
   );
   const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
   const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
-  // A /usage-limits snapshot for this thread, model and turn. Anything that spends
-  // quota afterwards makes it stale: a new turn from any source, or the agent
-  // resuming after an approval or answered question.
+  // The open /usage-limits panel for this thread, model and turn. Only the open
+  // moment is stored: the rows read live provider data, so a redeemed reset
+  // credit or refreshed probe shows through. Anything that spends quota closes
+  // it: a new turn from any source, or the agent resuming after an approval or
+  // answered question.
   const [usageLimitsPanel, setUsageLimitsPanel] = useState<{
     readonly key: string;
-    readonly report: UsageLimitsReport;
+    readonly now: number;
   } | null>(null);
   // Null while the provider list is unavailable, such as during a reconnect; the
   // snapshot then stays hidden rather than being dropped for a transient blip.
@@ -2541,20 +2544,40 @@ export default function ChatView(props: ChatViewProps) {
   ) {
     setUsageLimitsPanel(null);
   }
-  const usageLimitsBanner = useMemo(
+  const usageLimitSources = serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES;
+  const usageLimitsReport = useMemo(
     () =>
       usageLimitsPanel !== null &&
       usageLimitsKey !== null &&
-      usageLimitsPanel.key === usageLimitsKey
-        ? // A fresh id per snapshot: the stack keeps the last dismissed id as "exiting".
+      usageLimitsPanel.key === usageLimitsKey &&
+      activeProviderInstanceId !== null
+        ? collectProviderUsageLimits(
+            activeProviderInstanceId,
+            providerStatuses,
+            usageLimitSources,
+            usageLimitsPanel.now,
+          )
+        : null,
+    [
+      activeProviderInstanceId,
+      providerStatuses,
+      usageLimitSources,
+      usageLimitsKey,
+      usageLimitsPanel,
+    ],
+  );
+  const usageLimitsBanner = useMemo(
+    () =>
+      usageLimitsReport !== null && usageLimitsPanel !== null
+        ? // A fresh id per opening: the stack keeps the last dismissed id as "exiting".
           usageLimitsBannerItem(
-            `usage-limits:${usageLimitsKey}:${usageLimitsPanel.report.createdAt}`,
-            usageLimitsPanel.report,
+            `usage-limits:${usageLimitsPanel.key}:${usageLimitsPanel.now}`,
+            usageLimitsReport,
             environmentId,
             () => setUsageLimitsPanel(null),
           )
         : null,
-    [environmentId, usageLimitsKey, usageLimitsPanel],
+    [environmentId, usageLimitsPanel, usageLimitsReport],
   );
   const activeProviderStatus = selectedProviderEntry?.snapshot ?? null;
   const { enabled: interactionModeEnabled, interactionMode } = resolveComposerInteractionMode({
@@ -6131,17 +6154,18 @@ export default function ChatView(props: ChatViewProps) {
       !composerHasNonPromptContent &&
       isUsageLimitsCommand(promptRef.current)
     ) {
+      const now = Date.now();
       const report =
         activeProviderInstanceId !== null && usageLimitsKey !== null
           ? collectProviderUsageLimits(
               activeProviderInstanceId,
               providerStatuses,
-              serverConfig?.usageLimitSources ?? [],
-              Date.now(),
+              usageLimitSources,
+              now,
             )
           : null;
       if (report && usageLimitsKey !== null) {
-        setUsageLimitsPanel({ key: usageLimitsKey, report });
+        setUsageLimitsPanel({ key: usageLimitsKey, now });
         promptRef.current = "";
         setComposerDraftPrompt(composerDraftTarget, "");
         composerRef.current?.resetCursorState();

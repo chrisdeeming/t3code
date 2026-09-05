@@ -1,4 +1,5 @@
 import type { EnvironmentId, ProviderInteractionMode, ServerProvider } from "@t3tools/contracts";
+import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
 import {
   detectComposerTrigger,
   replaceTextRange,
@@ -78,6 +79,8 @@ export function buildComposerSlashCommandItems(input: {
   for (const command of input.selectedProviderStatus?.slashCommands ?? []) {
     if (!command.name.toLowerCase().includes(query)) continue;
     if (command.name === "compact" && !input.hasCompactableConversation) continue;
+    // Answered by the thread composer; New Task has nowhere to show it.
+    if (command.name === USAGE_LIMITS_COMMAND.name && !input.hasThread) continue;
     if (
       !input.hasThread &&
       input.selectedProviderStatus?.driver === "codex" &&

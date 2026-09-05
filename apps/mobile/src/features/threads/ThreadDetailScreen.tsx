@@ -58,6 +58,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { collectProviderUsageLimits } from "@t3tools/shared/usageLimits";
 import type { ComposerEditorHandle } from "../../components/ComposerEditor";
 import type { StatusTone } from "../../components/StatusPill";
 import type { DraftComposerAttachment } from "../../lib/composerImages";
@@ -361,23 +362,42 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const [collapsedUserInputRequestId, setCollapsedUserInputRequestId] =
     useState<ApprovalRequestId | null>(null);
   const activeUserInputRequestId = props.activePendingUserInput?.requestId ?? null;
-  // A /usage-limits snapshot for this thread, model and turn. Anything that spends
-  // quota afterwards makes it stale: a new turn from any source, or the agent
-  // resuming after an approval or answered question.
+  // The open /usage-limits panel for this thread, model and turn. Only the open
+  // moment is stored: the rows read live provider data, so a redeemed reset
+  // credit or refreshed probe shows through. Anything that spends quota closes
+  // it: a new turn from any source, or the agent resuming after an approval or
+  // answered question.
   const [usageLimitsPanel, setUsageLimitsPanel] = useState<{
     readonly key: string;
-    readonly report: UsageLimitsReport;
+    readonly now: number;
   } | null>(null);
   const usageLimitsKey = `${selectedThreadKey}:${props.selectedThread.modelSelection.instanceId}:${props.selectedThread.latestTurn?.turnId ?? ""}`;
   // Drop the snapshot as soon as the key changes so it cannot resurface stale.
   if (usageLimitsPanel !== null && usageLimitsPanel.key !== usageLimitsKey) {
     setUsageLimitsPanel(null);
   }
-  const usageLimitsReport =
-    usageLimitsPanel?.key === usageLimitsKey ? usageLimitsPanel.report : null;
+  const usageLimitsReport = useMemo(
+    () =>
+      usageLimitsPanel !== null && usageLimitsPanel.key === usageLimitsKey
+        ? collectProviderUsageLimits(
+            props.selectedThread.modelSelection.instanceId,
+            props.serverConfig?.providers ?? [],
+            props.serverConfig?.usageLimitSources ?? [],
+            usageLimitsPanel.now,
+          )
+        : null,
+    [
+      props.selectedThread.modelSelection.instanceId,
+      props.serverConfig,
+      usageLimitsKey,
+      usageLimitsPanel,
+    ],
+  );
   const showUsageLimits = useCallback(
     (report: UsageLimitsReport | null) =>
-      setUsageLimitsPanel(report === null ? null : { key: usageLimitsKey, report }),
+      setUsageLimitsPanel(
+        report === null ? null : { key: usageLimitsKey, now: Date.parse(report.createdAt) },
+      ),
     [usageLimitsKey],
   );
   const dismissUsageLimits = useCallback(() => setUsageLimitsPanel(null), []);

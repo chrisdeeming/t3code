@@ -49,6 +49,7 @@ import { VideoPreviewModal, type VideoPreviewSource } from "../../components/Vid
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
+import { isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
 import { COMPOSER_LAYOUT_TRANSITION, ComposerSurface } from "./ThreadComposer";
 import { ShimmeringWorkContent } from "./thread-work-log";
 import { ComposerCommandPopover } from "./ComposerCommandPopover";
@@ -905,6 +906,14 @@ export function NewTaskDraftScreen(props: {
       Alert.alert(
         "Antigravity model unavailable",
         "Set up Antigravity on web or desktop, or choose another model.",
+      );
+      return;
+    }
+    // The thread composer answers this locally; a new task would send it to the agent.
+    if (isUsageLimitsCommand(initialMessageText)) {
+      Alert.alert(
+        "Usage limits",
+        "Send /usage-limits inside a thread, or open Settings → Usage → Limits.",
       );
       return;
     }
