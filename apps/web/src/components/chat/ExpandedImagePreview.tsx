@@ -1,9 +1,8 @@
 import type { ComposerFileAttachment } from "../../composerDraftStore";
-import { type ChatImageAttachment, isVideoAttachment } from "../../types";
+import { type ChatFileAttachment, type ChatImageAttachment, isVideoAttachment } from "../../types";
 import type {
   AssetCreateUrlResult,
   AssetResource,
-  ChatFileAttachment,
   EnvironmentId,
   ScopedThreadRef,
 } from "@t3tools/contracts";
@@ -113,6 +112,36 @@ export function buildAttachmentVideoAsset(
       fileName: attachment.name,
       mimeType: videoMimeType(attachment) ?? attachment.mimeType,
     },
+  };
+}
+
+/** Opens a persisted video through the same signed-asset dialog used by message media. */
+export function buildAttachmentVideoPreview(
+  environmentId: EnvironmentId,
+  attachment: ChatFileAttachment,
+): ExpandedImagePreview | null {
+  if (!isVideoAttachment(attachment)) return null;
+  const src = attachment.previewUrl ?? null;
+  const asset =
+    attachment.downloadable === false
+      ? undefined
+      : buildAttachmentVideoAsset(environmentId, attachment);
+  if (src === null && asset === undefined) return null;
+  return {
+    images: [
+      {
+        src,
+        name: attachment.name,
+        type: "video",
+        actionsSource: {
+          kind: "video",
+          name: attachment.name,
+          src,
+          ...(asset ? { asset } : {}),
+        },
+      },
+    ],
+    index: 0,
   };
 }
 

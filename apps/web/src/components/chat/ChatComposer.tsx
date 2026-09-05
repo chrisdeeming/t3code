@@ -158,6 +158,7 @@ import {
   ComposerContextActionsContext,
   composerContextRecordsFromDraft,
 } from "../composerContextPresentation";
+import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import {
   collectInlineContextIds,
   type ComposerContextReference,
@@ -219,6 +220,7 @@ import {
 } from "./ContextWindowMeter.logic";
 import {
   attachVideoThumbnail,
+  buildAttachmentVideoPreview,
   buildExpandedImagePreview,
   type ExpandedImagePreview,
 } from "./ExpandedImagePreview";
@@ -827,7 +829,13 @@ import {
 } from "../../providerInstances";
 import { type AppModelOption, getAppModelOptionsForInstance } from "../../modelSelection";
 import type { UnifiedSettings } from "@t3tools/contracts/settings";
-import { type ChatMessage, type SessionPhase, type Thread, videoMimeType } from "../../types";
+import {
+  isVideoAttachment,
+  type ChatMessage,
+  type SessionPhase,
+  type Thread,
+  videoMimeType,
+} from "../../types";
 import {
   buildComposerPromptHistoryEntries,
   stepComposerPromptHistory,
@@ -1428,14 +1436,38 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [composerImages, composerPreviewAnnotations]);
   const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
   const uploadsByImageId = useAttachmentUploadStore((state) => state.uploadsByImageId);
+  const openPrLink = useOpenPrLink(routeKind === "server" ? routeThreadRef : undefined);
   const composerContextActions = useMemo(
     () => ({
       expandImage: (imageId: string) => {
         const preview = buildExpandedImagePreview(composerImages, imageId);
         if (preview) onExpandImage(preview);
       },
+      expandVideo: (fileId: string) => {
+        const file = composerFiles.find((candidate) => candidate.id === fileId);
+        if (!file || !isVideoAttachment(file)) return;
+        const localPreview = buildExpandedImagePreview([file], file.id);
+        if (localPreview) {
+          onExpandImage(localPreview);
+          return;
+        }
+        if (file.uploadedAttachmentId === undefined || file.uploadEnvironmentId !== environmentId) {
+          return;
+        }
+        const persistedPreview = buildAttachmentVideoPreview(environmentId, {
+          type: "file",
+          id: file.uploadedAttachmentId,
+          name: file.name,
+          mimeType: file.mimeType,
+          sizeBytes: file.sizeBytes,
+        });
+        if (persistedPreview) onExpandImage(persistedPreview);
+      },
+      openPullRequest: (event: React.MouseEvent<HTMLElement>, url: string) => {
+        openPrLink(event, url);
+      },
     }),
-    [composerImages, onExpandImage],
+    [composerFiles, composerImages, environmentId, onExpandImage, openPrLink],
   );
   const composerContextRecords = useMemo(
     () =>
