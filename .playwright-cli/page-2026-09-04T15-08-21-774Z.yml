@@ -1,0 +1,17 @@
+- generic [ref=e2]:
+    - banner [ref=e3]:
+        - img "XenForo Ltd." [ref=e5]
+    - main [ref=e8]:
+        - heading "Upgrade system" [level=1] [ref=e10]
+        - generic [ref=e11]:
+            - generic [ref=e12]: One or more files appears to be missing. Please reupload the XenForo files and refresh this page. Only continue if you are sure all files have been uploaded properly.
+            - generic [ref=e14]:
+                - generic [ref=e15]: Click the button below to begin the upgrade to 2.3.12 Patch 1.
+                - button "Begin upgrade" [ref=e17] [cursor=pointer]
+    - contentinfo [ref=e18]:
+        - generic [ref=e20]: v2.3.12 Patch 1
+        - link "Community platform by XenForo® © 2010-2026 XenForo Ltd." [ref=e22] [cursor=pointer]:
+            - /url: https://xenforo.com
+            - text: Community platform by XenForo
+            - superscript [ref=e23]: ®
+            - text: © 2010-2026 XenForo Ltd.

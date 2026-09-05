@@ -1,0 +1,26 @@
+- generic [ref=e2]:
+    - banner [ref=e3]:
+        - img "XenForo Ltd." [ref=e5]
+    - main [ref=e8]:
+        - heading "Upgrade system login" [level=1] [ref=e10]
+        - generic [ref=e13]:
+            - generic [ref=e14]:
+                - generic [ref=e15]:
+                    - term [ref=e16]: "Name or email:"
+                    - definition [ref=e17]:
+                        - textbox "Name or email:" [ref=e18]
+                - generic [ref=e19]:
+                    - term [ref=e20]: "Password:"
+                    - definition [ref=e21]:
+                        - textbox "Password:" [ref=e22]
+            - definition [ref=e24]:
+                - button "Log in" [ref=e28] [cursor=pointer]:
+                    - img [ref=e30]
+                    - generic [ref=e32]: Log in
+    - contentinfo [ref=e33]:
+        - generic [ref=e35]: v2.3.12 Patch 1
+        - link "Community platform by XenForo® © 2010-2026 XenForo Ltd." [ref=e37] [cursor=pointer]:
+            - /url: https://xenforo.com
+            - text: Community platform by XenForo
+            - superscript [ref=e38]: ®
+            - text: © 2010-2026 XenForo Ltd.

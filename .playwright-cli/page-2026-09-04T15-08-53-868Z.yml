@@ -1,0 +1,16 @@
+- generic [ref=e2]:
+    - banner [ref=e3]:
+        - img "XenForo Ltd." [ref=e5]
+    - main [ref=e8]:
+        - heading "Upgrade complete" [level=1] [ref=e10]
+        - generic [ref=e13]:
+            - generic [ref=e16]: Your upgrade to 2.3.12 Patch 1 has completed successfully!
+            - link "Enter your control panel" [ref=e18] [cursor=pointer]:
+                - /url: ../admin.php
+    - contentinfo [ref=e19]:
+        - generic [ref=e21]: v2.3.12 Patch 1
+        - link "Community platform by XenForo® © 2010-2026 XenForo Ltd." [ref=e23] [cursor=pointer]:
+            - /url: https://xenforo.com
+            - text: Community platform by XenForo
+            - superscript [ref=e24]: ®
+            - text: © 2010-2026 XenForo Ltd.
