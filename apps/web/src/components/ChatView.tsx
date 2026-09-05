@@ -2528,6 +2528,7 @@ export default function ChatView(props: ChatViewProps) {
   // answered question.
   const [usageLimitsPanel, setUsageLimitsPanel] = useState<{
     readonly key: string;
+    readonly threadKey: string;
     readonly now: number;
   } | null>(null);
   // Null while the provider list is unavailable, such as during a reconnect; the
@@ -2592,18 +2593,24 @@ export default function ChatView(props: ChatViewProps) {
           )
         : null;
     if (report && usageLimitsKey !== null) {
-      setUsageLimitsPanel({ key: usageLimitsKey, now });
+      setUsageLimitsPanel({ key: usageLimitsKey, threadKey: routeThreadKey, now });
       return true;
     }
     setUsageLimitsPanel(null);
     toastManager.add({ type: "info", title: "Usage limits are unavailable for this provider" });
     return false;
-  }, [activeProviderInstanceId, providerStatuses, usageLimitSources, usageLimitsKey]);
+  }, [
+    activeProviderInstanceId,
+    providerStatuses,
+    routeThreadKey,
+    usageLimitSources,
+    usageLimitsKey,
+  ]);
   // Responses can resolve after navigating away; only the originating thread's panel clears.
   const clearUsageLimitsFor = useCallback(
     (threadKey: string) =>
       setUsageLimitsPanel((current) =>
-        current !== null && current.key.startsWith(`${threadKey}:`) ? null : current,
+        current !== null && current.threadKey === threadKey ? null : current,
       ),
     [],
   );

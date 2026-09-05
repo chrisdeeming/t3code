@@ -376,6 +376,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   // answered question.
   const [usageLimitsPanel, setUsageLimitsPanel] = useState<{
     readonly key: string;
+    readonly threadKey: string;
     readonly now: number;
   } | null>(null);
   const usageLimitsKey = `${selectedThreadKey}:${props.selectedThread.modelSelection.instanceId}:${props.selectedThread.latestTurn?.turnId ?? ""}`;
@@ -403,9 +404,15 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const showUsageLimits = useCallback(
     (report: UsageLimitsReport | null) =>
       setUsageLimitsPanel(
-        report === null ? null : { key: usageLimitsKey, now: Date.parse(report.createdAt) },
+        report === null
+          ? null
+          : {
+              key: usageLimitsKey,
+              threadKey: selectedThreadKey,
+              now: Date.parse(report.createdAt),
+            },
       ),
-    [usageLimitsKey],
+    [selectedThreadKey, usageLimitsKey],
   );
   const dismissUsageLimits = useCallback(() => setUsageLimitsPanel(null), []);
   const { onRespondToApproval, onSubmitUserInput } = props;
@@ -415,7 +422,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const clearUsageLimitsFor = useCallback(
     (threadKey: string) =>
       setUsageLimitsPanel((current) =>
-        current !== null && current.key.startsWith(`${threadKey}:`) ? null : current,
+        current !== null && current.threadKey === threadKey ? null : current,
       ),
     [],
   );
