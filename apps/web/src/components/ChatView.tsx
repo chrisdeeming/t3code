@@ -6202,6 +6202,7 @@ export default function ChatView(props: ChatViewProps) {
     // mean the user is sending a prompt, so those go through as usual.
     if (
       usageLimitsOffered &&
+      usageLimitsKey !== null &&
       !directAnnotation &&
       !composerHasNonPromptContent &&
       isUsageLimitsCommand(promptRef.current)
@@ -8093,7 +8094,11 @@ export default function ChatView(props: ChatViewProps) {
                             }
                             isPreparingWorktree={isPreparingWorktree}
                             bannerItems={composerBannerItems}
-                            onUsageLimitsCommand={usageLimitsOffered ? openUsageLimits : undefined}
+                            onUsageLimitsCommand={
+                              usageLimitsOffered && usageLimitsKey !== null
+                                ? openUsageLimits
+                                : undefined
+                            }
                             environmentUnavailable={activeEnvironmentUnavailableState}
                             activePendingApproval={activePendingApproval}
                             pendingApprovals={pendingApprovals}
