@@ -100,21 +100,6 @@ function ComposerCitationDecorator(props: { citation: AssistantCitation; nodeKey
     );
     return accepted;
   };
-  const onRemove = () => {
-    if (!editor.isEditable()) return;
-    editor.update(
-      () => {
-        const node = $getNodeByKey(props.nodeKey);
-        if (node instanceof ComposerCitationNode) {
-          node.selectPrevious();
-          node.remove();
-        }
-      },
-      { tag: HISTORY_PUSH_TAG },
-    );
-    editor.getRootElement()?.focus({ preventScroll: true });
-  };
-
   return (
     <span
       className="inline-flex min-w-0 max-w-full"
@@ -124,6 +109,7 @@ function ComposerCitationDecorator(props: { citation: AssistantCitation; nodeKey
     >
       <AssistantCitationChip
         citation={props.citation}
+        composer
         commentEditor={{
           open: commentTarget !== null,
           sourceAnchor: commentTarget?.sourceAnchor,
@@ -139,7 +125,6 @@ function ComposerCitationDecorator(props: { citation: AssistantCitation; nodeKey
             return true;
           },
         }}
-        onRemove={onRemove}
       />
     </span>
   );
