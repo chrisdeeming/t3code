@@ -367,10 +367,15 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
     readonly report: UsageLimitsReport;
   } | null>(null);
   const usageLimitsKey = `${selectedThreadKey}:${props.selectedThread.modelSelection.instanceId}`;
+  // Drop the snapshot as soon as the thread or model changes so it cannot resurface stale.
+  if (usageLimitsPanel !== null && usageLimitsPanel.key !== usageLimitsKey) {
+    setUsageLimitsPanel(null);
+  }
   const usageLimitsReport =
     usageLimitsPanel?.key === usageLimitsKey ? usageLimitsPanel.report : null;
   const showUsageLimits = useCallback(
-    (report: UsageLimitsReport) => setUsageLimitsPanel({ key: usageLimitsKey, report }),
+    (report: UsageLimitsReport | null) =>
+      setUsageLimitsPanel(report === null ? null : { key: usageLimitsKey, report }),
     [usageLimitsKey],
   );
   const dismissUsageLimits = useCallback(() => setUsageLimitsPanel(null), []);
@@ -629,7 +634,6 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   ]);
 
   const handleSendMessage = useCallback(async () => {
-    setUsageLimitsPanel(null);
     const targetThreadKey = selectedThreadKey;
     const hasUserMessage = selectedThreadFeed.some(
       (entry) => entry.type === "message" && entry.message.role === "user",
@@ -638,6 +642,9 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
     if (messageId === null || selectedThreadKeyRef.current !== targetThreadKey) {
       return messageId;
     }
+
+    // A sent message makes the snapshot stale; a refused send leaves it in place.
+    setUsageLimitsPanel(null);
 
     setSubmittedMessageId(messageId);
     setAnchorMessageId(

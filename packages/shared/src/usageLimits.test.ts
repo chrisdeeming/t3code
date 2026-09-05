@@ -406,6 +406,11 @@ describe("/usage-limits", () => {
     expect(
       collectProviderUsageLimits(selected.instanceId, [selected], [claudeOnly], now)?.notices,
     ).toEqual([]);
+    // A read failure clears the accounts, so the error must not depend on a match.
+    const unreadable = { ...failing, accounts: [] };
+    expect(
+      collectProviderUsageLimits(selected.instanceId, [selected], [unreadable], now)?.notices,
+    ).toEqual(["Accounts: token expired"]);
   });
 
   it("advertises global and workspace commands only for providers present in Limits", () => {
