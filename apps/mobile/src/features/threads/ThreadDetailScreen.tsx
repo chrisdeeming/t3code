@@ -225,13 +225,6 @@ function useStreamingHaptics(threadId: ThreadId, feed: ReadonlyArray<ThreadFeedE
   }, [threadId, feed]);
 }
 
-/** The atom command result shape: only a delivered response counts. */
-function succeeded(result: unknown): boolean {
-  return (
-    typeof result === "object" && result !== null && "_tag" in result && result._tag === "Success"
-  );
-}
-
 const USER_INPUT_TOGGLE_TIMING = {
   duration: USER_INPUT_TOGGLE_DURATION_MS,
   easing: Easing.out(Easing.cubic),
@@ -379,7 +372,14 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
     readonly threadKey: string;
     readonly now: number;
   } | null>(null);
-  const usageLimitsKey = `${selectedThreadKey}:${props.selectedThread.modelSelection.instanceId}:${props.selectedThread.latestTurn?.turnId ?? ""}`;
+  // A pending approval or question is part of the key: once it is answered,
+  // from this client or any other, the agent resumes and spends quota.
+  const usageLimitsKey = [
+    selectedThreadKey,
+    props.selectedThread.modelSelection.instanceId,
+    props.selectedThread.latestTurn?.turnId ?? "",
+    props.activePendingApproval?.requestId ?? props.activePendingUserInput?.requestId ?? "",
+  ].join(":");
   // Drop the snapshot as soon as the key changes so it cannot resurface stale.
   if (usageLimitsPanel !== null && usageLimitsPanel.key !== usageLimitsKey) {
     setUsageLimitsPanel(null);
@@ -415,10 +415,8 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
     [selectedThreadKey, usageLimitsKey],
   );
   const dismissUsageLimits = useCallback(() => setUsageLimitsPanel(null), []);
-  const { onRespondToApproval, onSubmitUserInput } = props;
-  // Only a delivered response resumes the agent and spends quota; a failed one
-  // leaves the snapshot valid. The response may also resolve after navigating
-  // away, so only the originating thread's panel is cleared.
+  // A send may resolve after navigating away, so only the originating
+  // thread's panel is cleared; a panel opened elsewhere in the meantime stays.
   const clearUsageLimitsFor = useCallback(
     (threadKey: string) =>
       setUsageLimitsPanel((current) =>
@@ -426,21 +424,6 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
       ),
     [],
   );
-  const handleRespondToApproval = useCallback(
-    async (requestId: ApprovalRequestId, decision: ProviderApprovalDecision) => {
-      const threadKey = selectedThreadKey;
-      const result = await onRespondToApproval(requestId, decision);
-      if (succeeded(result)) clearUsageLimitsFor(threadKey);
-      return result;
-    },
-    [clearUsageLimitsFor, onRespondToApproval, selectedThreadKey],
-  );
-  const handleSubmitUserInput = useCallback(async () => {
-    const threadKey = selectedThreadKey;
-    const result = await onSubmitUserInput();
-    if (succeeded(result)) clearUsageLimitsFor(threadKey);
-    return result;
-  }, [clearUsageLimitsFor, onSubmitUserInput, selectedThreadKey]);
   const userInputCollapsed =
     activeUserInputRequestId !== null && collapsedUserInputRequestId === activeUserInputRequestId;
   // The card's height RESERVES keyboard space at all times instead of
@@ -894,7 +877,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                       <PendingApprovalCard
                         approval={props.activePendingApproval}
                         respondingApprovalId={props.respondingApprovalId}
-                        onRespond={handleRespondToApproval}
+                        onRespond={props.onRespondToApproval}
                       />
                     ) : null}
                     {props.activePendingUserInput ? (
@@ -912,7 +895,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                         respondingUserInputId={props.respondingUserInputId}
                         onSelectOption={props.onSelectUserInputOption}
                         onChangeCustomAnswer={props.onChangeUserInputCustomAnswer}
-                        onSubmit={handleSubmitUserInput}
+                        onSubmit={props.onSubmitUserInput}
                       />
                     ) : null}
                   </Animated.View>

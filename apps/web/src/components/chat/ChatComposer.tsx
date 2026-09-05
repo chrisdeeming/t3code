@@ -1193,7 +1193,7 @@ export interface ChatComposerProps {
   isPreparingWorktree: boolean;
   bannerItems: readonly ComposerBannerStackItem[];
   /** Picking /usage-limits from the menu is the action itself; the draft keeps nothing of it. */
-  onUsageLimitsCommand?: () => void;
+  onUsageLimitsCommand?: (() => void) | undefined;
   environmentUnavailable: {
     readonly label: string;
     readonly connection: EnvironmentConnectionPresentation;

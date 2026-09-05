@@ -435,6 +435,13 @@ describe("/usage-limits", () => {
       supported?.workspaceSnapshots?.[0]?.slashCommands.map((command) => command.name),
     ).toEqual(["usage-limits"]);
     expect(withUsageLimitsCommands([withWorkspace], [])[0]?.slashCommands).toEqual([]);
+    // A provider's own command of the same name is left alone without coverage.
+    const ownCommand = provider({
+      slashCommands: [{ name: "usage-limits", description: "Provider's own" }],
+    });
+    expect(withUsageLimitsCommands([ownCommand], [])[0]?.slashCommands).toEqual([
+      { name: "usage-limits", description: "Provider's own" },
+    ]);
     const unreadable = { ...sources[0]!, accounts: [], error: "token expired" };
     expect(
       withUsageLimitsCommands([withWorkspace], [unreadable])[0]?.slashCommands.map(

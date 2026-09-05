@@ -9,7 +9,11 @@ import type {
   ServerConfig as T3ServerConfig,
   UsageLimitsReport,
 } from "@t3tools/contracts";
-import { collectProviderUsageLimits, isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
+import {
+  collectProviderUsageLimits,
+  hasProviderUsageLimits,
+  isUsageLimitsCommand,
+} from "@t3tools/shared/usageLimits";
 import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { ReactNode } from "react";
 import {
@@ -341,6 +345,15 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   }, [props.serverConfig, props.selectedThread.modelSelection.instanceId]);
   const composerOwnerKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
   const { onSendMessage, onChangeDraftMessage, onShowUsageLimits } = props;
+  // T3 owns /usage-limits only where Limits has data for the selected provider;
+  // elsewhere the name stays the provider's own and is sent through untouched.
+  const usageLimitsOffered =
+    selectedProviderStatus !== null &&
+    hasProviderUsageLimits(
+      selectedProviderStatus.driver,
+      props.serverConfig?.providers ?? [],
+      props.serverConfig?.usageLimitSources ?? [],
+    );
   // Answered locally from the last Limits snapshot; the agent never sees it.
   const openUsageLimits = useCallback(() => {
     const report = collectProviderUsageLimits(
@@ -369,7 +382,8 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       selectedProviderStatus?.showInteractionModeToggle === false
         ? undefined
         : props.onUpdateInteractionMode,
-    onUsageLimits: openUsageLimits,
+    offersUsageLimits: usageLimitsOffered,
+    onUsageLimits: usageLimitsOffered ? openUsageLimits : undefined,
   });
   const voiceInput = useVoiceInputController({
     ownerKey: composerOwnerKey,
@@ -451,7 +465,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const handleSend = useCallback(async () => {
     // Typed out in full rather than picked from the menu. Attachments mean the
     // user is sending a prompt, so those go through as usual.
-    if (isUsageLimitsCommand(props.draftMessage) && props.draftAttachments.length === 0) {
+    if (
+      usageLimitsOffered &&
+      isUsageLimitsCommand(props.draftMessage) &&
+      props.draftAttachments.length === 0
+    ) {
       if (openUsageLimits()) onChangeDraftMessage("");
       return;
     }
@@ -481,6 +499,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     props.draftAttachments.length,
     onChangeDraftMessage,
     openUsageLimits,
+    usageLimitsOffered,
     onSendMessage,
     props.environmentId,
     props.environmentLabel,

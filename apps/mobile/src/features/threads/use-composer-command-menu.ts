@@ -37,6 +37,8 @@ export function buildComposerSlashCommandItems(input: {
   readonly atMessageStart: boolean;
   readonly hasThread: boolean;
   readonly hasCompactableConversation?: boolean;
+  /** Whether T3 itself offers /usage-limits for the selected provider. */
+  readonly offersUsageLimits?: boolean;
   readonly allowInteractionMode: boolean;
   readonly selectedProviderStatus: Pick<
     ServerProvider,
@@ -79,8 +81,11 @@ export function buildComposerSlashCommandItems(input: {
   for (const command of input.selectedProviderStatus?.slashCommands ?? []) {
     if (!command.name.toLowerCase().includes(query)) continue;
     if (command.name === "compact" && !input.hasCompactableConversation) continue;
-    // Answered by the thread composer; New Task has nowhere to show it.
-    if (command.name === USAGE_LIMITS_COMMAND.name && !input.hasThread) continue;
+    // T3's own limits command is answered by the thread composer; New Task has
+    // nowhere to show it. A provider's same-named command is left alone.
+    if (command.name === USAGE_LIMITS_COMMAND.name && input.offersUsageLimits && !input.hasThread) {
+      continue;
+    }
     if (
       !input.hasThread &&
       input.selectedProviderStatus?.driver === "codex" &&
@@ -146,6 +151,7 @@ export function useComposerCommandMenu({
   selectedProviderStatus,
   hasThread,
   hasCompactableConversation,
+  offersUsageLimits = false,
   enabled = true,
   onChangeDraftMessage,
   onUpdateInteractionMode,
@@ -158,6 +164,8 @@ export function useComposerCommandMenu({
   readonly selectedProviderStatus: ServerProvider | null;
   readonly hasThread: boolean;
   readonly hasCompactableConversation: boolean;
+  /** Whether T3 itself offers /usage-limits for the selected provider. */
+  readonly offersUsageLimits?: boolean;
   readonly enabled?: boolean;
   readonly onChangeDraftMessage: (value: string) => void;
   readonly onUpdateInteractionMode?: (mode: ProviderInteractionMode) => void;
@@ -273,6 +281,7 @@ export function useComposerCommandMenu({
         atMessageStart: trigger.rangeStart === 0,
         hasThread,
         hasCompactableConversation,
+        offersUsageLimits,
         allowInteractionMode: onUpdateInteractionMode !== undefined,
         selectedProviderStatus,
       });
@@ -396,6 +405,7 @@ export function useComposerCommandMenu({
     selectedProviderStatus,
     skills,
     trigger,
+    offersUsageLimits,
   ]);
 
   const onSelect = useCallback(
