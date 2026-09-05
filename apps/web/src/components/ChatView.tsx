@@ -8094,8 +8094,12 @@ export default function ChatView(props: ChatViewProps) {
                             }
                             isPreparingWorktree={isPreparingWorktree}
                             bannerItems={composerBannerItems}
+                            // With attachments or contexts aboard the pick just inserts the
+                            // text, so it sends as a prompt like the typed path would.
                             onUsageLimitsCommand={
-                              usageLimitsOffered && usageLimitsKey !== null
+                              usageLimitsOffered &&
+                              usageLimitsKey !== null &&
+                              !composerHasNonPromptContent
                                 ? openUsageLimits
                                 : undefined
                             }
