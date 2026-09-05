@@ -50,14 +50,15 @@ export function ComposerUsageLimits({
               first={index === 0}
               driver={account.driver}
               label={driverLabel}
-              // A custom instance without a name still needs telling apart from its siblings.
+              // Siblings need telling apart: a custom instance without a name shows its
+              // id, and a pooled account shows its hub and account id.
               instanceLabel={
                 account.instanceId
                   ? account.displayName?.trim() ||
                     (String(account.instanceId) !== String(account.driver)
                       ? account.instanceId
                       : driverLabel)
-                  : (account.sourceLabel ?? account.label)
+                  : account.label
               }
               detail={account.plan}
               limits={account.limits}
