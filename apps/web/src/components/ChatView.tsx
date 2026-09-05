@@ -1506,6 +1506,11 @@ export default function ChatView(props: ChatViewProps) {
     const draft = store.getComposerDraft(composerDraftTarget);
     return (draft?.images.length ?? 0) > 0 || (draft?.files.length ?? 0) > 0;
   });
+  // Anything beyond the prompt text: attachments, terminal or element contexts, annotations.
+  const composerHasNonPromptContent = useComposerDraftStore((store) => {
+    const draft = store.getComposerDraft(composerDraftTarget);
+    return draft ? composerDraftHasUserContent({ ...draft, prompt: "" }) : false;
+  });
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const addComposerDraftFiles = useComposerDraftStore((store) => store.addFiles);
@@ -2520,10 +2525,23 @@ export default function ChatView(props: ChatViewProps) {
     readonly key: string;
     readonly report: UsageLimitsReport;
   } | null>(null);
-  const usageLimitsKey = `${routeThreadKey}:${activeProviderInstanceId ?? ""}`;
+  // Null while the provider list is unavailable, such as during a reconnect; the
+  // snapshot then stays hidden rather than being dropped for a transient blip.
+  const usageLimitsKey =
+    activeProviderInstanceId === null ? null : `${routeThreadKey}:${activeProviderInstanceId}`;
+  // Drop the snapshot as soon as the thread or model changes so it cannot resurface stale.
+  if (
+    usageLimitsPanel !== null &&
+    usageLimitsKey !== null &&
+    usageLimitsPanel.key !== usageLimitsKey
+  ) {
+    setUsageLimitsPanel(null);
+  }
   const usageLimitsBanner = useMemo(
     () =>
-      usageLimitsPanel?.key === usageLimitsKey
+      usageLimitsPanel !== null &&
+      usageLimitsKey !== null &&
+      usageLimitsPanel.key === usageLimitsKey
         ? // A fresh id per snapshot: the stack keeps the last dismissed id as "exiting".
           usageLimitsBannerItem(
             `usage-limits:${usageLimitsKey}:${usageLimitsPanel.report.createdAt}`,
@@ -6095,26 +6113,32 @@ export default function ChatView(props: ChatViewProps) {
   ) => {
     e?.preventDefault();
     // Answered locally from the last Limits snapshot; the agent never sees it.
-    if (!directAnnotation && isUsageLimitsCommand(promptRef.current)) {
-      const report = activeProviderInstanceId
-        ? collectProviderUsageLimits(
-            activeProviderInstanceId,
-            providerStatuses,
-            serverConfig?.usageLimitSources ?? [],
-            Date.now(),
-          )
-        : null;
-      if (report) {
+    // Attachments or contexts mean the user is sending a prompt, so those go through as usual.
+    if (
+      !directAnnotation &&
+      !composerHasNonPromptContent &&
+      isUsageLimitsCommand(promptRef.current)
+    ) {
+      const report =
+        activeProviderInstanceId !== null && usageLimitsKey !== null
+          ? collectProviderUsageLimits(
+              activeProviderInstanceId,
+              providerStatuses,
+              serverConfig?.usageLimitSources ?? [],
+              Date.now(),
+            )
+          : null;
+      if (report && usageLimitsKey !== null) {
         setUsageLimitsPanel({ key: usageLimitsKey, report });
         promptRef.current = "";
         setComposerDraftPrompt(composerDraftTarget, "");
         composerRef.current?.resetCursorState();
       } else {
+        setUsageLimitsPanel(null);
         toastManager.add({ type: "info", title: "Usage limits are unavailable for this provider" });
       }
       return;
     }
-    setUsageLimitsPanel(null);
 
     const notifyDirectAnnotationAttached = () => {
       if (!directAnnotation) return;
@@ -6592,6 +6616,8 @@ export default function ChatView(props: ChatViewProps) {
     } else {
       scrollToEnd();
     }
+    // The message is leaving, so the limits snapshot is now stale.
+    setUsageLimitsPanel(null);
     setOptimisticUserMessages((existing) => [
       ...existing,
       {
@@ -7115,6 +7141,7 @@ export default function ChatView(props: ChatViewProps) {
 
       scrollToEnd();
 
+      setUsageLimitsPanel(null);
       setOptimisticUserMessages((existing) => [
         ...existing,
         {

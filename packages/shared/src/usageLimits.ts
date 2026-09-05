@@ -314,7 +314,11 @@ export function collectProviderUsageLimits(
         limits: account.usageLimits,
       });
     }
-    if (matching.length > 0 && source.error) notices.push(`${source.label}: ${source.error}`);
+    // A source that failed to read has no accounts left to match on, so its
+    // error is reported to every provider rather than silently dropped.
+    if (source.error && (matching.length > 0 || source.accounts.length === 0)) {
+      notices.push(`${source.label}: ${source.error}`);
+    }
   }
   return { createdAt: DateTime.formatIso(DateTime.makeUnsafe(now)), accounts, notices };
 }

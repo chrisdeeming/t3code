@@ -126,8 +126,8 @@ export interface ThreadComposerProps {
   readonly onRemoveDraftImage: (imageId: string) => void;
   readonly onStopThread: () => void;
   readonly onSendMessage: () => Promise<MessageId | null>;
-  /** `/usage-limits` resolves locally; the host decides where the report shows. */
-  readonly onShowUsageLimits: (report: UsageLimitsReport) => void;
+  /** `/usage-limits` resolves locally; the host decides where the report shows. Null clears it. */
+  readonly onShowUsageLimits: (report: UsageLimitsReport | null) => void;
   readonly onUpdateModelSelection: (modelSelection: ModelSelection) => void;
   readonly onUpdateRuntimeMode: (runtimeMode: RuntimeMode) => void;
   readonly onUpdateInteractionMode: (interactionMode: ProviderInteractionMode) => void;
@@ -436,16 +436,17 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
 
   const handleSend = useCallback(async () => {
     // Answered locally from the last Limits snapshot; the agent never sees it.
-    if (isUsageLimitsCommand(props.draftMessage)) {
+    // Attachments mean the user is sending a prompt, so those go through as usual.
+    if (isUsageLimitsCommand(props.draftMessage) && props.draftAttachments.length === 0) {
       const report = collectProviderUsageLimits(
         currentModelSelection.instanceId,
         props.serverConfig?.providers ?? [],
         props.serverConfig?.usageLimitSources ?? [],
         Date.now(),
       );
+      onShowUsageLimits(report);
       if (report) {
         onChangeDraftMessage("");
-        onShowUsageLimits(report);
       } else {
         Alert.alert("Usage limits unavailable", "This provider does not currently report limits.");
       }
@@ -474,6 +475,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     }
   }, [
     props.draftMessage,
+    props.draftAttachments.length,
     props.serverConfig,
     onChangeDraftMessage,
     onShowUsageLimits,
