@@ -1,5 +1,4 @@
 import type { EnvironmentId, UsageLimitsReport } from "@t3tools/contracts";
-import { providerLimitsLabel } from "@t3tools/shared/usageLimits";
 import { Pressable, ScrollView, useWindowDimensions, View } from "react-native";
 
 import { SymbolView } from "../../components/AppSymbol";
@@ -51,9 +50,13 @@ export function ComposerUsageLimits({
               first={index === 0}
               driver={account.driver}
               label={driverLabel}
+              // A custom instance without a name still needs telling apart from its siblings.
               instanceLabel={
                 account.instanceId
-                  ? providerLimitsLabel(account, (driver) => DRIVER_LABEL[driver])
+                  ? account.displayName?.trim() ||
+                    (String(account.instanceId) !== String(account.driver)
+                      ? account.instanceId
+                      : driverLabel)
                   : (account.sourceLabel ?? account.label)
               }
               detail={account.plan}

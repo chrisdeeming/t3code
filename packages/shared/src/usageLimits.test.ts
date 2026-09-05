@@ -11,6 +11,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   isUsageLimitsCommand,
   collectProviderUsageLimits,
+  sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
   collectLimitSources,
   collectLimitsGroups,
@@ -443,6 +444,45 @@ describe("/usage-limits", () => {
     expect(
       withUsageLimitsCommands([selected], [])[0]?.slashCommands.map((command) => command.name),
     ).toEqual(["usage-limits"]);
+  });
+});
+
+describe("sameUsageLimitCommandCoverage", () => {
+  const codexAccount = {
+    id: "a",
+    driver: ProviderDriverKind.make("codex"),
+    usageLimits: { checkedAt: "2026-09-03T11:00:00.000Z", windows: [] },
+  };
+  const base = {
+    id: UsageLimitSourceId.make("hub"),
+    kind: "cliproxy" as const,
+    label: "Accounts",
+    checkedAt: "2026-09-03T11:00:00.000Z",
+  };
+  it("ignores quota movement but not the drivers offered the command", () => {
+    const withCodex = [{ ...base, accounts: [codexAccount] }];
+    const withCodexLater = [
+      {
+        ...base,
+        accounts: [
+          {
+            ...codexAccount,
+            usageLimits: { ...codexAccount.usageLimits, checkedAt: "2026-09-03T12:00:00.000Z" },
+          },
+        ],
+      },
+    ];
+    expect(sameUsageLimitCommandCoverage(withCodex, withCodexLater)).toBe(true);
+    expect(sameUsageLimitCommandCoverage(withCodex, [{ ...base, accounts: [] }])).toBe(false);
+  });
+  it("treats a failed read as a change in coverage, in both directions", () => {
+    const empty = [{ ...base, accounts: [] }];
+    const failed = [{ ...base, accounts: [], error: "token expired" }];
+    expect(sameUsageLimitCommandCoverage(empty, failed)).toBe(false);
+    expect(sameUsageLimitCommandCoverage(failed, empty)).toBe(false);
+    expect(
+      sameUsageLimitCommandCoverage(failed, [{ ...base, accounts: [], error: "still down" }]),
+    ).toBe(true);
   });
 });
 

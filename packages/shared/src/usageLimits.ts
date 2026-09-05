@@ -246,6 +246,28 @@ export function hasProviderUsageLimits(
   );
 }
 
+/**
+ * The drivers a set of sources would offer the command to, where a source that
+ * failed to read counts for every driver. Two snapshots with the same coverage
+ * need no catalog republish, however much their quotas moved.
+ */
+export function sameUsageLimitCommandCoverage(
+  previous: UsageLimitSourceSnapshots,
+  next: UsageLimitSourceSnapshots,
+): boolean {
+  const coverage = (sources: UsageLimitSourceSnapshots) =>
+    new Set(
+      sources.flatMap((source) =>
+        source.error !== undefined && source.accounts.length === 0
+          ? ["*"]
+          : source.accounts.map((account) => String(account.driver)),
+      ),
+    );
+  const before = coverage(previous);
+  const after = coverage(next);
+  return before.size === after.size && [...before].every((driver) => after.has(driver));
+}
+
 /** Advertise on workspace catalogs too, which replace the global command list. */
 export function withUsageLimitsCommands(
   providers: readonly ServerProvider[],

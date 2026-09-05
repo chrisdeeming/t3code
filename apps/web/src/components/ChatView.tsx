@@ -2599,6 +2599,14 @@ export default function ChatView(props: ChatViewProps) {
     toastManager.add({ type: "info", title: "Usage limits are unavailable for this provider" });
     return false;
   }, [activeProviderInstanceId, providerStatuses, usageLimitSources, usageLimitsKey]);
+  // Responses can resolve after navigating away; only the originating thread's panel clears.
+  const clearUsageLimitsFor = useCallback(
+    (threadKey: string) =>
+      setUsageLimitsPanel((current) =>
+        current !== null && current.key.startsWith(`${threadKey}:`) ? null : current,
+      ),
+    [],
+  );
   const activeProviderStatus = selectedProviderEntry?.snapshot ?? null;
   const { enabled: interactionModeEnabled, interactionMode } = resolveComposerInteractionMode({
     planModeEnabled: settings.planModeEnabled,
@@ -6968,6 +6976,7 @@ export default function ChatView(props: ChatViewProps) {
   const onRespondToApproval = useCallback(
     async (requestId: ApprovalRequestId, decision: ProviderApprovalDecision) => {
       if (!activeThreadId) return;
+      const threadKeyForRequest = routeThreadKey;
 
       setRespondingRequestIds((existing) =>
         existing.includes(requestId) ? existing : [...existing, requestId],
@@ -6987,18 +6996,27 @@ export default function ChatView(props: ChatViewProps) {
           error instanceof Error ? error.message : "Failed to submit approval decision.",
         );
       } else if (result._tag === "Success") {
-        // The agent resumes and spends quota, so any limits snapshot is stale.
-        setUsageLimitsPanel(null);
+        // The agent resumes and spends quota, so that thread's snapshot is stale.
+        // The route may have moved meanwhile, so only the originating thread's clears.
+        clearUsageLimitsFor(threadKeyForRequest);
       }
       setRespondingRequestIds((existing) => existing.filter((id) => id !== requestId));
       return result;
     },
-    [activeThreadId, environmentId, respondToThreadApproval, setThreadError],
+    [
+      activeThreadId,
+      clearUsageLimitsFor,
+      environmentId,
+      respondToThreadApproval,
+      routeThreadKey,
+      setThreadError,
+    ],
   );
 
   const onRespondToUserInput = useCallback(
     async (requestId: ApprovalRequestId, answers: Record<string, unknown>) => {
       if (!activeThreadId) return;
+      const threadKeyForRequest = routeThreadKey;
 
       setRespondingUserInputRequestIds((existing) =>
         existing.includes(requestId) ? existing : [...existing, requestId],
@@ -7018,12 +7036,19 @@ export default function ChatView(props: ChatViewProps) {
           error instanceof Error ? error.message : "Failed to submit user input.",
         );
       } else if (result._tag === "Success") {
-        setUsageLimitsPanel(null);
+        clearUsageLimitsFor(threadKeyForRequest);
       }
       setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
       return result;
     },
-    [activeThreadId, environmentId, respondToThreadUserInput, setThreadError],
+    [
+      activeThreadId,
+      clearUsageLimitsFor,
+      environmentId,
+      respondToThreadUserInput,
+      routeThreadKey,
+      setThreadError,
+    ],
   );
 
   const setActivePendingUserInputQuestionIndex = useCallback(

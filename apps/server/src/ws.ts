@@ -1,4 +1,7 @@
-import { withUsageLimitsCommands } from "@t3tools/shared/usageLimits";
+import {
+  sameUsageLimitCommandCoverage,
+  withUsageLimitsCommands,
+} from "@t3tools/shared/usageLimits";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -2686,20 +2689,8 @@ const makeWsRpcLayer = (
                 ),
                 usageLimitSources.streamChanges.pipe(
                   // Quota updates already have their own stream. Republish the model
-                  // catalog only when the set of source-backed providers changes.
-                  Stream.changesWith((previous, next) => {
-                    const drivers = (sources: typeof previous) =>
-                      new Set(
-                        sources.flatMap((source) =>
-                          source.accounts.map((account) => account.driver),
-                        ),
-                      );
-                    const before = drivers(previous);
-                    const after = drivers(next);
-                    return (
-                      before.size === after.size && [...before].every((driver) => after.has(driver))
-                    );
-                  }),
+                  // catalog only when the set of providers offered the command changes.
+                  Stream.changesWith(sameUsageLimitCommandCoverage),
                 ),
                 withUsageLimitsCommands,
               ).pipe(

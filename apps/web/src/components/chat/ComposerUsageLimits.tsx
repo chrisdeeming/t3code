@@ -1,5 +1,5 @@
 import type { EnvironmentId, UsageLimitsReport } from "@t3tools/contracts";
-import { limitsNotice, providerLimitsLabel } from "@t3tools/shared/usageLimits";
+import { limitsNotice } from "@t3tools/shared/usageLimits";
 import { GaugeIcon } from "lucide-react";
 
 import { getDriverOption } from "../settings/providerDriverMeta";
@@ -7,10 +7,14 @@ import { LimitWindows, ResetCredits } from "../usage/UsageLimits";
 import { ComposerBanner } from "./ComposerBanner";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 
+/** Driver name, then the instance when there could be more than one of that driver. */
 function accountLabel(account: UsageLimitsReport["accounts"][number]): string {
-  return account.instanceId
-    ? providerLimitsLabel(account, (driver) => getDriverOption(driver)?.label)
-    : account.label;
+  if (!account.instanceId) return account.label;
+  const driver = getDriverOption(account.driver)?.label ?? String(account.driver);
+  const instance =
+    account.displayName?.trim() ||
+    (String(account.instanceId) !== String(account.driver) ? account.instanceId : "");
+  return instance ? `${driver} · ${instance}` : driver;
 }
 
 /** The /usage-limits result as a composer notice: it stacks under warnings and dismisses like one. */

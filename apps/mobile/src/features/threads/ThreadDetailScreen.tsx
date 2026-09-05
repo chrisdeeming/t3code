@@ -402,19 +402,30 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   );
   const dismissUsageLimits = useCallback(() => setUsageLimitsPanel(null), []);
   const { onRespondToApproval, onSubmitUserInput } = props;
+  // The response may resolve after navigating away, so only the originating
+  // thread's panel is cleared; a panel opened elsewhere in the meantime stays.
+  const clearUsageLimitsFor = useCallback(
+    (threadKey: string) =>
+      setUsageLimitsPanel((current) =>
+        current !== null && current.key.startsWith(`${threadKey}:`) ? null : current,
+      ),
+    [],
+  );
   const handleRespondToApproval = useCallback(
     async (requestId: ApprovalRequestId, decision: ProviderApprovalDecision) => {
+      const threadKey = selectedThreadKey;
       const result = await onRespondToApproval(requestId, decision);
-      setUsageLimitsPanel(null);
+      clearUsageLimitsFor(threadKey);
       return result;
     },
-    [onRespondToApproval],
+    [clearUsageLimitsFor, onRespondToApproval, selectedThreadKey],
   );
   const handleSubmitUserInput = useCallback(async () => {
+    const threadKey = selectedThreadKey;
     const result = await onSubmitUserInput();
-    setUsageLimitsPanel(null);
+    clearUsageLimitsFor(threadKey);
     return result;
-  }, [onSubmitUserInput]);
+  }, [clearUsageLimitsFor, onSubmitUserInput, selectedThreadKey]);
   const userInputCollapsed =
     activeUserInputRequestId !== null && collapsedUserInputRequestId === activeUserInputRequestId;
   // The card's height RESERVES keyboard space at all times instead of
