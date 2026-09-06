@@ -186,7 +186,60 @@ export function ImageChipButton({
   );
 }
 
-export function FileChipContent(props: {
+export function FileChip(props: {
+  name: string;
+  size: string;
+  isVideo: boolean;
+  theme: "light" | "dark";
+  className: string;
+  labelClassName: string;
+  accessibleLabel: string;
+  tooltip: string;
+  suffix?: string | null;
+  copyMarkdown?: string;
+  disabled?: boolean;
+  error?: boolean;
+  unresolved?: boolean;
+  onOpen?: (() => void) | undefined;
+}) {
+  const className = cn(
+    props.className,
+    props.isVideo
+      ? CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.video
+      : CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.file,
+    props.onOpen && !props.disabled && CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
+    props.onOpen && !props.disabled && (props.isVideo ? "cursor-zoom-in" : "cursor-pointer"),
+    props.unresolved && "border-dashed text-foreground",
+    props.error && "border-destructive/35 bg-destructive/8 text-destructive",
+  );
+  const content = <FileChipContent {...props} />;
+  const attributes = {
+    className,
+    "aria-label": props.accessibleLabel,
+    "data-markdown-copy": props.copyMarkdown,
+    "data-context-unresolved": props.unresolved ? "true" : undefined,
+  };
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          props.onOpen ? (
+            <button type="button" disabled={props.disabled} onClick={props.onOpen} {...attributes}>
+              {content}
+            </button>
+          ) : (
+            <span {...attributes}>{content}</span>
+          )
+        }
+      />
+      <TooltipPopup side="top" className="max-w-80 whitespace-pre-wrap leading-tight">
+        {props.tooltip}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+function FileChipContent(props: {
   name: string;
   size: string;
   isVideo: boolean;
