@@ -144,11 +144,12 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
     >
       <DialogPopup
         {...composerFloatingLayerProps}
+        variant="media"
         showCloseButton={false}
         bottomStickOnMobile={false}
-        backdropClassName="z-[60] bg-black/75! backdrop-blur-none!"
+        backdropClassName="z-[60]"
         viewportClassName="z-[60] grid-rows-1 place-items-center px-4 py-6 [-webkit-app-region:no-drag]"
-        className="row-start-1 max-h-[92vh] w-auto max-w-[92vw] overflow-visible rounded-none! border-transparent! bg-transparent! p-0 shadow-none! before:hidden"
+        className="row-start-1 max-h-[92vh] w-auto max-w-[92vw] overflow-visible"
         initialFocus={closeButtonRef}
         finalFocus={() => returnFocusTarget}
       >
