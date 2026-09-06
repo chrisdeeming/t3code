@@ -3,6 +3,24 @@ import { describe, expect, it } from "vite-plus/test";
 import { upgradeLegacyContextMessage } from "./composerContextLegacy.ts";
 
 describe("upgradeLegacyContextMessage", () => {
+  it.each(["terminal_context", "element_context"])(
+    "preserves malformed trailing %s blocks as text",
+    (tag) => {
+      for (const body of ["partial output", "- Unrecognized header:\n  partial output"]) {
+        const text = `message\n<${tag}>\n${body}\n</${tag}>`;
+        expect(upgradeLegacyContextMessage(text)).toEqual({ text, records: [] });
+      }
+    },
+  );
+
+  it.each(["x".repeat(16_001), `note\n\`\`\`diff\n${"+x".repeat(16_001)}\n\`\`\``])(
+    "preserves oversized legacy reviews instead of creating dangling references",
+    (body) => {
+      const text = `<review_comment sectionId="s" filePath="f.ts" startIndex="1" endIndex="1">${body}</review_comment>`;
+      expect(upgradeLegacyContextMessage(text)).toEqual({ text, records: [] });
+    },
+  );
+
   it("preserves literal review tokens even beside real review blocks", () => {
     const review =
       '<review_comment sectionId="s" filePath="f.ts" startIndex="1" endIndex="1">note</review_comment>';
