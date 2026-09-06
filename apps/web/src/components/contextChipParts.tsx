@@ -17,6 +17,52 @@ import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "./ui/popove
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 /** Shared visual slots; each surface keeps ownership of payload lookup and actions. */
+export function ContextChipShell({
+  icon,
+  label,
+  labelClassName,
+  tooltip,
+  tooltipClassName = "max-w-96 whitespace-pre-wrap leading-tight",
+  interactive,
+  unresolved,
+  className,
+  ...props
+}: ComponentProps<"span"> & {
+  icon: ReactNode;
+  label: string;
+  labelClassName: string;
+  tooltip?: ReactNode;
+  tooltipClassName?: string;
+  interactive?: boolean;
+  unresolved?: boolean;
+}) {
+  const chip = (
+    <span
+      className={cn(
+        className,
+        interactive && CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
+        tooltip && CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
+        unresolved && "border-dashed text-foreground",
+      )}
+      data-context-unresolved={unresolved ? "true" : undefined}
+      tabIndex={tooltip ? 0 : undefined}
+      {...props}
+    >
+      {icon}
+      <span className={labelClassName}>{label}</span>
+    </span>
+  );
+  if (!tooltip) return chip;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={chip} />
+      <TooltipPopup side="top" className={tooltipClassName}>
+        {tooltip}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
 export function ContextChipPopover(props: {
   copyMarkdown?: string;
   accessibleLabel: string;
@@ -184,28 +230,16 @@ export function UnresolvedChip(props: {
   copyMarkdown?: string;
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className={cn(
-              props.className,
-              CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
-              "border-dashed text-foreground",
-            )}
-            aria-label={`Unavailable context, ${props.label}`}
-            data-context-unresolved="true"
-            data-markdown-copy={props.copyMarkdown}
-            tabIndex={0}
-          >
-            <CircleDashedIcon className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />
-            <span className={props.labelClassName}>{props.label}</span>
-          </span>
-        }
-      />
-      <TooltipPopup side="top" className={props.tooltipClassName}>
-        {props.tooltip}
-      </TooltipPopup>
-    </Tooltip>
+    <ContextChipShell
+      icon={<CircleDashedIcon className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />}
+      label={props.label}
+      className={props.className}
+      labelClassName={props.labelClassName}
+      aria-label={`Unavailable context, ${props.label}`}
+      data-markdown-copy={props.copyMarkdown}
+      tooltip={props.tooltip}
+      tooltipClassName={props.tooltipClassName}
+      unresolved
+    />
   );
 }
