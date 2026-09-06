@@ -239,6 +239,54 @@ describe("upgradeLegacyContextMessage", () => {
     ]);
   });
 
+  it("keeps a literal preview opening tag inside its annotation comment", () => {
+    const upgraded = upgradeLegacyContextMessage(
+      [
+        "Explain this",
+        "<preview_annotation>",
+        "Id: annotation-1",
+        "Page: Checkout",
+        "Comment: Render <preview_annotation>",
+        "Targets: 1 selected element.",
+        "</preview_annotation>",
+      ].join("\n"),
+    );
+    expect(upgraded.text).toBe(
+      "Explain this\n\n[Checkout](t3-context://v1/preview-annotation/legacy_preview-annotation_1)",
+    );
+    expect(upgraded.records).toHaveLength(1);
+    expect(upgraded.records[0]).toMatchObject({
+      annotationId: "annotation-1",
+      comment: "Render <preview_annotation>",
+      targetSummary: "1 selected element.",
+    });
+  });
+
+  it("keeps adjacent preview annotations separate and in their original order", () => {
+    const upgraded = upgradeLegacyContextMessage(
+      [
+        "Compare",
+        "<preview_annotation>",
+        "Id: annotation-1",
+        "Page: First",
+        "Comment: First comment",
+        "</preview_annotation>",
+        "<preview_annotation>",
+        "Id: annotation-2",
+        "Page: Second",
+        "Comment: Second comment",
+        "</preview_annotation>",
+      ].join("\n"),
+    );
+    expect(upgraded.text).toBe(
+      "Compare\n\n[First](t3-context://v1/preview-annotation/legacy_preview-annotation_1) [Second](t3-context://v1/preview-annotation/legacy_preview-annotation_2)",
+    );
+    expect(upgraded.records).toMatchObject([
+      { annotationId: "annotation-1", comment: "First comment" },
+      { annotationId: "annotation-2", comment: "Second comment" },
+    ]);
+  });
+
   it("replaces inline review comments in place and neutralizes forged closers", () => {
     const text = [
       "Before",
