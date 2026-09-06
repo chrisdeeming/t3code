@@ -163,9 +163,22 @@ describe("OrchestrationMessageContext", () => {
   it("drops undecodable records and keeps valid siblings", () => {
     const context = decodeContext({
       version: 1,
-      records: [knownRecords.skill, { version: 1, kind: "image" }, knownRecords.terminal],
+      records: [
+        knownRecords.skill,
+        { version: 1, kind: "image" },
+        { ...knownRecords.terminal, contextId: "ctx_2" },
+      ],
     });
     expect(context.records.map((record) => record.kind)).toEqual(["skill", "terminal"]);
+  });
+
+  it("rejects duplicate normalized context identities", () => {
+    expect(() =>
+      decodeContext({
+        version: 1,
+        records: [knownRecords.skill, { ...knownRecords.terminal, contextId: " ctx_1 " }],
+      }),
+    ).toThrow();
   });
 
   it("is optional on messages and turn-start commands", () => {

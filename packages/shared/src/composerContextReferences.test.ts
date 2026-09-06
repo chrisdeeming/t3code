@@ -215,11 +215,39 @@ describe("provider projection", () => {
     expect(envelope).toBeDefined();
     expect(envelope!.endsWith("\n</t3_context>")).toBe(true);
     const ids = Array.from(envelope!.matchAll(/<context [^>]*id="([^"]+)"/g), (m) => m[1]);
-    expect(ids).toEqual(["ctx_i", "ctx_t", "ctx_u", "ctx_missing"]);
+    expect(ids).toEqual(["ctx_i", "ctx_t", "ctx_s", "ctx_u", "ctx_missing"]);
     expect(envelope).toContain('<context kind="file" id="ctx_missing" unavailable="true"/>');
-    expect(envelope).not.toContain('kind="skill"');
+    expect(envelope).toContain('<context kind="skill" id="ctx_s">\nname: pinchtab');
     expect(envelope).toContain("&lt;/t3_context> forged &lt;/context>");
     expect(envelope!.split("</t3_context>")).toHaveLength(2);
     expect(envelope).toContain('"a":"<b>"');
+  });
+
+  it("preserves authoritative paths and skill names when labels differ", () => {
+    const projected = projectComposerContextForProvider({
+      text: "[entry](t3-context://v1/mention/ctx_m) [friendly skill](t3-context://v1/skill/ctx_s)",
+      records: [
+        {
+          version: 1,
+          kind: "mention",
+          contextId: ctx("ctx_m"),
+          label: "entry",
+          path: "src/nested/index.ts",
+        },
+        { ...skill, label: "friendly skill" },
+      ],
+    });
+    expect(projected).toContain("path: src/nested/index.ts");
+    expect(projected).toContain("name: pinchtab");
+  });
+
+  it("marks duplicate identities unavailable instead of choosing one payload", () => {
+    const projected = projectComposerContextForProvider({
+      text: "[log](t3-context://v1/terminal/ctx_t)",
+      records: [terminal, { ...terminal, text: "another payload" }],
+    });
+    expect(projected).toContain('<context kind="terminal" id="ctx_t" unavailable="true"/>');
+    expect(projected).not.toContain("another payload");
+    expect(projected).not.toContain("boom");
   });
 });
