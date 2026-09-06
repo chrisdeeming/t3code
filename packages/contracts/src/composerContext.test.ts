@@ -136,6 +136,22 @@ describe("ComposerContextRecord", () => {
     expect(Option.isNone(decodeRecord({ ...base, kind: "image", label: "x" }))).toBe(true);
   });
 
+  it("bounds the serialized payload of future context kinds", () => {
+    const unknown = { ...base, kind: "future-thing", label: "Future" };
+    expect(Option.isSome(decodeRecord({ ...unknown, payload: "x".repeat(63_998) }))).toBe(true);
+    expect(Option.isNone(decodeRecord({ ...unknown, payload: "x".repeat(63_999) }))).toBe(true);
+    expect(Option.isNone(decodeRecord({ ...unknown, payload: '"'.repeat(32_000) }))).toBe(true);
+    expect(
+      decodeContext({
+        version: 1,
+        records: [
+          { ...unknown, payload: "x".repeat(64_000) },
+          { ...knownRecords.skill, contextId: "ctx_skill" },
+        ],
+      }).records,
+    ).toEqual([{ ...knownRecords.skill, contextId: "ctx_skill" }]);
+  });
+
   it("rejects bad ids and versions", () => {
     expect(Option.isNone(decodeRecord({ ...knownRecords.skill, contextId: "has space" }))).toBe(
       true,
