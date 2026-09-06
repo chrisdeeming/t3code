@@ -13,6 +13,7 @@ import type {
   PreviewAnnotationPayload,
   ReviewCommentContextRecord,
   TerminalContextRecord,
+  ThreadId,
 } from "@t3tools/contracts";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
 import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
@@ -279,5 +280,76 @@ export function resolveUserMessageContext(message: {
     text: resolved.text,
     records: resolved.records,
     recordsById: new Map(resolved.records.map((record) => [record.contextId, record])),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Records back into draft shapes (paste)
+// ---------------------------------------------------------------------------
+
+export function terminalContextDraftFromRecord(
+  record: TerminalContextRecord,
+  threadId: ThreadId,
+): TerminalContextDraft {
+  return {
+    id: record.contextId,
+    threadId,
+    createdAt: new Date().toISOString(),
+    terminalId: record.terminalId,
+    terminalLabel: record.terminalLabel,
+    lineStart: record.lineStart,
+    lineEnd: record.lineEnd,
+    text: record.text,
+  };
+}
+
+export function reviewCommentFromRecord(record: ReviewCommentContextRecord): ReviewCommentContext {
+  return {
+    // The folded id is itself a valid producer id, so it folds to itself again.
+    id: record.contextId,
+    sectionId: record.sectionId,
+    sectionTitle: record.sectionTitle,
+    filePath: record.filePath,
+    startIndex: record.startIndex,
+    endIndex: record.endIndex,
+    rangeLabel: record.rangeLabel,
+    text: record.text,
+    diff: record.diff,
+    ...(record.fenceLanguage !== undefined ? { fenceLanguage: record.fenceLanguage } : {}),
+    ...(record.pullRequest !== undefined ? { pullRequest: record.pullRequest } : {}),
+  };
+}
+
+/** Lossy on purpose: geometry and screenshot do not travel; the agent-facing detail does. */
+export function previewAnnotationFromRecord(
+  record: PreviewAnnotationContextRecord,
+): PreviewAnnotationPayload {
+  return {
+    id: record.annotationId || record.contextId,
+    pageUrl: record.pageUrl,
+    pageTitle: record.pageTitle,
+    comment: record.comment,
+    elements: (record.elements ?? []).map((element, index) => ({
+      id: `${record.contextId}-element-${index + 1}`,
+      rect: { x: 0, y: 0, width: 0, height: 0 },
+      element: { ...element, stack: [], pickedAt: new Date().toISOString() },
+    })),
+    regions: [],
+    strokes: [],
+    styleChanges: record.styleChanges.flatMap((change, index) => {
+      const match = /^(.+?): (.*) → (.*)$/.exec(change);
+      if (!match) return [];
+      return [
+        {
+          targetId: `${record.contextId}-element-${index + 1}`,
+          selector: null,
+          property: match[1]!,
+          previousValue: match[2] === "(unset)" ? "" : match[2]!,
+          value: match[3]!,
+        },
+      ];
+    }),
+    screenshot: null,
+    createdAt: new Date().toISOString(),
   };
 }
