@@ -3,6 +3,50 @@ import { describe, expect, it } from "vite-plus/test";
 import { upgradeLegacyContextMessage } from "./composerContextLegacy.ts";
 
 describe("upgradeLegacyContextMessage", () => {
+  it("preserves literal review tokens even beside real review blocks", () => {
+    const review =
+      '<review_comment sectionId="s" filePath="f.ts" startIndex="1" endIndex="1">note</review_comment>';
+    const upgraded = upgradeLegacyContextMessage(
+      `Literal \uE0000\uE000 before ${review} after \uE0007\uE000`,
+    );
+    expect(upgraded.text).toBe(
+      "Literal \uE0000\uE000 before [f.ts line](t3-context://v1/review-comment/legacy_review-comment_1) after \uE0007\uE000",
+    );
+    expect(upgraded.records).toHaveLength(1);
+    const unmatched =
+      "Literal \uE0000\uE000 <review_comment>invalid</review_comment> \uE00099\uE000";
+    expect(upgradeLegacyContextMessage(unmatched)).toEqual({ text: unmatched, records: [] });
+  });
+
+  it("matches complete terminal line ranges rather than numeric prefixes", () => {
+    const upgraded = upgradeLegacyContextMessage(
+      [
+        "Compare @terminal:10 and @terminal:1-2 with @terminal:1",
+        "<terminal_context>",
+        "- Terminal line 1:",
+        "  1 | one",
+        "- Terminal line 10:",
+        "  10 | ten",
+        "- Terminal lines 1-2:",
+        "  1 | one",
+        "  2 | two",
+        "</terminal_context>",
+      ].join("\n"),
+    );
+    expect(upgraded.text).toBe(
+      "Compare [Terminal line 10](t3-context://v1/terminal/legacy_terminal_2) and [Terminal lines 1-2](t3-context://v1/terminal/legacy_terminal_3) with [Terminal line 1](t3-context://v1/terminal/legacy_terminal_1)",
+    );
+  });
+
+  it("keeps URL-valued preview pages as locations", () => {
+    const upgraded = upgradeLegacyContextMessage(
+      "<preview_annotation>\nPage: https://example.com/checkout\n</preview_annotation>",
+    );
+    expect(upgraded.records[0]).toMatchObject({
+      pageUrl: "https://example.com/checkout",
+      pageTitle: null,
+    });
+  });
   it("passes plain text through untouched", () => {
     expect(upgradeLegacyContextMessage("hello **world**")).toEqual({
       text: "hello **world**",
@@ -133,6 +177,10 @@ describe("upgradeLegacyContextMessage", () => {
       "<element_context>",
       "- <button>:",
       "  url: http://localhost:3000/",
+      "  selector: #pay",
+      "  source: src/Pay.tsx:12:3",
+      "  html:",
+      "    <button>Pay</button>",
       "</element_context>",
       "</preview_annotation>",
     ].join("\n");
@@ -147,11 +195,28 @@ describe("upgradeLegacyContextMessage", () => {
         kind: "preview-annotation",
         label: "Checkout",
         annotationId: "ann_1",
-        pageUrl: "",
+        pageUrl: "http://localhost:3000/",
         pageTitle: "Checkout",
         comment: "Make it bigger",
         targetSummary: "1 selected element.",
         styleChanges: ["font-size: 12px → 20px"],
+        elements: [
+          {
+            pageUrl: "http://localhost:3000/",
+            pageTitle: null,
+            tagName: "button",
+            selector: "#pay",
+            htmlPreview: "<button>Pay</button>",
+            componentName: null,
+            source: {
+              functionName: null,
+              fileName: "src/Pay.tsx",
+              lineNumber: 12,
+              columnNumber: 3,
+            },
+            styles: "",
+          },
+        ],
       },
     ]);
   });
