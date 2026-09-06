@@ -3,7 +3,6 @@ import type { ComposerContextId } from "@t3tools/contracts";
 import {
   $applyNodeReplacement,
   DecoratorNode,
-  type LexicalNode,
   type NodeKey,
   type SerializedLexicalNode,
   type Spread,
@@ -131,10 +130,4 @@ export function $createComposerContextReferenceNode(
   referenceId: string = randomUUID(),
 ): ComposerContextReferenceNode {
   return $applyNodeReplacement(new ComposerContextReferenceNode(reference, referenceId));
-}
-
-export function $isComposerContextReferenceNode(
-  node: LexicalNode | null | undefined,
-): node is ComposerContextReferenceNode {
-  return node instanceof ComposerContextReferenceNode;
 }
