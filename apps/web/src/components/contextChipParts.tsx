@@ -33,7 +33,7 @@ export function ContextChipPopover(props: {
           <button
             type="button"
             className={cn(
-              "inline-flex max-w-full cursor-pointer rounded-[0.5em] align-baseline",
+              "inline-flex max-w-full cursor-pointer items-center rounded-[0.5em] align-middle",
               CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
               props.triggerClassName,
             )}

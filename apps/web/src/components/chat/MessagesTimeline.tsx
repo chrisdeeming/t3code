@@ -2694,6 +2694,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         record.kind === "terminal" ? (
           <span data-markdown-copy={context.copyMarkdown}>
             <TerminalContextInlineChip
+              surface="transcript"
               label={record.label}
               terminalLabel={record.terminalLabel}
               lineStart={record.lineStart}
