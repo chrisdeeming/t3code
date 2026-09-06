@@ -233,6 +233,11 @@ export const OrchestrationMessageContext = Schema.Struct({
   version: Schema.Literal(1),
   records: Schema.Array(Schema.Unknown)
     .check(Schema.isMaxLength(COMPOSER_CONTEXT_MAX_RECORDS))
-    .pipe(Schema.decodeTo(ForwardCompatibleArray(ComposerContextRecord))),
+    .pipe(Schema.decodeTo(ForwardCompatibleArray(ComposerContextRecord)))
+    .check(
+      Schema.makeFilter(
+        (records) => new Set(records.map((record) => record.contextId)).size === records.length,
+      ),
+    ),
 });
 export type OrchestrationMessageContext = typeof OrchestrationMessageContext.Type;
