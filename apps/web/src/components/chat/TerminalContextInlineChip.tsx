@@ -3,6 +3,7 @@ import { TerminalIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import type { ContextPresentationCapability } from "../contextPresentationRegistry";
 import {
+  CHAT_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
@@ -22,10 +23,13 @@ interface TerminalContextInlineChipProps {
   text: string;
   detailsMode: ContextPresentationCapability["details"];
   expired?: boolean;
+  surface?: "composer" | "transcript";
 }
 
 export function TerminalContextInlineChip(props: TerminalContextInlineChipProps) {
   const { label, terminalLabel, lineStart, lineEnd, text, detailsMode, expired = false } = props;
+  const chipClassName =
+    props.surface === "transcript" ? CHAT_INLINE_CHIP_CLASS_NAME : COMPOSER_INLINE_CHIP_CLASS_NAME;
 
   const content = (
     <>
@@ -47,7 +51,7 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
         accessibleLabel={`Terminal excerpt, ${label}`}
         chip={content}
         triggerClassName={cn(
-          COMPOSER_INLINE_CHIP_CLASS_NAME,
+          chipClassName,
           CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.terminal,
           CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
           "cursor-pointer",
@@ -80,10 +84,7 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
   if (!expired && detailsMode === "none") {
     return (
       <span
-        className={cn(
-          COMPOSER_INLINE_CHIP_CLASS_NAME,
-          CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.terminal,
-        )}
+        className={cn(chipClassName, CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.terminal)}
         aria-label={`Terminal excerpt, ${label}`}
       >
         {content}
@@ -97,7 +98,7 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
         render={
           <span
             className={cn(
-              COMPOSER_INLINE_CHIP_CLASS_NAME,
+              chipClassName,
               CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.terminal,
               CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
               expired && "border-destructive/35 bg-destructive/8 text-destructive",
