@@ -38,6 +38,9 @@ const asCheckpointRef = (value: string): CheckpointRef => CheckpointRef.make(val
 const encodeChatAttachments = Schema.encodeEffect(
   Schema.fromJsonString(Schema.Array(ChatAttachment)),
 );
+const encodeMessageContext = Schema.encodeEffect(
+  Schema.fromJsonString(OrchestrationMessageContext),
+);
 
 const projectionSnapshotLayer = it.layer(
   OrchestrationProjectionSnapshotQueryLive.pipe(
@@ -637,9 +640,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           },
         ],
       };
-      const contextJson = yield* Schema.encodeEffect(
-        Schema.fromJsonString(OrchestrationMessageContext),
-      )(messageContext);
+      const contextJson = yield* encodeMessageContext(messageContext);
       yield* sql`
         WITH RECURSIVE history(n) AS (
           VALUES (1) UNION ALL SELECT n + 1 FROM history WHERE n < 2000
