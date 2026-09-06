@@ -27,7 +27,7 @@ const PLACEHOLDER = "￼";
 const TRAILING_TERMINAL = /\n*<terminal_context>\n([\s\S]*?)\n<\/terminal_context>\s*$/;
 const TRAILING_ELEMENT = /\n*<element_context>\n([\s\S]*?)\n<\/element_context>\s*$/;
 const TRAILING_PREVIEW =
-  /\n*<preview_annotation>\n((?:(?!<preview_annotation>)[\s\S])*)\n<\/preview_annotation>\s*$/;
+  /\n*<preview_annotation>\n((?:(?!\n<\/preview_annotation>)[\s\S])*)\n<\/preview_annotation>\s*$/;
 const INLINE_REVIEW = /<review_comment\b([^>]*)>\s*([\s\S]*?)<\/review_comment>/g;
 const REVIEW_ATTRIBUTE = /([a-zA-Z][a-zA-Z0-9_-]*)="([^"]*)"/g;
 const REVIEW_FENCE = /(`{3,})([^\s`]*)[^\n]*\n([\s\S]*?)\n\1/g;
