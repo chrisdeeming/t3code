@@ -146,6 +146,20 @@ describe("ComposerContextRecord", () => {
 });
 
 describe("OrchestrationMessageContext", () => {
+  it("normalizes decoded record identifiers", () => {
+    const context = decodeContext({
+      version: 1,
+      records: [{ ...knownRecords.skill, contextId: "  ctx_1  ", name: "  review  " }],
+    });
+    expect(context.records[0]).toMatchObject({ contextId: "ctx_1", name: "review" });
+  });
+
+  it("rejects oversized arrays before dropping malformed records", () => {
+    expect(() =>
+      decodeContext({ version: 1, records: Array.from({ length: 201 }, () => ({})) }),
+    ).toThrow();
+  });
+
   it("drops undecodable records and keeps valid siblings", () => {
     const context = decodeContext({
       version: 1,
