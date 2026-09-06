@@ -11,7 +11,7 @@ import {
   CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
   CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES,
 } from "../composerInlineChip";
-import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popover";
+import { ContextChipPopover } from "../contextChipParts";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 interface TerminalContextInlineChipProps {
@@ -43,49 +43,37 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
 
   if (!expired && text.length > 0 && detailsMode === "popover") {
     return (
-      <Popover>
-        <PopoverTrigger
-          render={
-            <button
-              type="button"
-              className={cn(
-                COMPOSER_INLINE_CHIP_CLASS_NAME,
-                CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.terminal,
-                CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
-                "cursor-pointer",
-              )}
-              aria-label={`Terminal excerpt, ${label}. Show details`}
-            />
-          }
-        >
-          {content}
-        </PopoverTrigger>
-        <PopoverPopup
-          side="top"
-          className="w-[min(40rem,calc(100vw-2rem))]"
-          viewportClassName="overflow-hidden p-2"
-        >
-          <PopoverTitle className="sr-only">Terminal excerpt, {label}</PopoverTitle>
-          <div className="overflow-hidden rounded-md border border-border/70 bg-background/80">
-            <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2">
-              <TerminalIcon className="size-4 shrink-0 text-emerald-500" aria-hidden />
-              <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                {terminalLabel}
-              </span>
-              <span className="ml-auto shrink-0 text-secondary-label text-xs">
-                {lineStart === lineEnd ? `Line ${lineStart}` : `Lines ${lineStart}–${lineEnd}`}
-              </span>
-            </div>
-            <pre
-              className="max-h-80 overflow-auto whitespace-pre bg-neutral-950 p-3 font-mono text-neutral-100 text-xs leading-relaxed outline-none [tab-size:4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/70"
-              aria-label="Captured terminal output"
-              tabIndex={0}
-            >
-              {text}
-            </pre>
+      <ContextChipPopover
+        accessibleLabel={`Terminal excerpt, ${label}`}
+        chip={content}
+        triggerClassName={cn(
+          COMPOSER_INLINE_CHIP_CLASS_NAME,
+          CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.terminal,
+          CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
+          "cursor-pointer",
+        )}
+        popupClassName="w-[min(40rem,calc(100vw-2rem))]"
+        viewportClassName="overflow-hidden p-2"
+      >
+        <div className="overflow-hidden rounded-md border border-border/70 bg-background/80">
+          <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2">
+            <TerminalIcon className="size-4 shrink-0 text-emerald-500" aria-hidden />
+            <span className="min-w-0 truncate text-sm font-medium text-foreground">
+              {terminalLabel}
+            </span>
+            <span className="ml-auto shrink-0 text-secondary-label text-xs">
+              {lineStart === lineEnd ? `Line ${lineStart}` : `Lines ${lineStart}–${lineEnd}`}
+            </span>
           </div>
-        </PopoverPopup>
-      </Popover>
+          <pre
+            className="max-h-80 overflow-auto whitespace-pre bg-neutral-950 p-3 font-mono text-neutral-100 text-xs leading-relaxed outline-none [tab-size:4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/70"
+            aria-label="Captured terminal output"
+            tabIndex={0}
+          >
+            {text}
+          </pre>
+        </div>
+      </ContextChipPopover>
     );
   }
 
