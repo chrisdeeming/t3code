@@ -204,7 +204,16 @@ export type SkillContextRecord = typeof SkillContextRecord.Type;
 export const UnknownContextRecord = Schema.Struct({
   ...recordBase,
   kind: ComposerContextKind.check(Schema.isPattern(KNOWN_KIND_PATTERN)),
-  payload: Schema.Unknown,
+  payload: Schema.Unknown.check(
+    Schema.makeFilter((payload) => {
+      try {
+        const encoded = JSON.stringify(payload);
+        return encoded !== undefined && encoded.length <= 64_000;
+      } catch {
+        return false;
+      }
+    }),
+  ),
 });
 export type UnknownContextRecord = typeof UnknownContextRecord.Type;
 
