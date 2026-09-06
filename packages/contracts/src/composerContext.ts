@@ -250,7 +250,7 @@ export const ComposerContextRecord = Schema.Union([
 ]);
 export type ComposerContextRecord = typeof ComposerContextRecord.Type;
 
-const COMPOSER_CONTEXT_MAX_RECORDS = 200;
+export const COMPOSER_CONTEXT_MAX_RECORDS = 200;
 const COMPOSER_CONTEXT_MAX_SERIALIZED_CHARS = 16_000_000;
 
 /** Structured context riding on a user message. Undecodable records are dropped, not fatal. */
