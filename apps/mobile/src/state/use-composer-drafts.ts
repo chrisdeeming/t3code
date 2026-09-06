@@ -126,6 +126,7 @@ export class ComposerDraftPersistenceError extends Schema.TaggedErrorClass<Compo
 }
 
 export interface ComposerDraft {
+  readonly syncCheckpoint?: { readonly revision: number; readonly dirty: boolean };
   readonly text: string;
   readonly context?: OrchestrationMessageContext;
   readonly stashedPrompts?: ReadonlyArray<StashedComposerPrompt>;
@@ -171,6 +172,9 @@ const ComposerDraftWorkspaceSelectionSchema = Schema.Struct({
 });
 
 const ComposerDraftSchema = Schema.Struct({
+  syncCheckpoint: Schema.optional(
+    Schema.Struct({ revision: Schema.Number, dirty: Schema.Boolean }),
+  ),
   text: Schema.String,
   context: Schema.optional(OrchestrationMessageContext),
   stashedPrompts: Schema.optional(
@@ -267,12 +271,60 @@ export function getComposerDraftSnapshot(draftKey: string): ComposerDraft {
   return normalizeDraft(appAtomRegistry.get(composerDraftsAtom)[draftKey]);
 }
 
+export function setComposerDraftSyncCheckpoint(
+  draftKey: string,
+  syncCheckpoint: NonNullable<ComposerDraft["syncCheckpoint"]>,
+): void {
+  updateComposerDrafts((current) => {
+    const draft = normalizeDraft(current[draftKey]);
+    if (
+      draft.syncCheckpoint?.revision === syncCheckpoint.revision &&
+      draft.syncCheckpoint.dirty === syncCheckpoint.dirty
+    )
+      return current;
+    return { ...current, [draftKey]: { ...draft, syncCheckpoint } };
+  });
+}
+
+export function applySyncedComposerDraftContent(
+  draftKey: string,
+  content: ComposerDraftContent,
+): void {
+  updateComposerDrafts((current) => ({
+    ...current,
+    [draftKey]: { ...normalizeDraft(current[draftKey]), ...content },
+  }));
+}
+
+export async function preserveComposerDraftConflict(draftKey: string, id: string): Promise<void> {
+  const draft = getComposerDraftSnapshot(draftKey);
+  if ((draft.stashedPrompts?.length ?? 0) >= 20)
+    throw new Error("Make room in stashed prompts before synchronizing conflicting drafts.");
+  updateComposerDrafts((current) => ({
+    ...current,
+    [draftKey]: {
+      ...draft,
+      stashedPrompts: [
+        ...(draft.stashedPrompts ?? []),
+        {
+          id,
+          text: draft.text,
+          context: draft.context,
+          attachments: draft.attachments,
+        },
+      ],
+    },
+  }));
+  await flushComposerDrafts();
+}
+
 export function isComposerDraftEmpty(draft: ComposerDraft): boolean {
   return isEmptyDraft(draft);
 }
 
 function isEmptyDraft(draft: ComposerDraft): boolean {
   return (
+    draft.syncCheckpoint === undefined &&
     draft.text.length === 0 &&
     draft.attachments.length === 0 &&
     (draft.stashedPrompts?.length ?? 0) === 0 &&

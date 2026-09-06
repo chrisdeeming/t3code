@@ -7,6 +7,7 @@ import {
 import * as Schema from "effect/Schema";
 import {
   defaultInstanceIdForDriver,
+  ComposerContextId,
   EnvironmentId,
   MessageId,
   ProjectId,
@@ -957,6 +958,173 @@ describe("composerDraftStore context persistence", () => {
   };
 
   beforeEach(resetComposerDraftStore);
+
+  it("does not append legacy file references to hydrated synced context", () => {
+    const prompt = "Inspect [Network](t3-context://v1/file/context-har)";
+    const merge = useComposerDraftStore.persist.getOptions().merge!;
+    const state = merge(
+      {
+        draftsByThreadKey: {
+          [scopedThreadKey(threadRef)]: {
+            prompt,
+            attachments: [],
+            files: [
+              {
+                id: "local-har",
+                name: "network.har",
+                mimeType: "application/json",
+                sizeBytes: 2,
+                attachmentId: "server-har",
+                environmentId: TEST_ENVIRONMENT_ID,
+              },
+            ],
+            syncedContext: {
+              version: 1,
+              records: [
+                {
+                  version: 1,
+                  kind: "file",
+                  contextId: "context-har",
+                  label: "Network",
+                  attachmentId: "local-har",
+                  name: "network.har",
+                  mimeType: "application/json",
+                  sizeBytes: 2,
+                },
+              ],
+            },
+            syncCheckpoint: { revision: 3, dirty: false },
+          },
+        },
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(state.draftsByThreadKey[scopedThreadKey(threadRef)]?.prompt).toBe(prompt);
+  });
+
+  it("hydrates synced images with their server-owned attachment IDs", () => {
+    const merge = useComposerDraftStore.persist.getOptions().merge!;
+    const state = merge(
+      {
+        draftsByThreadKey: {
+          [scopedThreadKey(threadRef)]: {
+            prompt: "Inspect the image",
+            attachments: [
+              {
+                id: "local-image",
+                name: "image.png",
+                mimeType: "image/png",
+                sizeBytes: 3,
+                dataUrl: "data:image/png;base64,YWJj",
+                uploadedAttachmentId: "pending-image",
+                uploadEnvironmentId: TEST_ENVIRONMENT_ID,
+              },
+            ],
+          },
+        },
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(state.draftsByThreadKey[scopedThreadKey(threadRef)]?.images[0]).toMatchObject({
+      id: "local-image",
+      uploadedAttachmentId: "pending-image",
+      uploadEnvironmentId: TEST_ENVIRONMENT_ID,
+    });
+    expect(
+      partializeComposerDraftStoreState(state).draftsByThreadKey[scopedThreadKey(threadRef)]
+        ?.attachments[0],
+    ).toMatchObject({
+      uploadedAttachmentId: "pending-image",
+      uploadEnvironmentId: TEST_ENVIRONMENT_ID,
+    });
+  });
+
+  it("removes the bound synced reference when discarding a file or image", () => {
+    const image = makeImage({ id: "local-image", previewUrl: "data:image/png;base64,YWJj" });
+    const file = makeFile("local-file");
+    const store = useComposerDraftStore.getState();
+    store.patchSyncedDraft(threadRef, {
+      prompt:
+        "Inspect [Image](t3-context://v1/image/context-image) and [File](t3-context://v1/file/context-file)",
+      images: [image],
+      files: [file],
+      syncedContext: {
+        version: 1,
+        records: [
+          {
+            version: 1,
+            kind: "image",
+            contextId: ComposerContextId.make("context-image"),
+            label: "Image",
+            attachmentId: image.id,
+            name: image.name,
+            mimeType: image.mimeType,
+            sizeBytes: image.sizeBytes,
+          },
+          {
+            version: 1,
+            kind: "file",
+            contextId: ComposerContextId.make("context-file"),
+            label: "File",
+            attachmentId: file.id,
+            name: file.name,
+            mimeType: file.mimeType,
+            sizeBytes: file.sizeBytes,
+          },
+        ],
+      },
+    });
+    store.removeFile(threadRef, file.id);
+    expect(store.getComposerDraft(threadRef)?.prompt).not.toContain("context-file");
+    expect(store.getComposerDraft(threadRef)?.prompt).toContain("context-image");
+    store.removeImage(threadRef, image.id);
+    expect(store.getComposerDraft(threadRef)?.prompt).not.toContain("t3-context:");
+    expect(store.getComposerDraft(threadRef)?.syncedContext?.records).toEqual([]);
+  });
+
+  it("retains the synced payload and revision through reload, including a cleared draft", () => {
+    const store = useComposerDraftStore.getState();
+    const syncedContext = {
+      version: 1 as const,
+      records: [
+        {
+          version: 1 as const,
+          kind: "terminal" as const,
+          contextId: ComposerContextId.make("synced-terminal"),
+          label: "Build",
+          terminalId: "main",
+          terminalLabel: "Terminal",
+          lineStart: 1,
+          lineEnd: 1,
+          text: "Build failed",
+        },
+      ],
+    };
+    store.patchSyncedDraft(threadRef, {
+      prompt: "Inspect [Build](t3-context://v1/terminal/synced-terminal)",
+      syncedContext,
+      syncCheckpoint: { revision: 7, dirty: false },
+    });
+    const roundTrip = () =>
+      useComposerDraftStore.persist.getOptions().merge!(
+        JSON.parse(
+          JSON.stringify(partializeComposerDraftStoreState(useComposerDraftStore.getState())),
+        ),
+        useComposerDraftStore.getInitialState(),
+      ).draftsByThreadKey[scopedThreadKey(threadRef)];
+    expect(roundTrip()?.syncedContext).toEqual(syncedContext);
+    expect(roundTrip()?.syncCheckpoint).toEqual({ revision: 7, dirty: false });
+    store.patchSyncedDraft(threadRef, {
+      prompt: "",
+      syncedContext: undefined,
+      syncCheckpoint: { revision: 8, dirty: false },
+    });
+    expect(roundTrip()).toMatchObject({
+      prompt: "",
+      syncCheckpoint: { revision: 8, dirty: false },
+    });
+    expect(roundTrip()?.syncedContext).toBeUndefined();
+  });
 
   it("preserves snapshots and inline positions through repeated persistence and hydration", () => {
     const terminal = {

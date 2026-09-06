@@ -217,6 +217,7 @@ export function planAttachmentClaim(input: {
 export function sweepStalePendingAttachments(input: {
   readonly attachmentsDir: string;
   readonly nowMs: number;
+  readonly retainedAttachmentIds?: ReadonlySet<string> | undefined;
 }): { readonly deleted: number } {
   let entries: string[];
   try {
@@ -230,6 +231,7 @@ export function sweepStalePendingAttachments(input: {
     const isPartial = entry.endsWith(".part");
     if (!isPartial) {
       const attachmentId = parseAttachmentIdFromRelativePath(entry);
+      if (attachmentId && input.retainedAttachmentIds?.has(attachmentId)) continue;
       if (
         !attachmentId ||
         parseThreadSegmentFromAttachmentId(attachmentId) !== PENDING_ATTACHMENT_THREAD_SEGMENT

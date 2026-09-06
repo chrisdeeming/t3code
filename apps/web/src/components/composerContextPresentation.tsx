@@ -1,4 +1,8 @@
-import type { PreviewAnnotationPayload } from "@t3tools/contracts";
+import {
+  ThreadId,
+  type OrchestrationMessageContext,
+  type PreviewAnnotationPayload,
+} from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { videoMimeType } from "@t3tools/shared/video";
 import { GitPullRequestIcon, MessageCircleIcon, MousePointerClickIcon } from "lucide-react";
@@ -20,6 +24,10 @@ import {
   previewAnnotationContextLabel,
   reviewCommentContextId,
   reviewCommentContextLabel,
+  asKnownContextRecord,
+  terminalContextDraftFromRecord,
+  reviewCommentFromRecord,
+  previewAnnotationFromRecord,
 } from "~/lib/composerContextRecords";
 import type { TerminalContextDraft } from "~/lib/terminalContext";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
@@ -79,6 +87,7 @@ export const ComposerContextRecordsContext = createContext<ComposerDraftContextR
 );
 
 export function composerContextRecordsFromDraft(input: {
+  syncedContext?: OrchestrationMessageContext | undefined;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   reviewComments?: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations?: ReadonlyArray<PreviewAnnotationPayload>;
@@ -101,6 +110,29 @@ export function composerContextRecordsFromDraft(input: {
   }
   for (const record of input.previewAnnotations ?? []) {
     records.set(previewAnnotationContextId(record.id), { kind: "preview-annotation", record });
+  }
+  for (const raw of input.syncedContext?.records ?? []) {
+    const record = asKnownContextRecord(raw);
+    if (!record || records.has(record.contextId)) continue;
+    if (record.kind === "terminal")
+      records.set(record.contextId, {
+        kind: "terminal",
+        record: terminalContextDraftFromRecord(record, ThreadId.make("synced-draft")),
+      });
+    if (record.kind === "review-comment")
+      records.set(record.contextId, {
+        kind: "review-comment",
+        record: reviewCommentFromRecord(record),
+      });
+    if (record.kind === "preview-annotation")
+      records.set(record.contextId, {
+        kind: "preview-annotation",
+        record: previewAnnotationFromRecord(record),
+      });
+    if ("attachmentId" in record) {
+      const attachment = records.get(record.attachmentId);
+      if (attachment) records.set(record.contextId, attachment);
+    }
   }
   return records;
 }

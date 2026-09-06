@@ -1,4 +1,5 @@
 import {
+  COMPOSER_CONTEXT_MAX_RECORDS,
   ComposerContextId,
   type ComposerContextRecord,
   type OrchestrationMessageContext,
@@ -11,6 +12,23 @@ import {
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
 import type { ComposerInlineToken } from "@t3tools/shared/composerInlineTokens";
+
+/** Retain a bounded native undo history without persisting removed payloads in the draft. */
+export function createComposerContextHistory() {
+  const records = new Map<string, ComposerContextRecord>();
+  return (text: string, current?: OrchestrationMessageContext) => {
+    for (const record of current?.records ?? []) {
+      records.delete(record.contextId);
+      records.set(record.contextId, record);
+    }
+    while (records.size > COMPOSER_CONTEXT_MAX_RECORDS) {
+      const oldest = records.keys().next().value;
+      if (oldest === undefined) break;
+      records.delete(oldest);
+    }
+    return referencedComposerContext(text, { version: 1, records: [...records.values()] });
+  };
+}
 
 export function pullRequestComposerContext(
   pullRequest: PullRequestContextMetadata,

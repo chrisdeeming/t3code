@@ -78,6 +78,7 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
+import { ComposerDrafts } from "./composerDrafts.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
@@ -530,6 +531,7 @@ const makeWsRpcLayer = (
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
+      const composerDrafts = yield* ComposerDrafts;
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
@@ -2351,13 +2353,25 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "workspace" },
           ),
         [WS_METHODS.attachmentsCreateUploadUrl]: (input) =>
-          observeRpcEffect(WS_METHODS.attachmentsCreateUploadUrl, issueAttachmentUploadUrl(input), {
-            "rpc.aggregate": "workspace",
-          }),
+          observeRpcEffect(
+            WS_METHODS.attachmentsCreateUploadUrl,
+            composerDrafts.retainedAttachmentIds.pipe(
+              Effect.orDie,
+              Effect.flatMap((ids) => issueAttachmentUploadUrl(input, ids)),
+            ),
+            {
+              "rpc.aggregate": "workspace",
+            },
+          ),
         [WS_METHODS.attachmentsDelete]: (input) =>
           observeRpcEffect(
             WS_METHODS.attachmentsDelete,
-            deletePendingAttachment(input.attachmentId),
+            composerDrafts.retainsAttachment(input.attachmentId).pipe(
+              Effect.flatMap((retained) =>
+                retained ? Effect.void : deletePendingAttachment(input.attachmentId),
+              ),
+              Effect.orDie,
+            ),
             { "rpc.aggregate": "workspace" },
           ),
         [WS_METHODS.agentSessionsScan]: () =>
@@ -2710,6 +2724,10 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "preview" },
           ),
+        [WS_METHODS.composerDraftSubscribe]: (input) =>
+          observeRpcStream(WS_METHODS.composerDraftSubscribe, composerDrafts.subscribe(input.key)),
+        [WS_METHODS.composerDraftUpdate]: (input) =>
+          observeRpcEffect(WS_METHODS.composerDraftUpdate, composerDrafts.update(input)),
         [WS_METHODS.subscribeServerConfig]: (input) =>
           observeRpcStreamEffect(
             WS_METHODS.subscribeServerConfig,

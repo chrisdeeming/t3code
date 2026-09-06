@@ -151,6 +151,8 @@ import { appAtomRegistry } from "./atom-registry";
 import { threadOutboxManager } from "./thread-outbox";
 import {
   appendComposerDraftAttachments,
+  applySyncedComposerDraftContent,
+  setComposerDraftSyncCheckpoint,
   archiveCloudComposerDrafts,
   clearComposerDraftContent,
   clearComposerDraftContentState,
@@ -214,6 +216,37 @@ afterEach(() => {
 });
 
 describe("mobile composer drafts", () => {
+  it("retains the sync revision through persistence and clearing without deleting a stash", () => {
+    const key = "sync-environment:sync-thread";
+    appAtomRegistry.set(composerDraftsAtom, {
+      [key]: {
+        text: "Local",
+        attachments: [],
+        stashedPrompts: [
+          { id: "saved", text: "Stashed", attachments: [], createdAt: "2026-09-06T10:00:00.000Z" },
+        ],
+      },
+    });
+    applySyncedComposerDraftContent(key, { text: "Remote", attachments: [] });
+    setComposerDraftSyncCheckpoint(key, { revision: 7, dirty: false });
+    const roundTrip = () =>
+      decodePersistedComposerState(
+        JSON.parse(
+          JSON.stringify({
+            schemaVersion: 1,
+            drafts: { [key]: getComposerDraftSnapshot(key) },
+          }),
+        ),
+      ).drafts[key];
+    expect(roundTrip()).toMatchObject({
+      text: "Remote",
+      syncCheckpoint: { revision: 7, dirty: false },
+    });
+    clearComposerDraftContent(key);
+    setComposerDraftSyncCheckpoint(key, { revision: 7, dirty: true });
+    expect(roundTrip()).toMatchObject({ text: "", syncCheckpoint: { revision: 7, dirty: true } });
+    expect(roundTrip()?.stashedPrompts?.[0]?.text).toBe("Stashed");
+  });
   it("inserts context at the saved caret and retains its payload through persistence and restore", () => {
     const draftKey = "context-environment:context-thread";
     const record = {

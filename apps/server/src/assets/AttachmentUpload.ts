@@ -73,6 +73,7 @@ const loadSigningSecret = Effect.gen(function* () {
 
 export const issueAttachmentUploadUrl = Effect.fn("AttachmentUpload.issueUrl")(function* (
   input: AttachmentCreateUploadUrlInput,
+  retainedAttachmentIds?: ReadonlySet<string>,
 ) {
   const secret = yield* loadSigningSecret.pipe(
     Effect.mapError((cause) => new AttachmentUploadSigningKeyError({ cause })),
@@ -88,6 +89,7 @@ export const issueAttachmentUploadUrl = Effect.fn("AttachmentUpload.issueUrl")(f
     const swept = sweepStalePendingAttachments({
       attachmentsDir: config.attachmentsDir,
       nowMs,
+      retainedAttachmentIds,
     });
     if (swept.deleted > 0) {
       yield* Effect.logInfo("Removed expired attachment uploads.", { deleted: swept.deleted });

@@ -11,6 +11,7 @@ import {
   insertComposerDraftContext,
   rememberComposerDraftSelection,
   setComposerContextImporting,
+  setComposerDraftContext,
   stashComposerDraft,
   useComposerDraft,
 } from "../state/use-composer-drafts";
@@ -23,6 +24,8 @@ import { ComposerContextSheet } from "./ComposerContextSheet";
 import { AppText as Text } from "./AppText";
 import { ComposerStashSheet } from "./ComposerStashSheet";
 import { uuidv4 } from "../lib/uuid";
+import { createComposerContextHistory } from "../lib/composerContext";
+import { useComposerDraftSync } from "../state/use-composer-draft-sync";
 
 export type ComposerEditorProps = NativeComposerEditorProps & {
   readonly draftKey?: string | null;
@@ -31,6 +34,13 @@ export type ComposerEditorProps = NativeComposerEditorProps & {
 
 export function ComposerEditor({ draftKey, environmentId, ...props }: ComposerEditorProps) {
   const draft = useComposerDraft(draftKey ?? null);
+  const syncStatus = useComposerDraftSync(draftKey ?? null, environmentId);
+  const contextHistory = useMemo(() => createComposerContextHistory(), [draftKey]);
+  const changeText = (text: string) => {
+    const context = contextHistory(text, draft.context);
+    props.onChangeText(text);
+    if (draftKey) setComposerDraftContext(draftKey, context);
+  };
   const [selected, setSelected] = useState<{ source: string; start: number; end: number } | null>(
     null,
   );
@@ -143,6 +153,7 @@ export function ComposerEditor({ draftKey, environmentId, ...props }: ComposerEd
     <>
       <NativeComposerEditor
         {...props}
+        onChangeText={changeText}
         readOnly={props.readOnly || importing}
         onSubmit={importing ? undefined : props.onSubmit}
         clipboardFragment={clipboardFragment}
@@ -154,6 +165,15 @@ export function ComposerEditor({ draftKey, environmentId, ...props }: ComposerEd
           props.onSelectionChange?.(selection);
         }}
       />
+      {syncStatus ? (
+        <Text className="pt-1 text-xs text-foreground-muted">
+          {syncStatus === "saved"
+            ? "Draft synced"
+            : syncStatus === "offline"
+              ? "Draft saved on this device"
+              : "Syncing draft…"}
+        </Text>
+      ) : null}
       {importing ? (
         <Text className="py-2 text-xs text-foreground-muted">Copying context…</Text>
       ) : null}
@@ -240,7 +260,7 @@ export function ComposerEditor({ draftKey, environmentId, ...props }: ComposerEd
               ? undefined
               : () => {
                   if (props.value.slice(selected.start, selected.end) === selected.source) {
-                    props.onChangeText(
+                    changeText(
                       props.value.slice(0, selected.start) + props.value.slice(selected.end),
                     );
                     props.onSelectionChange?.({ start: selected.start, end: selected.start });

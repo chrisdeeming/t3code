@@ -187,7 +187,15 @@ describe("attachmentStore", () => {
         NodeFS.utimesSync(filePath, oldTimeSeconds, oldTimeSeconds);
       }
 
-      expect(sweepStalePendingAttachments({ attachmentsDir, nowMs: now })).toEqual({ deleted: 3 });
+      expect(
+        sweepStalePendingAttachments({
+          attachmentsDir,
+          nowMs: now,
+          retainedAttachmentIds: new Set([`pending-${uuid}`]),
+        }),
+      ).toEqual({ deleted: 2 });
+      expect(NodeFS.existsSync(pendingPath)).toBe(true);
+      expect(sweepStalePendingAttachments({ attachmentsDir, nowMs: now })).toEqual({ deleted: 1 });
       expect(NodeFS.existsSync(pendingPath)).toBe(false);
       expect(NodeFS.existsSync(pendingFilePath)).toBe(false);
       expect(NodeFS.existsSync(partialPath)).toBe(false);

@@ -223,6 +223,23 @@ describe("attachmentUploadQueue", () => {
     );
   });
 
+  it("verifies a synced image after reload instead of uploading its bytes again", async () => {
+    const image: ComposerImageAttachment = {
+      ...makeImage("synced-image"),
+      uploadedAttachmentId: "pending-synced-image",
+      uploadEnvironmentId: firstEnvironment,
+    };
+    startAttachmentUpload({ environmentId: firstEnvironment, image });
+    await awaitAttachmentUploads([image.id]);
+    expect(mocks.executeAtomQuery).toHaveBeenCalled();
+    expect(mocks.runAtomCommand).not.toHaveBeenCalled();
+    expect(TestXmlHttpRequest.requests).toHaveLength(0);
+    expect(readAttachmentUpload(image.id)).toMatchObject({
+      status: "ready",
+      attachmentId: "pending-synced-image",
+    });
+  });
+
   it("uploads generic files and sends file attachment references", async () => {
     const file = makeFile("report");
     startAttachmentUpload({ environmentId: firstEnvironment, image: file });

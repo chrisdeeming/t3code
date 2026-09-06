@@ -93,6 +93,7 @@ import {
 import { ComposerStashBadge } from "./ComposerStashBadge";
 import { ComposerStashMenu } from "./ComposerStashMenu";
 import { useComposerMenuState } from "./useComposerMenuState";
+import { useComposerDraftSync } from "~/hooks/useComposerDraftSync";
 import { useComposerFocusState } from "./useComposerFocusState";
 import {
   ComposerTasksBadge,
@@ -1434,6 +1435,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onExpandImage,
     onFileOpen,
   } = props;
+  const draftSyncStatus = useComposerDraftSync(composerDraftTarget, environmentId);
   const activeTasksProgress = props.threadSyncPhase === null ? props.activeTasksProgress : null;
   const activeTaskSteps = props.threadSyncPhase === null ? props.activeTaskSteps : null;
   // ------------------------------------------------------------------
@@ -1494,9 +1496,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }),
     [composerFiles, composerImages, environmentId, onExpandImage, openPrLink],
   );
+  const syncedContext = useComposerDraftStore(
+    (store) => store.getComposerDraft(composerDraftTarget)?.syncedContext,
+  );
   const composerContextRecords = useMemo(
     () =>
       composerContextRecordsFromDraft({
+        syncedContext,
         terminalContexts: composerTerminalContexts,
         reviewComments: composerReviewComments,
         previewAnnotations: composerPreviewAnnotations,
@@ -1505,6 +1511,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         uploadsByImageId,
       }),
     [
+      syncedContext,
       composerFiles,
       composerImages,
       composerPreviewAnnotations,
@@ -2457,7 +2464,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const buildContextClipboardFragment = useCallback(
     (contextIds: ReadonlyArray<string>): string | null => {
       const wanted = new Set(contextIds);
+      for (const record of syncedContext?.records ?? []) {
+        if (
+          wanted.has(record.contextId) &&
+          record.kind === "preview-annotation" &&
+          "screenshotContextId" in record &&
+          record.screenshotContextId
+        )
+          wanted.add(record.screenshotContextId);
+      }
       const records: ComposerContextRecord[] = [
+        ...(syncedContext?.records ?? [])
+          .filter((record) => wanted.has(record.contextId))
+          .map((record) => {
+            if (!("attachmentId" in record)) return record;
+            const upload = uploadsByImageId[record.attachmentId];
+            return upload?.status === "ready"
+              ? { ...record, attachmentId: upload.attachmentId }
+              : record;
+          }),
         ...composerTerminalContexts.filter((c) => wanted.has(c.id)).map(terminalContextRecord),
         ...composerReviewComments
           .filter((c) => wanted.has(reviewCommentContextId(c.id)))
@@ -2489,11 +2514,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       return encodeComposerContextFragment({
         version: 1,
         source: { environmentId, ...(activeThread ? { threadId: activeThread.id } : {}) },
-        records,
+        records: [...new Map(records.map((record) => [record.contextId, record])).values()],
       });
     },
     [
       activeThread,
+      syncedContext,
       composerFiles,
       composerImages,
       composerPreviewAnnotations,
@@ -2865,6 +2891,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 mimeType: image.mimeType,
                 sizeBytes: image.sizeBytes,
                 dataUrl,
+                ...(image.uploadedAttachmentId && image.uploadEnvironmentId
+                  ? {
+                      uploadedAttachmentId: image.uploadedAttachmentId,
+                      uploadEnvironmentId: image.uploadEnvironmentId,
+                    }
+                  : {}),
               });
             } catch {
               const existingPersisted = existingPersistedById.get(image.id);
@@ -2970,7 +3002,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       // Files live only as chips; images stay on the shelf when their chip goes.
       for (const file of composerFiles) {
-        if (!referenced.has(file.id)) {
+        if (
+          !referenced.has(file.id) &&
+          !syncedContext?.records.some(
+            (record) =>
+              "attachmentId" in record &&
+              record.attachmentId === file.id &&
+              referenced.has(record.contextId),
+          )
+        ) {
           removeComposerFileFromDraft(file.id);
         }
       }
@@ -2989,6 +3029,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerDraftTarget,
       composerTerminalContexts,
       setComposerDraftTerminalContexts,
+      composerFiles,
+      composerReviewComments,
+      composerPreviewAnnotations,
+      syncedContext,
+      removeComposerFileFromDraft,
+      removeComposerDraftReviewComment,
+      removeComposerDraftPreviewAnnotation,
     ],
   );
 
@@ -3904,6 +3951,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     // Context chips keep their links in the prompt; the payloads behind them travel as
     // records so the restore can resolve every chip.
     const stashedRecords: ComposerContextRecord[] = [
+      ...(useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.syncedContext
+        ?.records ?? []),
       ...composerTerminalContextsRef.current.map(terminalContextRecord),
       ...composerReviewComments.map(reviewCommentContextRecord),
       ...composerPreviewAnnotations.map((annotation) =>
@@ -5544,6 +5593,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           />
         ) : null}
       </ComposerBanner.Dock>
+      {draftSyncStatus ? (
+        <div className="px-3 pb-1 text-[11px] text-muted-foreground">
+          {draftSyncStatus === "saved"
+            ? "Draft synced"
+            : draftSyncStatus === "offline"
+              ? "Draft saved on this device"
+              : "Syncing draft…"}
+        </div>
+      ) : null}
       <div className="relative">
         <ComposerSurface.Main
           ref={composerMainSurfaceRef}

@@ -417,9 +417,7 @@ export function startAttachmentUpload(input: {
     environmentId: input.environmentId,
     ...(input.draftTarget !== undefined ? { draftTarget: input.draftTarget } : {}),
     ...(previous ? { previous } : {}),
-    ...(input.image.type === "file" &&
-    input.image.uploadEnvironmentId === input.environmentId &&
-    input.image.uploadedAttachmentId
+    ...(input.image.uploadEnvironmentId === input.environmentId && input.image.uploadedAttachmentId
       ? { persistedAttachmentId: input.image.uploadedAttachmentId }
       : {}),
     settled,
@@ -580,7 +578,6 @@ export function releaseDraftAttachment(
   attachment: ComposerImageAttachment | ComposerFileAttachment,
 ): void {
   if (
-    attachment.type === "file" &&
     attachment.uploadedAttachmentId !== undefined &&
     attachment.uploadEnvironmentId !== undefined
   ) {

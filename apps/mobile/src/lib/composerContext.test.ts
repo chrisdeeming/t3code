@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 import {
   composerContextEditorTokens,
+  createComposerContextHistory,
   referencedComposerContext,
   reidentifyComposerContext,
   uploadedComposerContext,
@@ -49,6 +50,15 @@ const annotation = {
 };
 
 describe("mobile composer context", () => {
+  it("restores deleted payloads on undo without adding removed context to the current draft", () => {
+    const restore = createComposerContextHistory();
+    const source = formatComposerContextReference(annotation);
+    const initial = { version: 1 as const, records: [annotation, image] };
+    expect(restore("deleted", initial)).toBeUndefined();
+    expect(restore(source)?.records).toEqual(initial.records);
+    expect(restore("deleted")?.records ?? []).toEqual([]);
+    expect(createComposerContextHistory()(source)?.records).toEqual([]);
+  });
   it("keeps exact source positions and repeated references alongside existing native tokens", () => {
     const reference = formatComposerContextReference(terminal);
     const text = `Use $playwright and [app.ts](src/app.ts) with ${reference} then ${reference}`;

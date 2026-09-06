@@ -6,6 +6,18 @@ include a skill when the task needs more context.
 Messages can contain up to 120,000 characters. Longer drafts stay in the composer
 so you can shorten them or split them into several messages.
 
+## Continue a draft on another device
+
+Draft messages sync automatically between web, desktop, and mobile connected to
+the same environment. Open the same thread, or the new-task composer for the same
+project, to continue writing. Attachments become available after their uploads finish.
+Provider and workspace choices stay with each device.
+
+Offline edits remain on your device. If another device has changed the draft in
+the meantime, your local version is saved in **Stashed prompts** before the newer
+draft is applied. If that recovery copy cannot be saved, your local draft is left
+untouched. Older servers without draft sync continue to keep drafts locally.
+
 ## Attach files
 
 Attach up to eight files per message. Images can be up to 10 MB; other files can
@@ -82,6 +94,9 @@ On web and desktop, press `Cmd+S` on macOS or `Ctrl+S` on Windows and Linux to s
 the current prompt and its attachments for later. Wait for uploads to finish first.
 With an empty composer, the same shortcut restores a single stash or opens the
 stash menu when there are several.
+
+On mobile, expand the composer and use **Stash prompt** or **Stashed prompts**.
+Inline context and attachment copies stay with the saved prompt on that device.
 
 Stashes containing uploaded files must be restored in their original environment.
 Those files are retained for 24 hours. After an upload expires, restore the prompt

@@ -1,6 +1,13 @@
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
+import {
+  SharedComposerDraft,
+  SharedComposerDraftKey,
+  SharedComposerDraftError,
+  UpdateSharedComposerDraftInput,
+  UpdateSharedComposerDraftResult,
+} from "./composerDraft.ts";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import {
   ProviderAuthCancelInput,
@@ -320,6 +327,8 @@ export const WS_METHODS = {
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverRemoveKeybinding: "server.removeKeybinding",
   serverGetSettings: "server.getSettings",
+  composerDraftSubscribe: "composerDraft.subscribe",
+  composerDraftUpdate: "composerDraft.update",
   serverUpdateSettings: "server.updateSettings",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
@@ -1180,7 +1189,21 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
   stream: true,
 });
 
+const WsComposerDraftSubscribeRpc = Rpc.make(WS_METHODS.composerDraftSubscribe, {
+  payload: Schema.Struct({ key: SharedComposerDraftKey }),
+  success: SharedComposerDraft,
+  error: Schema.Union([SharedComposerDraftError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+const WsComposerDraftUpdateRpc = Rpc.make(WS_METHODS.composerDraftUpdate, {
+  payload: UpdateSharedComposerDraftInput,
+  success: UpdateSharedComposerDraftResult,
+  error: Schema.Union([SharedComposerDraftError, EnvironmentAuthorizationError]),
+});
+
 export const WsRpcGroup = RpcGroup.make(
+  WsComposerDraftSubscribeRpc,
+  WsComposerDraftUpdateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,

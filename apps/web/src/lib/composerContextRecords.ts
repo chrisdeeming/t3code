@@ -232,6 +232,7 @@ export function attachmentContextRecord(
 }
 
 export function buildMessageContext(input: {
+  syncedContext?: OrchestrationMessageContext | undefined;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   reviewComments: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
@@ -240,6 +241,11 @@ export function buildMessageContext(input: {
   // An annotation's screenshot travels as the image attachment that reuses its id.
   const attachmentIds = new Set((input.attachments ?? []).map((bound) => bound.attachment.id));
   const records: ComposerContextRecord[] = [
+    ...(input.syncedContext?.records ?? []).map((record) => {
+      if (!("attachmentId" in record)) return record;
+      const bound = input.attachments?.find((entry) => entry.attachment.id === record.attachmentId);
+      return bound ? { ...record, attachmentId: bound.attachmentId } : record;
+    }),
     ...input.terminalContexts.map(terminalContextRecord),
     ...input.reviewComments.map(reviewCommentContextRecord),
     ...input.previewAnnotations.map((annotation) =>
@@ -247,9 +253,21 @@ export function buildMessageContext(input: {
         screenshotContextId: attachmentIds.has(annotation.id) ? annotation.id : undefined,
       }),
     ),
-    ...(input.attachments ?? []).map(attachmentContextRecord),
+    ...(input.attachments ?? [])
+      .filter(
+        (bound) =>
+          !input.syncedContext?.records.some(
+            (record) => "attachmentId" in record && record.attachmentId === bound.attachment.id,
+          ),
+      )
+      .map(attachmentContextRecord),
   ];
-  return records.length === 0 ? undefined : { version: 1, records };
+  return records.length === 0
+    ? undefined
+    : {
+        version: 1,
+        records: [...new Map(records.map((record) => [record.contextId, record])).values()],
+      };
 }
 
 /**

@@ -17,6 +17,7 @@ import {
   type ScopedProjectRef,
   type ScopedThreadRef,
   ThreadId,
+  OrchestrationMessageContext,
 } from "@t3tools/contracts";
 import {
   parseScopedProjectKey,
@@ -70,6 +71,9 @@ import { replaceComposerContextReferences } from "@t3tools/shared/composerContex
 import { UnifiedSettings } from "@t3tools/contracts/settings";
 import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewCommentContext";
 const isRuntimeMode = Schema.is(RuntimeMode);
+const ComposerSyncCheckpoint = Schema.Struct({ revision: Schema.Number, dirty: Schema.Boolean });
+const isComposerSyncCheckpoint = Schema.is(ComposerSyncCheckpoint);
+const isOrchestrationMessageContext = Schema.is(OrchestrationMessageContext);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
 const isPreviewAnnotationPayload = Schema.is(PreviewAnnotationPayloadSchema);
@@ -130,12 +134,16 @@ export const PersistedComposerImageAttachment = Schema.Struct({
   mimeType: Schema.String,
   sizeBytes: Schema.Number,
   dataUrl: Schema.String,
+  uploadedAttachmentId: Schema.optionalKey(Schema.String),
+  uploadEnvironmentId: Schema.optionalKey(EnvironmentId),
 });
 export type PersistedComposerImageAttachment = typeof PersistedComposerImageAttachment.Type;
 
 export interface ComposerImageAttachment extends Omit<ChatImageAttachment, "previewUrl"> {
   previewUrl: string;
   file: File;
+  uploadedAttachmentId?: string;
+  uploadEnvironmentId?: EnvironmentId;
 }
 
 export interface ComposerFileAttachment extends Omit<ChatFileAttachment, "previewUrl"> {
@@ -217,6 +225,8 @@ const PersistedTerminalContextDraft = Schema.Struct({
 type PersistedTerminalContextDraft = typeof PersistedTerminalContextDraft.Type;
 
 const PersistedComposerThreadDraftState = Schema.Struct({
+  syncCheckpoint: Schema.optionalKey(ComposerSyncCheckpoint),
+  syncedContext: Schema.optionalKey(OrchestrationMessageContext),
   prompt: Schema.String,
   attachments: Schema.Array(PersistedComposerImageAttachment),
   files: Schema.optionalKey(Schema.Array(PersistedComposerDraftFileAttachment)),
@@ -366,6 +376,8 @@ export type ComposerContextInsertionHandler = (
 const contextInsertionHandlers = new Map<string, ComposerContextInsertionHandler>();
 
 export interface ComposerThreadDraftState {
+  syncCheckpoint?: typeof ComposerSyncCheckpoint.Type;
+  syncedContext?: OrchestrationMessageContext | undefined;
   prompt: string;
   images: ComposerImageAttachment[];
   files: ComposerFileAttachment[];
@@ -462,6 +474,25 @@ interface ProjectDraftSession extends DraftSessionState {
  */
 export type ComposerThreadTarget = ScopedThreadRef | DraftId;
 
+function removeDraftAttachmentReferences(draft: ComposerThreadDraftState, attachmentId: string) {
+  const ids = new Set([attachmentId]);
+  for (const record of draft.syncedContext?.records ?? []) {
+    if ("attachmentId" in record && record.attachmentId === attachmentId) ids.add(record.contextId);
+  }
+  return {
+    prompt: [...ids].reduce(
+      (prompt, id) => removeInlineContextReference(prompt, id).prompt,
+      draft.prompt,
+    ),
+    syncedContext: draft.syncedContext
+      ? {
+          ...draft.syncedContext,
+          records: draft.syncedContext.records.filter((record) => !ids.has(record.contextId)),
+        }
+      : undefined,
+  };
+}
+
 /**
  * Persisted store for composer content plus draft-session metadata.
  *
@@ -470,6 +501,10 @@ export type ComposerThreadTarget = ScopedThreadRef | DraftId;
  * - server thread composer state keyed by `ScopedThreadRef`
  */
 interface ComposerDraftStoreState {
+  patchSyncedDraft: (
+    target: ComposerThreadTarget,
+    patch: Partial<ComposerThreadDraftState>,
+  ) => void;
   draftsByThreadKey: Record<string, ComposerThreadDraftState>;
   draftThreadsByThreadKey: Record<string, DraftThreadState>;
   logicalProjectDraftThreadKeyByLogicalProjectKey: Record<string, string>;
@@ -872,6 +907,8 @@ function normalizeTerminalContextsForThread(
 
 function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
   return (
+    draft.syncCheckpoint === undefined &&
+    draft.syncedContext === undefined &&
     draft.prompt.length === 0 &&
     draft.images.length === 0 &&
     draft.files.length === 0 &&
@@ -1282,6 +1319,13 @@ function normalizePersistedAttachment(value: unknown): PersistedComposerImageAtt
     mimeType,
     sizeBytes,
     dataUrl,
+    ...(typeof candidate.uploadedAttachmentId === "string" &&
+    typeof candidate.uploadEnvironmentId === "string"
+      ? {
+          uploadedAttachmentId: candidate.uploadedAttachmentId,
+          uploadEnvironmentId: EnvironmentId.make(candidate.uploadEnvironmentId),
+        }
+      : {}),
   };
 }
 
@@ -1855,6 +1899,12 @@ function normalizePersistedDraftsByThreadId(
     const previewAnnotations = Array.isArray(draftCandidate.previewAnnotations)
       ? draftCandidate.previewAnnotations.filter(isPreviewAnnotationPayload)
       : [];
+    const syncCheckpoint = isComposerSyncCheckpoint(draftCandidate.syncCheckpoint)
+      ? draftCandidate.syncCheckpoint
+      : undefined;
+    const syncedContext = isOrchestrationMessageContext(draftCandidate.syncedContext)
+      ? draftCandidate.syncedContext
+      : undefined;
     const runtimeMode = isRuntimeMode(draftCandidate.runtimeMode)
       ? draftCandidate.runtimeMode
       : null;
@@ -1923,6 +1973,8 @@ function normalizePersistedDraftsByThreadId(
       terminalContexts.length === 0 &&
       previewAnnotations.length === 0 &&
       reviewComments.length === 0 &&
+      syncCheckpoint === undefined &&
+      syncedContext === undefined &&
       !hasModelData &&
       !runtimeMode &&
       !interactionMode
@@ -1942,6 +1994,10 @@ function normalizePersistedDraftsByThreadId(
                 : threadKeyOrId;
             })();
     nextDraftsByThreadKey[normalizedThreadKey] = {
+      ...(syncCheckpoint ? { syncCheckpoint } : {}),
+      ...(syncedContext
+        ? { syncedContext: syncedContext as DeepMutable<OrchestrationMessageContext> }
+        : {}),
       prompt,
       attachments,
       ...(files.length > 0 ? { files } : {}),
@@ -1994,7 +2050,9 @@ function stripLegacyModelSeedsFromEmptyDraftSessions(
         modelSelectionExplicit: _modelSelectionExplicit,
         ...retained
       } = draft;
-      return retained.runtimeMode || retained.interactionMode ? [[threadKey, retained]] : [];
+      return retained.runtimeMode || retained.interactionMode || retained.syncCheckpoint
+        ? [[threadKey, retained]]
+        : [];
     }),
   );
 }
@@ -2055,6 +2113,8 @@ export function partializeComposerDraftStoreState(
       draft.terminalContexts.length === 0 &&
       draft.previewAnnotations.length === 0 &&
       draft.reviewComments.length === 0 &&
+      draft.syncCheckpoint === undefined &&
+      draft.syncedContext === undefined &&
       !hasModelData &&
       draft.runtimeMode === null &&
       draft.interactionMode === null
@@ -2062,6 +2122,10 @@ export function partializeComposerDraftStoreState(
       continue;
     }
     const persistedDraft: DeepMutable<PersistedComposerThreadDraftState> = {
+      ...(draft.syncCheckpoint ? { syncCheckpoint: { ...draft.syncCheckpoint } } : {}),
+      ...(draft.syncedContext
+        ? { syncedContext: draft.syncedContext as DeepMutable<OrchestrationMessageContext> }
+        : {}),
       prompt: draft.prompt,
       attachments: draft.persistedAttachments,
       ...(draft.files.length > 0
@@ -2331,6 +2395,12 @@ export function hydrateImagesFromPersisted(
         mimeType: attachment.mimeType,
         sizeBytes: attachment.sizeBytes,
         previewUrl: attachment.dataUrl,
+        ...(attachment.uploadedAttachmentId && attachment.uploadEnvironmentId
+          ? {
+              uploadedAttachmentId: attachment.uploadedAttachmentId,
+              uploadEnvironmentId: attachment.uploadEnvironmentId,
+            }
+          : {}),
         file,
       } satisfies ComposerImageAttachment,
     ];
@@ -2362,10 +2432,19 @@ function toHydratedThreadDraft(
 
   return {
     // Files predating inline references get a chip appended; images stay shelf-only.
+    ...(persistedDraft.syncCheckpoint ? { syncCheckpoint: persistedDraft.syncCheckpoint } : {}),
+    ...(persistedDraft.syncedContext ? { syncedContext: persistedDraft.syncedContext } : {}),
     prompt: ensureInlineContextReferences(persistedDraft.prompt, [
       ...(persistedDraft.reviewComments ?? []).map(reviewCommentContextReference),
       ...(persistedDraft.previewAnnotations ?? []).map(previewAnnotationContextReference),
-      ...files.map(fileContextReference),
+      ...files
+        .filter(
+          (file) =>
+            !persistedDraft.syncedContext?.records.some(
+              (record) => "attachmentId" in record && record.attachmentId === file.id,
+            ),
+        )
+        .map(fileContextReference),
     ]),
     images: hydrateImagesFromPersisted(persistedDraft.attachments),
     files,
@@ -2434,6 +2513,16 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
 
       return {
         draftsByThreadKey: {},
+        patchSyncedDraft: (target, patch) => {
+          const key = resolveComposerDraftKey(get(), target);
+          if (!key) return;
+          set((state) => ({
+            draftsByThreadKey: {
+              ...state.draftsByThreadKey,
+              [key]: { ...(state.draftsByThreadKey[key] ?? createEmptyThreadDraft()), ...patch },
+            },
+          }));
+        },
         draftThreadsByThreadKey: {},
         logicalProjectDraftThreadKeyByLogicalProjectKey: {},
         backgroundSubmissionThreadKeys: {},
@@ -3264,7 +3353,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft: ComposerThreadDraftState = {
               ...current,
-              prompt: removeInlineContextReference(current.prompt, imageId).prompt,
+              ...removeDraftAttachmentReferences(current, imageId),
               images: current.images.filter((image) => image.id !== imageId),
               nonPersistedImageIds: current.nonPersistedImageIds.filter((id) => id !== imageId),
               persistedAttachments: current.persistedAttachments.filter(
@@ -3365,7 +3454,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft = {
               ...current,
-              prompt: removeInlineContextReference(current.prompt, fileId).prompt,
+              ...removeDraftAttachmentReferences(current, fileId),
               files: current.files.filter((file) => file.id !== fileId),
             } satisfies ComposerThreadDraftState;
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
@@ -3826,6 +3915,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft: ComposerThreadDraftState = {
               ...current,
+              syncedContext: undefined,
               prompt: "",
               images: [],
               files: [],
