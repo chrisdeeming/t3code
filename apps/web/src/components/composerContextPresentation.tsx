@@ -37,7 +37,6 @@ import {
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
   CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES,
-  CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
   CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES,
   PULL_REQUEST_INLINE_CHIP_TONE_CLASS_NAMES,
 } from "./composerInlineChip";
@@ -45,7 +44,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
   ContextChipPopover,
   ContextChipShell,
-  FileChipContent,
+  FileChip,
   ImageChipButton,
   PullRequestChip,
   UnresolvedChip,
@@ -206,56 +205,25 @@ function FileContextChip(props: {
   const suffix = needsReattach ? "attach again" : uploadStatusSuffix(props.upload);
   const size = formatAttachmentSize(props.record.sizeBytes);
   const isVideo = videoMimeType(props.record) !== null;
-  const chipClassName = cn(
-    COMPOSER_INLINE_CHIP_CLASS_NAME,
-    isVideo
-      ? CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.video
-      : CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.file,
-    isVideo && !needsReattach && CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
-    isVideo && !needsReattach && "cursor-zoom-in",
-    needsReattach && "border-dashed text-foreground",
-    props.upload?.status === "failed" && "border-destructive/35 bg-destructive/8 text-destructive",
-  );
-  const content = (
-    <FileChipContent
+  return (
+    <FileChip
       name={props.record.name}
       size={size}
       isVideo={isVideo}
       theme={resolvedTheme}
+      className={COMPOSER_INLINE_CHIP_CLASS_NAME}
       labelClassName={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}
+      error={props.upload?.status === "failed"}
+      unresolved={needsReattach}
       suffix={suffix}
-    />
-  );
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          isVideo && !needsReattach ? (
-            <button
-              type="button"
-              className={chipClassName}
-              aria-label={`Preview video attachment, ${props.record.name}, ${size}`}
-              onClick={() => actions.expandVideo(props.record.id)}
-            >
-              {content}
-            </button>
-          ) : (
-            <span
-              className={chipClassName}
-              aria-label={`File attachment, ${props.record.name}, ${size}`}
-              data-context-unresolved={needsReattach ? "true" : undefined}
-            >
-              {content}
-            </span>
-          )
-        }
-      />
-      <TooltipPopup side="top" className="max-w-80 whitespace-pre-wrap leading-tight">
-        {needsReattach
+      accessibleLabel={`${isVideo && !needsReattach ? "Preview video" : "File"} attachment, ${props.record.name}, ${size}`}
+      onOpen={isVideo && !needsReattach ? () => actions.expandVideo(props.record.id) : undefined}
+      tooltip={
+        needsReattach
           ? `${props.record.name} was not saved with this draft. Attach it again to send it.`
-          : attachmentTooltip(props.record, props.upload)}
-      </TooltipPopup>
-    </Tooltip>
+          : attachmentTooltip(props.record, props.upload)
+      }
+    />
   );
 }
 
