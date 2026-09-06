@@ -8,9 +8,24 @@ import {
   nativeMarkdownListItemBlocks,
   nativeMarkdownTextRuns,
   nativeMarkdownWithPreservedSoftBreaks,
+  nativeMarkdownContextCopyRanges,
 } from "@t3tools/mobile-markdown-text/markdown";
 
 describe("nativeMarkdownTextRuns", () => {
+  it("maps rendered selection offsets back to canonical references without losing repeated chips", () => {
+    const href = "t3-context://v1/image/screenshot";
+    expect(
+      nativeMarkdownContextCopyRanges([
+        { run: { text: "😀 " }, text: "😀 ", inlineImageLength: 0 },
+        { run: { href, text: "Checkout" }, text: "Checkout", inlineImageLength: 1 },
+        { run: { text: " then " }, text: " then ", inlineImageLength: 0 },
+        { run: { href, text: "Checkout" }, text: "\uFFFC\u00A0Checkout", inlineImageLength: 0 },
+      ]),
+    ).toEqual([
+      { start: 3, end: 12, text: "![Checkout](t3-context://v1/image/screenshot)" },
+      { start: 18, end: 28, text: "![Checkout](t3-context://v1/image/screenshot)" },
+    ]);
+  });
   it("links a path-shaped code span without changing the same path in prose", () => {
     expect(
       nativeMarkdownTextRuns({

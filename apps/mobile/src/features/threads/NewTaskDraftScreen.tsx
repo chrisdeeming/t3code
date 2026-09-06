@@ -30,6 +30,7 @@ import {
 } from "@t3tools/contracts";
 
 import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
+import { composerContextImportsAtom } from "../../state/use-composer-drafts";
 import {
   ComposerActionButton,
   ComposerInlineControl,
@@ -307,7 +308,10 @@ export function NewTaskDraftScreen(props: {
     cancelledIncomingShareId !== props.incomingShareId &&
     !isIncomingShareAwaitingServerConfig,
   );
-  const isComposerInteractionLocked = isIncomingShareTransferPending || flow.submitting;
+  const contextImports = useAtomValue(composerContextImportsAtom);
+  const isImportingContext = flow.draftKey ? contextImports[flow.draftKey] === true : false;
+  const isComposerInteractionLocked =
+    isIncomingShareTransferPending || flow.submitting || isImportingContext;
   // Also guard while a submit is in flight: an Android back press or iOS
   // Cancel would otherwise abandon the screen while the task still starts.
   // T3 owns /usage-limits only where Limits has data for the selected provider.
@@ -322,6 +326,10 @@ export function NewTaskDraftScreen(props: {
     draftMessage: flow.prompt,
     ownerKey: flow.draftKey,
     environmentId: selectedProject?.environmentId ?? null,
+    pullRequestProjectId: selectedEnvironmentServerConfig?.environment.capabilities.pullRequests
+      ? (selectedProject?.id ?? null)
+      : null,
+    pullRequestRepository: selectedProject?.repositoryIdentity?.displayName ?? null,
     projectCwd:
       (flow.workspaceMode === "worktree"
         ? selectedProject?.workspaceRoot
@@ -878,6 +886,7 @@ export function NewTaskDraftScreen(props: {
       return;
     }
     const draft = getComposerDraftSnapshot(draftKey);
+    if (appAtomRegistry.get(composerContextImportsAtom)[draftKey]) return;
     // Read the latest explicit pick. Antigravity selections stay unchanged
     // when setup or a catalog change makes them unavailable.
     const modelSelection =
@@ -1012,6 +1021,7 @@ export function NewTaskDraftScreen(props: {
       runtimeMode,
       interactionMode,
       initialMessageText,
+      initialContext: draft.context,
       initialAttachments: draft.attachments,
       onAttachmentsUploaded: async (attachments) => {
         flow.replaceAttachments(attachments);
@@ -1079,6 +1089,7 @@ export function NewTaskDraftScreen(props: {
 
   const isAndroid = Platform.OS === "android";
   const canStart =
+    !isImportingContext &&
     attachmentBlockReason === null &&
     !modelUnavailable &&
     Boolean(flow.selectedProject) &&
@@ -1091,6 +1102,8 @@ export function NewTaskDraftScreen(props: {
     !(flow.workspaceMode === "worktree" && !flow.selectedBranchName);
   const promptEditor = (
     <ComposerEditor
+      draftKey={flow.draftKey}
+      environmentId={selectedProject.environmentId}
       ref={promptInputRef}
       // The context-first screen intentionally opens with the keyboard closed.
       // Focusing is a user action, so presenting the form sheet has one motion.
@@ -1262,12 +1275,15 @@ export function NewTaskDraftScreen(props: {
 
   const composerDock = (
     <View className="bg-sheet px-[12px] pt-1" style={{ paddingBottom: controlsBottomPadding }}>
-      {!voiceInput.isBusy && composerMenu.trigger && composerMenu.items.length > 0 ? (
+      {!voiceInput.isBusy &&
+      composerMenu.trigger &&
+      (composerMenu.items.length > 0 || composerMenu.trigger.kind === "pull-request") ? (
         <View className="mb-2">
           <ComposerCommandPopover
             items={composerMenu.items}
             triggerKind={composerMenu.trigger.kind}
             isLoading={composerMenu.isLoading}
+            error={composerMenu.error}
             onSelect={composerMenu.onSelect}
           />
         </View>

@@ -15,11 +15,15 @@ import { markdownFileIconSource } from "./markdownFileIcons";
 import { markdownLinkIconSource } from "./markdownLinkIcons";
 import { resolveMarkdownLinkIcon } from "./markdownLinks";
 import type { NativeMarkdownTextRun } from "./nativeMarkdownText";
+import { nativeMarkdownContextCopyRanges } from "./nativeMarkdownText";
 import type {
   MarkdownFileContextMenu,
   NativeMarkdownTextStyle,
 } from "./SelectableMarkdownText.types";
 import { installMarkdownCopySanitizer } from "./T3MarkdownTextSelectionModule";
+import { parseComposerContextHref } from "@t3tools/shared/composerContextReferences";
+
+export const MarkdownContextClipboardContext = createContext("");
 
 export interface MarkdownFileContextMenuHandlers {
   readonly fileContextMenu: (href: string) => MarkdownFileContextMenu | undefined;
@@ -158,7 +162,11 @@ function runStyle(run: NativeMarkdownTextRun, textStyle: NativeMarkdownTextStyle
     fontStyle: run.italic ? "italic" : "normal",
     fontWeight: isHeading || run.bold || isFile || isSkill ? "700" : "400",
     textDecorationLine,
-    backgroundColor: isCodeBlock ? textStyle.codeBlockBackgroundColor : undefined,
+    backgroundColor: isCodeBlock
+      ? textStyle.codeBlockBackgroundColor
+      : parseComposerContextHref(run.href ?? "")
+        ? textStyle.codeBackgroundColor
+        : undefined,
     ...(hasParagraphStyle
       ? {
           shadowColor: "transparent",
@@ -179,22 +187,11 @@ export function NativeMarkdownSelectableText(props: {
 }) {
   const colorScheme = useColorScheme();
   const menu = useContext(MarkdownFileContextMenuContext);
+  const contextClipboardFragment = useContext(MarkdownContextClipboardContext);
   const containsInlineIcon = props.runs.some(
     (run) =>
       run.fileIcon != null ||
       (run.externalHost != null && resolveMarkdownLinkIcon(run.externalHost) !== null),
-  );
-  const attachAndroidText = useCallback(
-    (textView: RNText | null) => {
-      if (Platform.OS !== "android" || !containsInlineIcon || textView === null) {
-        return;
-      }
-      const reactTag = findNodeHandle(textView);
-      if (reactTag !== null) {
-        installMarkdownCopySanitizer(reactTag);
-      }
-    },
-    [containsInlineIcon],
   );
   const occurrences = new Map<string, number>();
   const prefixedExternalLinks = new Set<string>();
@@ -224,6 +221,25 @@ export function NativeMarkdownSelectableText(props: {
 
     return { key: `${signature}:${occurrence}`, run, text, linkIcon };
   });
+  const ranges = nativeMarkdownContextCopyRanges(
+    keyedRuns.map(({ run, text, linkIcon }) => ({
+      run,
+      text,
+      inlineImageLength: Platform.OS === "android" && (run.fileIcon || linkIcon) ? 1 : 0,
+    })),
+  );
+  const contextClipboardConfig =
+    contextClipboardFragment && ranges.length
+      ? JSON.stringify({ fragment: contextClipboardFragment, ranges })
+      : "";
+  const attachAndroidText = useCallback(
+    (textView: RNText | null) => {
+      if (Platform.OS !== "android" || !containsInlineIcon || !textView) return;
+      const reactTag = findNodeHandle(textView);
+      if (reactTag !== null) installMarkdownCopySanitizer(reactTag, contextClipboardConfig);
+    },
+    [containsInlineIcon, contextClipboardConfig],
+  );
   // T3MarkdownText only rebuilds its attributed string during native layout. A
   // color-only child update can otherwise leave the previous appearance cached.
   const appearanceKey = [
@@ -249,6 +265,7 @@ export function NativeMarkdownSelectableText(props: {
     <MarkdownTextPrimitive
       key={appearanceKey}
       nativeTextRef={attachAndroidText}
+      contextClipboardConfig={contextClipboardConfig}
       uiTextView
       selectable
       style={{

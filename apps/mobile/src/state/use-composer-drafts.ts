@@ -1,6 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   ModelSelection as ModelSelectionSchema,
+  ComposerContextId,
+  COMPOSER_CONTEXT_MAX_RECORDS,
+  OrchestrationMessageContext,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   ProviderInteractionMode as ProviderInteractionModeSchema,
   RuntimeMode as RuntimeModeSchema,
@@ -14,6 +17,11 @@ import { useEffect } from "react";
 import { Atom } from "effect/unstable/reactivity";
 
 import { writeFileAtomically } from "../lib/atomic-file";
+import { referencedComposerContext, reidentifyComposerContext } from "../lib/composerContext";
+import {
+  formatComposerContextReference,
+  replaceComposerContextReferences,
+} from "@t3tools/shared/composerContextReferences";
 import { DraftComposerAttachmentSchema } from "../lib/composer-image-schema";
 import {
   composerAttachmentFileReferenceKey,
@@ -37,6 +45,72 @@ const COMPOSER_DRAFTS_DIRECTORY = "composer-drafts";
 const COMPOSER_DRAFTS_FILE = "drafts.json";
 const PERSIST_DEBOUNCE_MS = 200;
 
+export const composerContextImportsAtom = Atom.make<Record<string, boolean>>({}).pipe(
+  Atom.keepAlive,
+);
+
+export function setComposerContextImporting(draftKey: string, importing: boolean): void {
+  const next = { ...appAtomRegistry.get(composerContextImportsAtom) };
+  if (importing) next[draftKey] = true;
+  else delete next[draftKey];
+  appAtomRegistry.set(composerContextImportsAtom, next);
+}
+
+let lastComposerSelection: { draftKey: string; text: string; start: number; end: number } | null =
+  null;
+
+/** Retain the last focused caret while a picker or review sheet is open. */
+export function rememberComposerDraftSelection(
+  draftKey: string,
+  text: string,
+  selection: { start: number; end: number },
+): void {
+  lastComposerSelection = { draftKey, text, ...selection };
+}
+
+export function setComposerDraftContext(
+  draftKey: string,
+  context: OrchestrationMessageContext | undefined,
+): void {
+  updateComposerDrafts((current) => ({
+    ...current,
+    [draftKey]: { ...normalizeDraft(current[draftKey]), context },
+  }));
+}
+
+export function insertComposerDraftContext(
+  draftKey: string,
+  content: { text: string; context: OrchestrationMessageContext },
+): boolean {
+  let inserted = false;
+  updateComposerDrafts((current) => {
+    const draft = normalizeDraft(current[draftKey]);
+    const selection =
+      lastComposerSelection?.draftKey === draftKey && lastComposerSelection.text === draft.text
+        ? lastComposerSelection
+        : null;
+    const start = Math.max(0, Math.min(selection?.start ?? draft.text.length, draft.text.length));
+    const end = Math.max(start, Math.min(selection?.end ?? start, draft.text.length));
+    const before = draft.text.slice(0, start);
+    const after = draft.text.slice(end);
+    const insertion = `${before.length > 0 && !/\s$/.test(before) && !/^\s/.test(content.text) ? " " : ""}${content.text}${!/\s$/.test(content.text) && (after.length === 0 || !/^\s/.test(after)) ? " " : ""}`;
+    const text = before + insertion + after;
+    const records = new Map(draft.context?.records.map((record) => [record.contextId, record]));
+    for (const record of content.context.records) records.set(record.contextId, record);
+    const context = referencedComposerContext(text, { version: 1, records: [...records.values()] });
+    if ((context?.records.length ?? 0) > COMPOSER_CONTEXT_MAX_RECORDS) return current;
+    inserted = true;
+    lastComposerSelection = {
+      draftKey,
+      text,
+      start: start + insertion.length,
+      end: start + insertion.length,
+    };
+    return { ...current, [draftKey]: { ...draft, text, context } };
+  });
+  return inserted;
+}
+
 export class ComposerDraftPersistenceError extends Schema.TaggedErrorClass<ComposerDraftPersistenceError>()(
   "ComposerDraftPersistenceError",
   {
@@ -53,6 +127,8 @@ export class ComposerDraftPersistenceError extends Schema.TaggedErrorClass<Compo
 
 export interface ComposerDraft {
   readonly text: string;
+  readonly context?: OrchestrationMessageContext;
+  readonly stashedPrompts?: ReadonlyArray<StashedComposerPrompt>;
   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
   readonly importedShareIds?: ReadonlyArray<string>;
   readonly modelSelection?: ModelSelection;
@@ -61,8 +137,16 @@ export interface ComposerDraft {
   readonly workspaceSelection?: ComposerDraftWorkspaceSelection;
 }
 
+export interface StashedComposerPrompt {
+  readonly id: string;
+  readonly text: string;
+  readonly context?: OrchestrationMessageContext;
+  readonly attachments: ReadonlyArray<DraftComposerAttachment>;
+}
+
 export interface ComposerDraftContent {
   readonly text: string;
+  readonly context?: OrchestrationMessageContext;
   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
   readonly sourceShareId?: string;
 }
@@ -88,6 +172,17 @@ const ComposerDraftWorkspaceSelectionSchema = Schema.Struct({
 
 const ComposerDraftSchema = Schema.Struct({
   text: Schema.String,
+  context: Schema.optional(OrchestrationMessageContext),
+  stashedPrompts: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        text: Schema.String,
+        context: Schema.optional(OrchestrationMessageContext),
+        attachments: Schema.Array(DraftComposerAttachmentSchema),
+      }),
+    ),
+  ),
   attachments: Schema.Array(DraftComposerAttachmentSchema),
   importedShareIds: Schema.optional(Schema.Array(Schema.String)),
   modelSelection: Schema.optional(ModelSelectionSchema),
@@ -180,6 +275,7 @@ function isEmptyDraft(draft: ComposerDraft): boolean {
   return (
     draft.text.length === 0 &&
     draft.attachments.length === 0 &&
+    (draft.stashedPrompts?.length ?? 0) === 0 &&
     draft.modelSelection === undefined &&
     draft.runtimeMode === undefined &&
     draft.interactionMode === undefined &&
@@ -360,6 +456,33 @@ function signedOutAttachmentOwners() {
   ]);
 }
 
+function ownedDraftAttachments(owner: {
+  readonly attachments: ReadonlyArray<DraftComposerAttachment>;
+  readonly stashedPrompts?: ReadonlyArray<StashedComposerPrompt>;
+}) {
+  return [
+    ...owner.attachments,
+    ...(owner.stashedPrompts ?? []).flatMap((stash) => stash.attachments),
+  ];
+}
+
+/** Clipboard fragments can refer to a local file that has not finished uploading yet. */
+export function findLocalComposerClipboardAttachment(
+  environmentId: EnvironmentId,
+  id: string,
+): DraftComposerAttachment | undefined {
+  for (const [key, draft] of Object.entries(appAtomRegistry.get(composerDraftsAtom))) {
+    if (composerDraftEnvironmentId(key, []) !== environmentId) continue;
+    const attachment = ownedDraftAttachments(draft).find((entry) => entry.id === id);
+    if (attachment) return attachment;
+  }
+  return Object.values(appAtomRegistry.get(threadOutboxManager.queuedMessagesByThreadKeyAtom))
+    .flat()
+    .filter((message) => message.environmentId === environmentId)
+    .flatMap((message) => message.attachments)
+    .find((attachment) => attachment.id === id);
+}
+
 function isComposerAttachmentFileReferenced(fileUri: string): boolean {
   if (isComposerAttachmentFileRetained(fileUri)) {
     return true;
@@ -370,7 +493,7 @@ function isComposerAttachmentFileReferenced(fileUri: string): boolean {
     appAtomRegistry.get(threadOutboxManager.queuedMessagesByThreadKeyAtom),
   ).flat();
   return [...drafts, ...queuedMessages, ...signedOutAttachmentOwners()].some((owner) =>
-    owner.attachments.some(
+    ownedDraftAttachments(owner).some(
       (attachment) =>
         attachment.fileUri !== undefined &&
         composerAttachmentFileReferenceKey(attachment.fileUri) === referenceKey,
@@ -387,7 +510,7 @@ function isComposerAttachmentUploadReferenced(
     appAtomRegistry.get(threadOutboxManager.queuedMessagesByThreadKeyAtom),
   ).flat();
   return [...drafts, ...queuedMessages, ...signedOutAttachmentOwners()].some((owner) =>
-    owner.attachments.some(
+    ownedDraftAttachments(owner).some(
       (attachment) =>
         attachment.uploadEnvironmentId === environmentId &&
         attachment.uploadedAttachmentId === attachmentId,
@@ -761,6 +884,31 @@ export async function restoreCloudComposerDrafts(accountId: string): Promise<voi
               ...draft,
               ...existing,
               text: mergeComposerDraftText(existing.text, draft.text),
+              context:
+                draft.context || existing.context
+                  ? {
+                      version: 1,
+                      records: [
+                        ...new Map(
+                          [
+                            ...(draft.context?.records ?? []),
+                            ...(existing.context?.records ?? []),
+                          ].map((record) => [record.contextId, record]),
+                        ).values(),
+                      ],
+                    }
+                  : undefined,
+              ...(draft.stashedPrompts || existing.stashedPrompts
+                ? {
+                    stashedPrompts: [
+                      ...new Map(
+                        [...(draft.stashedPrompts ?? []), ...(existing.stashedPrompts ?? [])].map(
+                          (entry) => [entry.id, entry],
+                        ),
+                      ).values(),
+                    ],
+                  }
+                : {}),
               // A concurrent import must not lose files, even above the send limit.
               attachments: [
                 ...existing.attachments,
@@ -807,6 +955,7 @@ export function setComposerDraftText(draftKey: string, value: string): void {
     const draft = {
       ...normalizeDraft(current[draftKey]),
       text: value,
+      context: referencedComposerContext(value, current[draftKey]?.context),
     };
     if (isEmptyDraft(draft)) {
       const next = { ...current };
@@ -833,6 +982,85 @@ export function appendComposerDraftText(draftKey: string, value: string): void {
   });
 }
 
+/** Stash only content; model and workspace settings stay with the composer. */
+export async function stashComposerDraft(draftKey: string, id: string): Promise<boolean> {
+  await waitForComposerDraftsLoaded();
+  const draft = getComposerDraftSnapshot(draftKey);
+  if ((!draft.text && draft.attachments.length === 0) || (draft.stashedPrompts?.length ?? 0) >= 20)
+    return false;
+  updateComposerDrafts((current) => ({
+    ...current,
+    [draftKey]: {
+      ...draft,
+      text: "",
+      context: undefined,
+      attachments: [],
+      stashedPrompts: [
+        ...(draft.stashedPrompts ?? []),
+        { id, text: draft.text, context: draft.context, attachments: draft.attachments },
+      ],
+    },
+  }));
+  await flushComposerDrafts();
+  return true;
+}
+
+export async function restoreStashedComposerDraft(
+  sourceKey: string,
+  targetKey: string,
+  id: string,
+  createId: () => string,
+): Promise<boolean> {
+  await waitForComposerDraftsLoaded();
+  const source = getComposerDraftSnapshot(sourceKey);
+  const stash = source.stashedPrompts?.find((entry) => entry.id === id);
+  if (!stash) return false;
+  const target = getComposerDraftSnapshot(targetKey);
+  const existingIds = new Set(target.attachments.map((attachment) => attachment.id));
+  const attachments = stash.attachments.filter((attachment) => !existingIds.has(attachment.id));
+  if (target.attachments.length + attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS)
+    return false;
+  const imported = reidentifyComposerContext(stash.text, stash.context?.records ?? [], createId);
+  if (
+    (target.context?.records.length ?? 0) + imported.context.records.length >
+    COMPOSER_CONTEXT_MAX_RECORDS
+  )
+    return false;
+  const targetEnvironmentId = composerDraftEnvironmentId(targetKey, []);
+  appendComposerDraftAttachments(
+    targetKey,
+    attachments.map((attachment) =>
+      attachment.uploadEnvironmentId && attachment.uploadEnvironmentId !== targetEnvironmentId
+        ? stripAttachmentUploadReference(attachment)
+        : attachment,
+    ),
+  );
+  insertComposerDraftContext(targetKey, imported);
+  updateComposerDrafts((current) => ({
+    ...current,
+    [sourceKey]: {
+      ...normalizeDraft(current[sourceKey]),
+      stashedPrompts: current[sourceKey]?.stashedPrompts?.filter((entry) => entry.id !== id),
+    },
+  }));
+  await flushComposerDrafts();
+  return true;
+}
+
+export async function deleteStashedComposerDraft(draftKey: string, id: string): Promise<void> {
+  await waitForComposerDraftsLoaded();
+  const stash = getComposerDraftSnapshot(draftKey).stashedPrompts?.find((entry) => entry.id === id);
+  updateComposerDrafts((current) => ({
+    ...current,
+    [draftKey]: {
+      ...normalizeDraft(current[draftKey]),
+      stashedPrompts: current[draftKey]?.stashedPrompts?.filter((entry) => entry.id !== id),
+    },
+  }));
+  await flushComposerDrafts();
+  if (stash) scheduleUnusedComposerAttachmentCleanup(stash.attachments);
+}
+
 /**
  * Appends attachments to a draft, capped at the send limit against the draft's
  * live state (callers may have counted before an await; the picker can race
@@ -843,7 +1071,7 @@ export function appendComposerDraftText(draftKey: string, value: string): void {
 export function appendComposerDraftAttachments(
   draftKey: string,
   attachments: ReadonlyArray<DraftComposerAttachment>,
-  options?: { readonly allowOverflow?: boolean },
+  options?: { readonly allowOverflow?: boolean; readonly appendReference?: boolean },
 ): number {
   if (attachments.length === 0) {
     return 0;
@@ -868,6 +1096,27 @@ export function appendComposerDraftAttachments(
     };
   });
   scheduleUnusedComposerAttachmentCleanup(rejected);
+  if (options?.appendReference) {
+    const records = attachments.slice(0, attachments.length - rejected.length).map((attachment) => {
+      const common = {
+        version: 1 as const,
+        contextId: ComposerContextId.make(attachment.id),
+        label: attachment.name,
+        attachmentId: attachment.id,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+      };
+      return attachment.type === "image"
+        ? { ...common, kind: "image" as const }
+        : { ...common, kind: "file" as const };
+    });
+    if (records.length > 0)
+      insertComposerDraftContext(draftKey, {
+        text: records.map(formatComposerContextReference).join(" "),
+        context: { version: 1, records },
+      });
+  }
   return rejected.length;
 }
 
@@ -901,8 +1150,18 @@ export function removeComposerDraftAttachment(draftKey: string, imageId: string)
   const previousAttachments = getComposerDraftSnapshot(draftKey).attachments;
   updateComposerDrafts((current) => {
     const existing = normalizeDraft(current[draftKey]);
+    const removedIds = new Set(
+      existing.context?.records
+        .filter((record) => "attachmentId" in record && record.attachmentId === imageId)
+        .map((record) => record.contextId),
+    );
+    const text = replaceComposerContextReferences(existing.text, (ref) =>
+      removedIds.has(ref.contextId) ? "" : ref.source,
+    );
     const draft = {
       ...existing,
+      text,
+      context: referencedComposerContext(text, existing.context),
       attachments: existing.attachments.filter((image) => image.id !== imageId),
     };
     if (isEmptyDraft(draft)) {
@@ -990,6 +1249,7 @@ export function clearComposerDraftContentState(
   }
   const {
     importedShareIds: _importedShareIds,
+    context: _context,
     modelSelection,
     workspaceSelection,
     ...retained
@@ -1065,6 +1325,7 @@ export function copyComposerDraftContentState(
     [targetDraftKey]: {
       ...target,
       text: source.text,
+      context: source.context,
       attachments,
       ...(source.importedShareIds ? { importedShareIds: source.importedShareIds } : {}),
     },
@@ -1128,12 +1389,17 @@ export function mergeComposerDraftContentState(
     PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   );
   const text = mergeComposerDraftText(existing.text, content.text);
+  const records = new Map(existing.context?.records.map((record) => [record.contextId, record]));
+  for (const record of content.context?.records ?? []) records.set(record.contextId, record);
+  const context =
+    records.size > 0 ? { version: 1 as const, records: [...records.values()] } : undefined;
   const importedShareIds = content.sourceShareId
     ? [...(existing.importedShareIds ?? []), content.sourceShareId]
     : existing.importedShareIds;
   if (
     text === existing.text &&
     attachments.length === existing.attachments.length &&
+    content.context === undefined &&
     importedShareIds === existing.importedShareIds
   ) {
     return current;
@@ -1144,6 +1410,7 @@ export function mergeComposerDraftContentState(
       ...existing,
       text,
       attachments,
+      context,
       ...(importedShareIds ? { importedShareIds } : {}),
     },
   };
@@ -1217,6 +1484,8 @@ export function sameComposerDraftState(a: ComposerDraft, b: ComposerDraft): bool
   return (
     a.text === b.text &&
     a.attachments === b.attachments &&
+    a.context === b.context &&
+    a.stashedPrompts === b.stashedPrompts &&
     a.importedShareIds === b.importedShareIds &&
     a.modelSelection === b.modelSelection &&
     a.runtimeMode === b.runtimeMode &&
@@ -1267,6 +1536,7 @@ export function undoComposerDraftMergeState(
   const draft = {
     ...existing,
     text,
+    context: referencedComposerContext(text, existing.context),
     attachments: existing.attachments.filter(
       (attachment) => !insertedAttachmentIds.has(attachment.id),
     ),
@@ -1342,7 +1612,9 @@ export function clearComposerDraft(
       return current;
     }
     const next = { ...current };
-    delete next[draftKey];
+    const stashedPrompts = current[draftKey]?.stashedPrompts;
+    if (stashedPrompts?.length) next[draftKey] = { text: "", attachments: [], stashedPrompts };
+    else delete next[draftKey];
     return next;
   });
   if (!options?.deferAttachmentCleanup) {
@@ -1374,7 +1646,7 @@ export async function clearComposerDraftsEnvironment(environmentId: EnvironmentI
   const next = removeComposerDraftsForEnvironment(current, environmentId);
   const removedAttachments = Object.entries(current)
     .filter(([draftKey]) => next[draftKey] === undefined)
-    .flatMap(([, draft]) => draft.attachments);
+    .flatMap(([, draft]) => ownedDraftAttachments(draft));
 
   if (persistTimer !== null) {
     clearTimeout(persistTimer);

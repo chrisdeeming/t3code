@@ -18,6 +18,8 @@ import type { DraftComposerAttachment } from "../../lib/composerImages";
 import { prepareTurnAttachments, validateDraftFileAttachments } from "../../lib/attachmentUpload";
 import { makeTurnCommandMetadata, type TurnCommandMetadata } from "../../lib/commandMetadata";
 import { buildProjectThreadStartTurnInput } from "../../lib/projectThreadStartTurn";
+import { uploadedComposerContext } from "../../lib/composerContext";
+import type { OrchestrationMessageContext } from "@t3tools/contracts";
 import { randomHex } from "../../lib/uuid";
 import { isModelSelectionUnavailable } from "../../lib/modelOptions";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -42,6 +44,7 @@ export function useCreateProjectThread() {
       readonly runtimeMode: RuntimeMode;
       readonly interactionMode: ProviderInteractionMode;
       readonly initialMessageText: string;
+      readonly initialContext?: OrchestrationMessageContext;
       readonly initialAttachments: ReadonlyArray<DraftComposerAttachment>;
       readonly onAttachmentsUploaded: (
         attachments: ReadonlyArray<DraftComposerAttachment>,
@@ -138,6 +141,11 @@ export function useCreateProjectThread() {
           messageId: metadata.messageId,
           createdAt: metadata.createdAt,
           text: initialMessageText,
+          context: uploadedComposerContext(
+            input.initialContext,
+            input.initialAttachments,
+            prepared.attachments,
+          ),
           uploadedAttachments: prepared.attachments,
           modelSelection: input.modelSelection,
           runtimeMode: input.runtimeMode,

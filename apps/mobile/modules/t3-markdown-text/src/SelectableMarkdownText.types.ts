@@ -63,6 +63,8 @@ export interface MarkdownFileContextMenu {
 
 export interface SelectableMarkdownTextProps {
   readonly markdown: string;
+  /** Opaque context payload supplied by the host for native selection copy. */
+  readonly contextClipboardFragment?: string;
   readonly textStyle: NativeMarkdownTextStyle;
   readonly highlightCode: MarkdownCodeHighlighter;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill>;

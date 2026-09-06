@@ -13,6 +13,61 @@
 
 using namespace facebook::react;
 
+/** Preserve canonical references and their payload when copying a native text selection. */
+@interface T3ContextCopyTextView : UITextView
+@property(nonatomic, copy) NSDictionary *contextClipboardConfig;
+@end
+
+@implementation T3ContextCopyTextView
+- (void)copy:(id)sender
+{
+  NSRange selected = self.selectedRange;
+  NSArray *ranges = self.contextClipboardConfig[@"ranges"];
+  if (selected.location == NSNotFound || selected.length == 0 || NSMaxRange(selected) > self.text.length || ranges.count == 0) {
+    [super copy:sender];
+    return;
+  }
+  NSMutableString *text = [[self.text substringWithRange:selected] mutableCopy];
+  BOOL hasContext = NO;
+  for (NSDictionary *range in [ranges reverseObjectEnumerator]) {
+    NSUInteger start = [range[@"start"] unsignedIntegerValue];
+    NSUInteger end = [range[@"end"] unsignedIntegerValue];
+    if (end <= start || end > self.text.length) continue;
+    NSRange overlap = NSIntersectionRange(selected, NSMakeRange(start, end - start));
+    if (overlap.length == 0 || ![range[@"text"] isKindOfClass:NSString.class]) continue;
+    [text replaceCharactersInRange:NSMakeRange(overlap.location - selected.location, overlap.length) withString:range[@"text"]];
+    hasContext = YES;
+  }
+  if (!hasContext) { [super copy:sender]; return; }
+  [text replaceOccurrencesOfString:@"\uFFFC\u00A0" withString:@"" options:0 range:NSMakeRange(0, text.length)];
+  NSString *fragment = self.contextClipboardConfig[@"fragment"];
+  NSMutableDictionary *payload = [[NSJSONSerialization JSONObjectWithData:[fragment dataUsingEncoding:NSUTF8StringEncoding] options:NSJSONReadingMutableContainers error:nil] mutableCopy];
+  NSArray *records = payload[@"records"];
+  NSMutableArray *copied = [NSMutableArray array];
+  NSMutableSet *screenshots = [NSMutableSet set];
+  for (NSDictionary *record in records) {
+    if ([text containsString:[NSString stringWithFormat:@"/%@)", record[@"contextId"]]]) {
+      [copied addObject:record];
+      if ([record[@"screenshotContextId"] isKindOfClass:NSString.class]) [screenshots addObject:record[@"screenshotContextId"]];
+    }
+  }
+  for (NSDictionary *record in records) {
+    if ([screenshots containsObject:record[@"contextId"]] && ![copied containsObject:record]) [copied addObject:record];
+  }
+  payload[@"records"] = copied;
+  NSData *encoded = payload ? [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil] : nil;
+  NSMutableDictionary *item = [@{@"public.utf8-plain-text": text} mutableCopy];
+  if (encoded && copied.count > 0) {
+    NSString *raw = [[NSString alloc] initWithData:encoded encoding:NSUTF8StringEncoding];
+    NSString *attribute = [raw stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.alphanumericCharacterSet];
+    NSString *escaped = [[[text stringByReplacingOccurrencesOfString:@"&" withString:@"&amp;"] stringByReplacingOccurrencesOfString:@"<" withString:@"&lt;"] stringByReplacingOccurrencesOfString:@">" withString:@"&gt;"];
+    item[@"app.t3.context-fragment"] = encoded;
+    item[@"public.html"] = [[NSString stringWithFormat:@"<pre data-t3-context-fragment=\"%@\">%@</pre>", attribute, escaped] dataUsingEncoding:NSUTF8StringEncoding];
+  }
+  UIPasteboard.generalPasteboard.items = @[item];
+}
+@end
+
 static void T3MarkdownTextApplyParagraphStyles(
     NSMutableAttributedString *attributedString,
     const std::vector<T3MarkdownTextParagraphStyleRange> &styleRanges)
@@ -201,7 +256,7 @@ T3MarkdownOutsideTapCoordinatorForWindow(UIWindow *window)
 
 @implementation T3MarkdownText {
   UIView * _view;
-  UITextView * _textView;
+  T3ContextCopyTextView * _textView;
   T3MarkdownTextShadowNode::ConcreteState::Shared _state;
   __weak UIWindow * _outsideTapWindow;
   BOOL _suppressSelectionChange;
@@ -226,7 +281,7 @@ T3MarkdownOutsideTapCoordinatorForWindow(UIWindow *window)
     self.contentView = _view;
     self.clipsToBounds = true;
 
-    _textView = [[UITextView alloc] init];
+    _textView = [[T3ContextCopyTextView alloc] init];
     _attachmentImages = [[NSMutableDictionary alloc] init];
     _pendingAttachmentUris = [[NSMutableSet alloc] init];
     _textView.scrollEnabled = false;
@@ -465,6 +520,10 @@ T3MarkdownOutsideTapCoordinatorForWindow(UIWindow *window)
 {
   const auto &oldViewProps = *std::static_pointer_cast<T3MarkdownTextProps const>(_props);
   const auto &newViewProps = *std::static_pointer_cast<T3MarkdownTextProps const>(props);
+  if (oldViewProps.contextClipboardConfig != newViewProps.contextClipboardConfig) {
+    NSString *config = RCTNSStringFromString(newViewProps.contextClipboardConfig);
+    _textView.contextClipboardConfig = config.length ? [NSJSONSerialization JSONObjectWithData:[config dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil] : nil;
+  }
 
   if (oldViewProps.numberOfLines != newViewProps.numberOfLines) {
     _textView.textContainer.maximumNumberOfLines = newViewProps.numberOfLines;

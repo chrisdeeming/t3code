@@ -1,4 +1,33 @@
 import type { MarkdownNode } from "react-native-nitro-markdown/headless";
+import {
+  formatComposerContextReference,
+  parseComposerContextHref,
+} from "@t3tools/shared/composerContextReferences";
+
+/** Native selections count UTF-16 display units, including each inline image placeholder. */
+export function nativeMarkdownContextCopyRanges(
+  runs: ReadonlyArray<{
+    readonly run: { readonly href?: string; readonly text: string };
+    readonly text: string;
+    readonly inlineImageLength: number;
+  }>,
+) {
+  let offset = 0;
+  return runs.flatMap(({ run, text, inlineImageLength }) => {
+    const start = offset;
+    offset += text.length + inlineImageLength;
+    const reference = parseComposerContextHref(run.href ?? "");
+    return reference
+      ? [
+          {
+            start,
+            end: offset,
+            text: formatComposerContextReference({ ...reference, label: run.text }),
+          },
+        ]
+      : [];
+  });
+}
 
 import type { SelectableMarkdownSkill } from "./SelectableMarkdownText.types";
 import {
@@ -310,6 +339,15 @@ function appendNode(
     case "strikethrough":
       return appendChildren(runs, node, { ...context, strikethrough: true });
     case "link": {
+      const reference = parseComposerContextHref(node.href ?? "");
+      if (reference) {
+        return appendChildren(runs, node, {
+          ...context,
+          href: node.href,
+          fileIcon:
+            reference.kind === "image" ? "image" : reference.kind === "terminal" ? "bash" : "text",
+        });
+      }
       const presentation = resolveMarkdownLinkPresentation(node.href ?? "");
       if (presentation.kind === "file") {
         return appendRun(runs, presentation.label, {

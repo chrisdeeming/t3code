@@ -7,11 +7,19 @@ import type {
   ChatImageAttachment,
   EnvironmentId,
   MessageId,
+  OrchestrationMessageContext,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
 import { renderAssistantCitationsAsText } from "@t3tools/shared/assistantCitations";
-import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
+import {
+  parseComposerContextHref,
+  collectComposerContextReferences,
+  replaceComposerContextReferences,
+} from "@t3tools/shared/composerContextReferences";
+import { ComposerContextSheet } from "../../components/ComposerContextSheet";
+import { writeComposerContextClipboard } from "../../lib/composerContextClipboard";
 import {
   codexArtifactTemplatePresentationLabel,
   type CodexArtifactTemplate,
@@ -1472,6 +1480,16 @@ function renderFeedEntry(
 
     if (isUser) {
       const enterAnimated = isFreshTimestamp(message.createdAt);
+      const referenceIds = new Set(
+        collectComposerContextReferences(message.text).map((reference) => reference.contextId),
+      );
+      const inlineAttachmentIds = new Set(
+        message.context?.records.flatMap((record) =>
+          "attachmentId" in record && referenceIds.has(record.contextId)
+            ? [record.attachmentId]
+            : [],
+        ),
+      );
       return (
         <Animated.View
           className="mb-5 items-end"
@@ -1495,6 +1513,8 @@ function renderFeedEntry(
               >
                 <UserMessageContent
                   text={renderedText}
+                  environmentId={props.environmentId}
+                  context={message.context}
                   markdownStyles={styles}
                   reviewCommentColors={props.reviewCommentColors}
                   skills={props.skills}
@@ -1503,29 +1523,40 @@ function renderFeedEntry(
                 />
               </MarkdownImageAvailableWidthContext>
             ) : null}
-            {attachments.map((attachment) => {
-              return isImageAttachment(attachment) ? (
-                <MessageAttachmentImage
-                  key={attachment.id}
-                  environmentId={props.environmentId}
-                  attachmentId={attachment.id}
-                  name={attachment.name}
-                  mimeType={attachment.mimeType}
-                  className="aspect-[1.3] w-full rounded-[14px] bg-white/15"
-                  onPressPreview={props.onPressPreview}
-                />
-              ) : isFileAttachment(attachment) ? (
-                <MessageAttachmentFile
-                  key={attachment.id}
-                  environmentId={props.environmentId}
-                  attachment={attachment}
-                  onPressPreview={props.onPressPreview}
-                  onPressVideo={props.onPressVideo}
-                />
-              ) : (
-                <MessageAttachmentUnknown key={attachment.id} name={attachment.name} />
-              );
-            })}
+            <View className={inlineAttachmentIds.size ? "flex-row flex-wrap gap-2" : "gap-2"}>
+              {attachments
+                .filter(
+                  (attachment) =>
+                    isImageAttachment(attachment) || !inlineAttachmentIds.has(attachment.id),
+                )
+                .map((attachment) => {
+                  return isImageAttachment(attachment) ? (
+                    <MessageAttachmentImage
+                      key={attachment.id}
+                      environmentId={props.environmentId}
+                      attachmentId={attachment.id}
+                      name={attachment.name}
+                      mimeType={attachment.mimeType}
+                      className={
+                        inlineAttachmentIds.size
+                          ? "h-24 w-24 rounded-[14px] bg-white/15"
+                          : "aspect-[1.3] w-full rounded-[14px] bg-white/15"
+                      }
+                      onPressPreview={props.onPressPreview}
+                    />
+                  ) : isFileAttachment(attachment) ? (
+                    <MessageAttachmentFile
+                      key={attachment.id}
+                      environmentId={props.environmentId}
+                      attachment={attachment}
+                      onPressPreview={props.onPressPreview}
+                      onPressVideo={props.onPressVideo}
+                    />
+                  ) : (
+                    <MessageAttachmentUnknown key={attachment.id} name={attachment.name} />
+                  );
+                })}
+            </View>
           </View>
           <View className="mt-1 flex-row items-center justify-end gap-1 pr-0.5">
             <Text className="font-t3-medium text-xs tabular-nums text-adaptive-neutral-600-400">
@@ -1535,6 +1566,16 @@ function renderFeedEntry(
               <CopyTextButton
                 accessibilityLabel="Copy message"
                 text={message.text}
+                onCopy={
+                  message.context
+                    ? () =>
+                        writeComposerContextClipboard(message.text, {
+                          version: 1,
+                          source: { environmentId: props.environmentId, messageId: message.id },
+                          records: message.context!.records,
+                        })
+                    : undefined
+                }
                 tintColor={iconSubtleColor}
                 buttonSize={28}
                 iconSize={13}
@@ -1632,16 +1673,83 @@ function renderFeedEntry(
   );
 }
 
-function UserMessageContent(props: {
+type UserMessageContentProps = {
   readonly text: string;
+  readonly environmentId: EnvironmentId;
+  readonly context?: OrchestrationMessageContext;
   readonly markdownStyles: MarkdownStyleSet;
   readonly reviewCommentColors: ReviewCommentColors;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill>;
   readonly linkHandlers: MarkdownLinkHandlers;
   readonly renderImage: MarkdownImageRenderer;
-}) {
-  // Inline context references render as their labels until mobile grows chips for them.
-  const text = replaceComposerContextReferences(props.text, (occurrence) => occurrence.label);
+};
+
+function UserMessageContent(props: UserMessageContentProps) {
+  const [showContextList, setShowContextList] = useState(false);
+  const references = collectComposerContextReferences(props.text);
+  const [selected, setSelected] = useState<{ contextId: string; label: string } | null>(null);
+  const text = replaceComposerContextReferences(props.text, (ref) => {
+    const available = props.context?.records.some((record) => record.contextId === ref.contextId);
+    return `[${ref.label}${available ? "" : " (unavailable)"}](t3-context://v1/${ref.kind}/${ref.contextId})`;
+  });
+  const onLinkPress = (href: string) => {
+    const reference = parseComposerContextHref(href);
+    if (!reference) return props.linkHandlers.onLinkPress?.(href);
+    const record = props.context?.records.find(
+      (record) => record.contextId === reference.contextId,
+    );
+    setSelected({ contextId: reference.contextId, label: record?.label ?? "Context unavailable" });
+  };
+  return (
+    <>
+      <LegacyUserMessageContent
+        {...props}
+        text={text}
+        linkHandlers={{ ...props.linkHandlers, onLinkPress }}
+      />
+      {references.length ? (
+        <View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showContextList }}
+            onPress={() => setShowContextList((value) => !value)}
+            className="py-2"
+          >
+            <Text className="text-xs text-foreground-muted">Context ({references.length})</Text>
+          </Pressable>
+          {showContextList ? (
+            <ScrollView style={{ maxHeight: 160 }}>
+              {references.map((reference) => (
+                <Pressable
+                  key={reference.start}
+                  accessibilityRole="button"
+                  onPress={() =>
+                    setSelected({ contextId: reference.contextId, label: reference.label })
+                  }
+                  className="py-2"
+                >
+                  <Text className="text-foreground">{reference.label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+        </View>
+      ) : null}
+      {selected ? (
+        <ComposerContextSheet
+          label={selected.label}
+          environmentId={props.environmentId}
+          records={props.context?.records}
+          record={props.context?.records.find((record) => record.contextId === selected.contextId)}
+          onClose={() => setSelected(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function LegacyUserMessageContent(props: UserMessageContentProps) {
+  const text = props.text;
   const segments = parseReviewCommentMessageSegments(text);
   const hasReviewComment = segments.some((segment) => segment.kind === "review-comment");
   if (!hasReviewComment) {
@@ -1649,6 +1757,15 @@ function UserMessageContent(props: {
       return (
         <SelectableMarkdownText
           markdown={text}
+          contextClipboardFragment={
+            props.context
+              ? encodeComposerContextFragment({
+                  version: 1,
+                  source: { environmentId: props.environmentId },
+                  records: props.context.records,
+                })
+              : undefined
+          }
           skills={props.skills}
           textStyle={props.markdownStyles.nativeTextStyle}
           preserveSoftBreaks

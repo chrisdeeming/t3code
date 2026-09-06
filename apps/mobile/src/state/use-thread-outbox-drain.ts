@@ -19,6 +19,7 @@ import { Alert } from "react-native";
 
 import { scopedProjectKey, scopedThreadKey } from "../lib/scopedEntities";
 import { buildProjectThreadStartTurnInput } from "../lib/projectThreadStartTurn";
+import { uploadedComposerContext } from "../lib/composerContext";
 import { prepareTurnAttachments, type PreparedTurnAttachments } from "../lib/attachmentUpload";
 import { randomHex } from "../lib/uuid";
 import { isModelSelectionUnavailable } from "../lib/modelOptions";
@@ -280,7 +281,11 @@ export async function recoverEditedCreationAfterDelivery(
     // from deleting the attachment files. allowOverflow mirrors the
     // send-failure restore; the send path refuses over-cap drafts, so the
     // state stays recoverable.
-    await mergeComposerDraftContent(draftKey, { text: kept.text, attachments: [] });
+    await mergeComposerDraftContent(draftKey, {
+      text: kept.text,
+      context: kept.context,
+      attachments: [],
+    });
     if (appAtomRegistry.get(editingQueuedMessageIdsAtom)[kept.messageId]) {
       return true;
     }
@@ -371,6 +376,7 @@ export async function restoreRejectedQueuedMessage(
     try {
       await mergeComposerDraftContent(draftKey, {
         text: queuedMessage.text,
+        context: queuedMessage.context,
         attachments: queuedMessage.attachments,
       });
     } finally {
@@ -759,6 +765,11 @@ export function useThreadOutboxDrain(): void {
             messageId: queuedMessage.messageId,
             role: "user",
             text: queuedMessage.text,
+            context: uploadedComposerContext(
+              queuedMessage.context,
+              queuedMessage.attachments,
+              prepared.attachments,
+            ),
             attachments: prepared.attachments,
           },
           modelSelection: sendSettings.modelSelection,
@@ -880,6 +891,11 @@ export function useThreadOutboxDrain(): void {
           messageId: queuedMessage.messageId,
           createdAt: queuedMessage.createdAt,
           text: queuedMessage.text.trim(),
+          context: uploadedComposerContext(
+            queuedMessage.context,
+            queuedMessage.attachments,
+            prepared.attachments,
+          ),
           uploadedAttachments: prepared.attachments,
           modelSelection: sendSettings.modelSelection,
           runtimeMode: sendSettings.runtimeMode,

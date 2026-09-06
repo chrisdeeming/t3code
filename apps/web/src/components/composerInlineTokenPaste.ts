@@ -2,6 +2,7 @@ import type { AssistantCitation, ComposerContextClipboardFragment } from "@t3too
 import {
   COMPOSER_CONTEXT_CLIPBOARD_MIME,
   decodeComposerContextFragment,
+  decodeComposerContextClipboardHtml,
 } from "@t3tools/shared/composerContextClipboard";
 import {
   collectComposerContextReferences,
@@ -59,13 +60,23 @@ export function registerComposerInlineTokenPaste(
       // Only records whose links are in the pasted text get imported; a fragment may carry
       // more (it was built for a larger copy) and must not start transfers for those.
       const decodedFragment = options.importContextFragment
-        ? decodeComposerContextFragment(
+        ? (decodeComposerContextFragment(
             event.clipboardData.getData(COMPOSER_CONTEXT_CLIPBOARD_MIME),
-          )
+          ) ?? decodeComposerContextClipboardHtml(event.clipboardData.getData("text/html")))
         : null;
       const pastedIds = new Set(
         collectComposerContextReferences(pastedText).map((occurrence) => occurrence.contextId),
       );
+      for (const record of decodedFragment?.records ?? []) {
+        if (
+          pastedIds.has(record.contextId) &&
+          record.kind === "preview-annotation" &&
+          "screenshotContextId" in record &&
+          record.screenshotContextId
+        ) {
+          pastedIds.add(record.screenshotContextId);
+        }
+      }
       const fragment =
         decodedFragment === null
           ? null

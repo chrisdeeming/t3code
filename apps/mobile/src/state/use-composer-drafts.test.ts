@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "@effect/vitest";
 import {
   CommandId,
+  ComposerContextId,
   EnvironmentId,
   MessageId,
   ProviderInstanceId,
@@ -172,6 +173,11 @@ import {
   restoreComposerDraftSnapshotState,
   restoreCloudComposerDrafts,
   setComposerDraftText,
+  stashComposerDraft,
+  restoreStashedComposerDraft,
+  deleteStashedComposerDraft,
+  insertComposerDraftContext,
+  rememberComposerDraftSelection,
   setComposerDraftAttachmentUpload,
   waitForComposerDraftsLoaded,
   setStickyComposerModelSelection,
@@ -208,6 +214,44 @@ afterEach(() => {
 });
 
 describe("mobile composer drafts", () => {
+  it("inserts context at the saved caret and retains its payload through persistence and restore", () => {
+    const draftKey = "context-environment:context-thread";
+    const record = {
+      version: 1 as const,
+      kind: "terminal" as const,
+      contextId: ComposerContextId.make("context-terminal"),
+      label: "Build output",
+      terminalId: "main",
+      terminalLabel: "Terminal",
+      lineStart: 1,
+      lineEnd: 1,
+      text: "Build failed",
+    };
+    const reference = "[Build output](t3-context://v1/terminal/context-terminal)";
+    setComposerDraftText(draftKey, "Fix this next");
+    rememberComposerDraftSelection(draftKey, "Fix this next", { start: 4, end: 8 });
+    insertComposerDraftContext(draftKey, {
+      text: reference,
+      context: { version: 1, records: [record] },
+    });
+    const draft = getComposerDraftSnapshot(draftKey);
+    expect(draft.text).toBe(`Fix ${reference} next`);
+    const decoded = decodePersistedComposerState(
+      JSON.parse(JSON.stringify({ schemaVersion: 1, drafts: { [draftKey]: draft } })),
+    ).drafts[draftKey];
+    expect(decoded?.context?.records).toEqual([record]);
+    const restored = mergeComposerDraftContentState(
+      { [draftKey]: { text: "Additional work", attachments: [] } },
+      draftKey,
+      decoded!,
+    );
+    expect(restored[draftKey]?.text).toContain(reference);
+    expect(restored[draftKey]?.context?.records).toEqual([record]);
+    expect(clearComposerDraftContentState(restored, draftKey)[draftKey]?.context).toBeUndefined();
+    setComposerDraftText(draftKey, "Fix next");
+    expect(getComposerDraftSnapshot(draftKey).context).toBeUndefined();
+  });
+
   // Hydration is one-shot per module instance and the attachment sweep now
   // triggers it too, so this test must observe it before any sweep test runs.
   it("waits for persisted drafts before copying content between projects", async () => {
@@ -1874,6 +1918,54 @@ describe("mobile composer drafts", () => {
       file.uploadEnvironmentId,
       [file.uploadedAttachmentId],
     );
+  });
+
+  it("persists a stashed context and restores it at the destination caret with fresh IDs", async () => {
+    const source = "stash-environment:source";
+    const target = "stash-environment:target";
+    const record = {
+      version: 1 as const,
+      kind: "terminal" as const,
+      contextId: ComposerContextId.make("stash-context"),
+      label: "Output",
+      terminalId: "main",
+      terminalLabel: "Terminal",
+      lineStart: 1,
+      lineEnd: 1,
+      text: "Build failed",
+    };
+    const reference = "[Output](t3-context://v1/terminal/stash-context)";
+    composerDraftFileMocks.setDocument({ schemaVersion: 1, drafts: {} });
+    await waitForComposerDraftsLoaded();
+    insertComposerDraftContext(source, {
+      text: reference,
+      context: { version: 1, records: [record] },
+    });
+    expect(await stashComposerDraft(source, "stash-1")).toBe(true);
+    const persisted = decodePersistedComposerState(
+      JSON.parse(composerDraftFileMocks.getDocument()),
+    );
+    expect(persisted.drafts[source]?.text).toBe("");
+    expect(persisted.drafts[source]?.stashedPrompts?.[0]?.context?.records).toEqual([record]);
+    setComposerDraftText(target, "Fix now");
+    rememberComposerDraftSelection(target, "Fix now", { start: 4, end: 4 });
+    expect(
+      await restoreStashedComposerDraft(source, target, "stash-1", () => "restored-context"),
+    ).toBe(true);
+    expect(getComposerDraftSnapshot(target).text).toBe(
+      "Fix [Output](t3-context://v1/terminal/restored-context) now",
+    );
+    expect(getComposerDraftSnapshot(target).context?.records[0]).toEqual({
+      ...record,
+      contextId: "restored-context",
+    });
+    expect(getComposerDraftSnapshot(source).stashedPrompts).toEqual([]);
+    expect(await restoreStashedComposerDraft(source, target, "stash-1", () => "duplicate")).toBe(
+      false,
+    );
+    expect(await stashComposerDraft(target, "stash-2")).toBe(true);
+    await deleteStashedComposerDraft(target, "stash-2");
+    expect(getComposerDraftSnapshot(target).stashedPrompts).toEqual([]);
   });
 
   it("hydrates persisted drafts before a cold-start sweep deletes their files", async () => {

@@ -72,6 +72,8 @@ private final class ComposerTextView: UITextView {
   ])
 
   var onPasteImages: (([String]) -> Void)?
+  var onPasteContext: (([String: String]) -> Void)?
+  var clipboardFragment = ""
   var onAttributedMutation: (() -> Void)?
   var onSubmit: (() -> Void)?
   var isReadOnly = false
@@ -114,6 +116,11 @@ private final class ComposerTextView: UITextView {
       return
     }
     let pasteboard = UIPasteboard.general
+    let context = T3ComposerClipboard.read()
+    if !context["fragment", default: ""].isEmpty || context["html", default: ""].contains("data-t3-context-fragment=") {
+      onPasteContext?(context)
+      return
+    }
     let imageProviders = pasteboard.itemProviders.filter {
       $0.canLoadObject(ofClass: UIImage.self)
     }
@@ -194,7 +201,7 @@ private final class ComposerTextView: UITextView {
     guard selectedRange.length > 0 else {
       return super.copy(sender)
     }
-    UIPasteboard.general.string = serializedText(in: selectedRange)
+    T3ComposerClipboard.write(text: serializedText(in: selectedRange), fragment: clipboardFragment)
   }
 
   override func cut(_ sender: Any?) {
@@ -308,7 +315,7 @@ private final class ComposerTextView: UITextView {
   }
 }
 
-public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDropDelegate {
+public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDropDelegate, UIGestureRecognizerDelegate {
   private let textView = ComposerTextView()
   private let placeholderLabel = UILabel()
   private var value = ""
@@ -346,6 +353,8 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
   let onComposerBlur = EventDispatcher()
   let onComposerSubmit = EventDispatcher()
   let onComposerPasteImages = EventDispatcher()
+  let onComposerContextPress = EventDispatcher()
+  let onComposerPasteContext = EventDispatcher()
   let onComposerContentSizeChange = EventDispatcher()
 
   public required init(appContext: AppContext? = nil) {
@@ -364,12 +373,19 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     textView.onPasteImages = { [weak self] urls in
       self?.onComposerPasteImages(["uris": urls])
     }
+    textView.onPasteContext = { [weak self] context in
+      self?.onComposerPasteContext(context)
+    }
     textView.onAttributedMutation = { [weak self] in
       self?.emitTextChange()
     }
     textView.onSubmit = { [weak self] in
       self?.onComposerSubmit([:])
     }
+    let contextTap = UITapGestureRecognizer(target: self, action: #selector(openContext(_:)))
+    contextTap.cancelsTouchesInView = false
+    contextTap.delegate = self
+    textView.addGestureRecognizer(contextTap)
     addSubview(textView)
 
     placeholderLabel.numberOfLines = 0
@@ -377,6 +393,28 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     addSubview(placeholderLabel)
     applyTypography()
     applyTheme()
+  }
+
+  @objc private func openContext(_ recognizer: UITapGestureRecognizer) {
+    guard let (index, attachment) = contextAttachment(at: recognizer.location(in: textView)) else { return }
+    let start = textView.sourceOffset(forDisplayOffset: index)
+    onComposerContextPress(["source": attachment.source, "start": start, "end": start + (attachment.source as NSString).length])
+  }
+
+  public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+    contextAttachment(at: touch.location(in: textView)) != nil
+  }
+
+  private func contextAttachment(at point: CGPoint) -> (Int, ComposerTextAttachment)? {
+    let containerPoint = CGPoint(x: point.x - textView.textContainerInset.left, y: point.y - textView.textContainerInset.top)
+    let layout = textView.layoutManager
+    let index = layout.characterIndex(for: containerPoint, in: textView.textContainer, fractionOfDistanceBetweenInsertionPoints: nil)
+    guard index < textView.textStorage.length,
+          let attachment = textView.textStorage.attribute(.attachment, at: index, effectiveRange: nil) as? ComposerTextAttachment,
+          attachment.source.contains("](t3-context://v1/") else { return nil }
+    let glyphRange = layout.glyphRange(forCharacterRange: NSRange(location: index, length: 1), actualCharacterRange: nil)
+    guard layout.boundingRect(forGlyphRange: glyphRange, in: textView.textContainer).contains(containerPoint) else { return nil }
+    return (index, attachment)
   }
 
   public override func layoutSubviews() {
@@ -396,6 +434,10 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
       height: max(lineHeight, placeholderLabel.font.lineHeight)
     )
     emitContentSizeIfNeeded()
+  }
+
+  func setClipboardFragment(_ fragment: String) {
+    textView.clipboardFragment = fragment
   }
 
   public override func didMoveToWindow() {

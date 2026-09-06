@@ -46,6 +46,9 @@ import Animated, {
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
 import { scopedThreadKey } from "../../lib/scopedEntities";
+import { composerContextImportsAtom } from "../../state/use-composer-drafts";
+import { useProject } from "../../state/entities";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 
 import { AppText as Text } from "../../components/AppText";
 import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
@@ -299,6 +302,7 @@ const ComposerConnectionStatusPill = memo(function ComposerConnectionStatusPill(
 });
 
 export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposerProps) {
+  const project = useProject(scopeProjectRef(props.environmentId, props.selectedThread.projectId));
   const navigation = useNavigation();
   const foregroundColor = useUniwindTheme()["--color-foreground"];
   const bodyText = useScaledTextRole("body");
@@ -374,6 +378,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     ownerKey: composerOwnerKey,
     environmentId: props.environmentId,
     projectCwd: props.projectCwd,
+    pullRequestProjectId: props.serverConfig?.environment.capabilities.pullRequests
+      ? (project?.id ?? null)
+      : null,
+    pullRequestRepository: project?.repositoryIdentity?.displayName ?? null,
     selectedProviderStatus,
     hasThread: true,
     hasCompactableConversation: props.hasCompactableConversation,
@@ -411,8 +419,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     serverConfig: props.serverConfig,
     states: uploadStates,
   });
+  const contextImports = useAtomValue(composerContextImportsAtom);
   const canSend =
     hasContent &&
+    !contextImports[composerOwnerKey] &&
     !voiceInput.blocksSubmission &&
     attachmentBlockReason === null &&
     !modelUnavailable;
@@ -623,12 +633,15 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         className="relative w-full self-center"
         style={{ maxWidth: props.contentMaxWidth }}
       >
-        {!voiceInput.isBusy && composerMenu.trigger && composerMenu.items.length > 0 ? (
+        {!voiceInput.isBusy &&
+        composerMenu.trigger &&
+        (composerMenu.items.length > 0 || composerMenu.trigger.kind === "pull-request") ? (
           <View className="absolute inset-x-0 bottom-full z-10 mb-2">
             <ComposerCommandPopover
               items={composerMenu.items}
               triggerKind={composerMenu.trigger.kind}
               isLoading={composerMenu.isLoading}
+              error={composerMenu.error}
               onSelect={composerMenu.onSelect}
             />
           </View>
@@ -700,6 +713,8 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
               layout={COMPOSER_LAYOUT_TRANSITION}
             >
               <ComposerEditor
+                draftKey={composerOwnerKey}
+                environmentId={props.environmentId}
                 ref={inputRef}
                 multiline
                 value={props.draftMessage}
