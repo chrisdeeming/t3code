@@ -32,7 +32,6 @@ import {
   COMPOSER_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
-  CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
   CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES,
   CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
   CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES,
@@ -41,6 +40,7 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
   ContextChipPopover,
+  ContextChipShell,
   FileChipContent,
   ImageChipButton,
   PullRequestChip,
@@ -115,17 +115,18 @@ function ContextChip(props: {
   toneClassName: string;
 }) {
   const content = (
-    <span
-      className={cn(
-        COMPOSER_INLINE_CHIP_CLASS_NAME,
-        props.toneClassName,
-        props.detailsMode === "popover" && CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
-      )}
+    <ContextChipShell
+      icon={props.icon}
+      label={props.label}
+      className={cn(COMPOSER_INLINE_CHIP_CLASS_NAME, props.toneClassName)}
+      labelClassName={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}
+      interactive={props.detailsMode === "popover"}
       aria-hidden={props.detailsMode === "popover" ? true : undefined}
-    >
-      {props.icon}
-      <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{props.label}</span>
-    </span>
+      aria-label={
+        props.detailsMode === "tooltip" ? `${props.kindLabel}, ${props.label}` : undefined
+      }
+      tooltip={props.detailsMode === "tooltip" ? props.details : undefined}
+    />
   );
   if (props.detailsMode === "popover") {
     return (
@@ -134,30 +135,7 @@ function ContextChip(props: {
       </ContextChipPopover>
     );
   }
-  if (props.detailsMode === "none") return content;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className={cn(
-              COMPOSER_INLINE_CHIP_CLASS_NAME,
-              props.toneClassName,
-              CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
-            )}
-            aria-label={`${props.kindLabel}, ${props.label}`}
-            tabIndex={0}
-          >
-            {props.icon}
-            <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{props.label}</span>
-          </span>
-        }
-      />
-      <TooltipPopup side="top" className="max-w-96 whitespace-pre-wrap leading-tight">
-        {props.details}
-      </TooltipPopup>
-    </Tooltip>
-  );
+  return content;
 }
 
 function uploadStatusSuffix(upload: AttachmentUploadState | undefined): string | null {

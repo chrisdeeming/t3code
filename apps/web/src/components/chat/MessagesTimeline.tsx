@@ -163,6 +163,7 @@ import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   ContextChipPopover as UserMessageContextPopover,
+  ContextChipShell,
   FileChipContent,
   ImageChipButton,
   PullRequestChip,
@@ -188,7 +189,6 @@ import {
   CHAT_INLINE_CHIP_CLASS_NAME,
   CHAT_INLINE_CHIP_LABEL_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
-  CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
   CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES,
   CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
   CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES,
@@ -2389,32 +2389,18 @@ function UserMessageContextChip(props: {
   interactive?: boolean;
   unresolved?: boolean;
 }) {
-  const chip = (
-    <span
-      className={cn(
-        CHAT_INLINE_CHIP_CLASS_NAME,
-        props.toneClassName,
-        props.interactive && CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
-        props.tooltip && CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
-        props.unresolved && "border-dashed text-foreground",
-      )}
-      aria-label={props.kindLabel ? `${props.kindLabel}, ${props.label}` : undefined}
-      data-context-unresolved={props.unresolved ? "true" : undefined}
-      data-markdown-copy={props.copyMarkdown}
-      tabIndex={props.tooltip ? 0 : undefined}
-    >
-      {props.icon}
-      <span className={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}>{props.label}</span>
-    </span>
-  );
-  if (!props.tooltip) return chip;
   return (
-    <Tooltip>
-      <TooltipTrigger render={chip} />
-      <TooltipPopup side="top" className="max-w-96 whitespace-pre-wrap leading-tight">
-        {props.tooltip}
-      </TooltipPopup>
-    </Tooltip>
+    <ContextChipShell
+      icon={props.icon}
+      label={props.label}
+      className={cn(CHAT_INLINE_CHIP_CLASS_NAME, props.toneClassName)}
+      labelClassName={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}
+      aria-label={props.kindLabel ? `${props.kindLabel}, ${props.label}` : undefined}
+      data-markdown-copy={props.copyMarkdown}
+      tooltip={props.tooltip}
+      interactive={props.interactive === true}
+      unresolved={props.unresolved === true}
+    />
   );
 }
 
