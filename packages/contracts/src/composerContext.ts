@@ -34,12 +34,12 @@ const CONTEXT_KIND_PATTERN = /^[a-z][a-z0-9-]{0,39}$/;
 const KNOWN_KIND_PATTERN = new RegExp(`^(?!(?:${COMPOSER_CONTEXT_KINDS.join("|")})$)`);
 
 export const COMPOSER_CONTEXT_LABEL_MAX_CHARS = 200;
-export const COMPOSER_CONTEXT_TERMINAL_TEXT_MAX_CHARS = 64_000;
-export const COMPOSER_CONTEXT_ELEMENT_HTML_MAX_CHARS = 8_000;
-export const COMPOSER_CONTEXT_ELEMENT_STYLES_MAX_CHARS = 8_000;
-export const COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS = 16_000;
-export const COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS = 32_000;
-export const COMPOSER_CONTEXT_PREVIEW_COMMENT_MAX_CHARS = 8_000;
+const COMPOSER_CONTEXT_TERMINAL_TEXT_MAX_CHARS = 64_000;
+const COMPOSER_CONTEXT_ELEMENT_HTML_MAX_CHARS = 8_000;
+const COMPOSER_CONTEXT_ELEMENT_STYLES_MAX_CHARS = 8_000;
+const COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS = 16_000;
+const COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS = 32_000;
+const COMPOSER_CONTEXT_PREVIEW_COMMENT_MAX_CHARS = 8_000;
 
 /** Durable identity of one payload. Shared by every chip that points at it. */
 export const ComposerContextId = TrimmedNonEmptyString.check(
@@ -226,17 +226,13 @@ export const ComposerContextRecord = Schema.Union([
 ]);
 export type ComposerContextRecord = typeof ComposerContextRecord.Type;
 
-export const COMPOSER_CONTEXT_MAX_RECORDS = 200;
+const COMPOSER_CONTEXT_MAX_RECORDS = 200;
 
 /** Structured context riding on a user message. Undecodable records are dropped, not fatal. */
 export const OrchestrationMessageContext = Schema.Struct({
   version: Schema.Literal(1),
-  records: ForwardCompatibleArray(ComposerContextRecord).check(
-    Schema.isMaxLength(COMPOSER_CONTEXT_MAX_RECORDS),
-  ),
+  records: Schema.Array(Schema.Unknown)
+    .check(Schema.isMaxLength(COMPOSER_CONTEXT_MAX_RECORDS))
+    .pipe(Schema.decodeTo(ForwardCompatibleArray(ComposerContextRecord))),
 });
 export type OrchestrationMessageContext = typeof OrchestrationMessageContext.Type;
-
-export function isKnownComposerContextKind(kind: string): kind is KnownComposerContextKind {
-  return (COMPOSER_CONTEXT_KINDS as ReadonlyArray<string>).includes(kind);
-}

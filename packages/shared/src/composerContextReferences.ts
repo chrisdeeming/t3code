@@ -14,7 +14,7 @@ import {
  */
 
 const CONTEXT_PROTOCOL = "t3-context:";
-export const COMPOSER_CONTEXT_HREF_PREFIX = `${CONTEXT_PROTOCOL}//v1/`;
+const COMPOSER_CONTEXT_HREF_PREFIX = `${CONTEXT_PROTOCOL}//v1/`;
 const CONTEXT_KIND_PATTERN = /^[a-z][a-z0-9-]{0,39}$/;
 const CONTEXT_ID_PATTERN = /^[a-z0-9_-]{1,128}$/i;
 const MAX_LINK_LABEL_LENGTH = 512;
@@ -124,14 +124,14 @@ export function formatComposerContextProviderMarker(
     .replace(/[\r\n;\]]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return `[${kindDisplayName(kind)}: ${cleanLabel}; ref=${contextId}]`;
+  return `[${kindDisplayName(kind)}: ${escapeComposerContextPayloadText(cleanLabel)}; ref=${contextId}]`;
 }
 
 /**
  * Captured text is data. A terminal line or PR comment that contains `</t3_context>` or
  * `</context>` must not be able to close the envelope and forge a record.
  */
-export function escapeComposerContextPayloadText(text: string): string {
+function escapeComposerContextPayloadText(text: string): string {
   return text.replace(
     new RegExp(String.raw`<(?=/?(?:${CONTEXT_ENVELOPE_TAG}|${CONTEXT_ENTRY_TAG})\b)`, "gi"),
     "&lt;",
@@ -176,9 +176,7 @@ function formatElementDetails(element: ElementContextDetails): string[] {
 }
 
 /** Body lines for one payload. Returns null for kinds whose marker is self-describing. */
-export function formatComposerContextProviderPayload(
-  record: KnownComposerContextRecord,
-): string | null {
+function formatComposerContextProviderPayload(record: KnownComposerContextRecord): string | null {
   switch (record.kind) {
     case "image":
     case "file":
@@ -191,6 +189,7 @@ export function formatComposerContextProviderPayload(
     case "terminal": {
       const lines = record.text
         .split("\n")
+        .slice(0, record.lineEnd - record.lineStart + 1)
         .map((line, index) => `${record.lineStart + index} | ${line}`);
       return [`terminal: ${record.terminalLabel}`, ...lines].join("\n");
     }
@@ -263,7 +262,11 @@ export function projectComposerContextForProvider(input: {
   if (occurrences.length === 0) return input.text;
   const recordsById = new Map(input.records.map((record) => [record.contextId, record]));
   const body = replaceComposerContextReferences(input.text, (occurrence) =>
-    formatComposerContextProviderMarker(occurrence.kind, occurrence.label, occurrence.contextId),
+    formatComposerContextProviderMarker(
+      recordsById.get(occurrence.contextId)?.kind ?? occurrence.kind,
+      occurrence.label,
+      occurrence.contextId,
+    ),
   );
   const seen = new Set<ComposerContextId>();
   const entries: string[] = [];
