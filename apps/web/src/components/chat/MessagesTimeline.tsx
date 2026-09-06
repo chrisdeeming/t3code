@@ -183,7 +183,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   ContextChipPopover as UserMessageContextPopover,
   ContextChipShell,
-  FileChipContent,
+  FileChip,
   ImageChipButton,
   PullRequestChip,
   UnresolvedChip,
@@ -209,7 +209,6 @@ import {
   CHAT_INLINE_CHIP_LABEL_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES,
-  CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
   CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES,
   PULL_REQUEST_INLINE_CHIP_TONE_CLASS_NAMES,
 } from "../composerInlineChip";
@@ -2781,42 +2780,21 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
           attachment.downloadable === false && (!isVideo || attachment.previewUrl === undefined);
         const size = formatAttachmentSize(record.sizeBytes);
         return (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  disabled={disabled}
-                  className={cn(
-                    CHAT_INLINE_CHIP_CLASS_NAME,
-                    isVideo
-                      ? CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.video
-                      : CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.file,
-                    !disabled && CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
-                    !disabled && (isVideo ? "cursor-zoom-in" : "cursor-pointer"),
-                  )}
-                  aria-label={`${isVideo ? "Video" : "File"} attachment, ${record.name}, ${size}`}
-                  data-markdown-copy={context.copyMarkdown}
-                  onClick={() =>
-                    isVideo ? context.onExpandVideo(attachment) : context.onOpenFile(attachment)
-                  }
-                >
-                  <FileChipContent
-                    name={record.name}
-                    size={size}
-                    isVideo={isVideo}
-                    theme={context.resolvedTheme}
-                    labelClassName={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}
-                  />
-                </button>
-              }
-            />
-            <TooltipPopup side="top" className="max-w-80 whitespace-pre-wrap leading-tight">
-              {record.name}
-              {"\n"}
-              {size}
-            </TooltipPopup>
-          </Tooltip>
+          <FileChip
+            name={record.name}
+            size={size}
+            isVideo={isVideo}
+            theme={context.resolvedTheme}
+            className={CHAT_INLINE_CHIP_CLASS_NAME}
+            labelClassName={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}
+            disabled={disabled}
+            accessibleLabel={`${isVideo ? "Video" : "File"} attachment, ${record.name}, ${size}`}
+            copyMarkdown={context.copyMarkdown}
+            onOpen={() =>
+              isVideo ? context.onExpandVideo(attachment) : context.onOpenFile(attachment)
+            }
+            tooltip={`${record.name}\n${size}`}
+          />
         );
       },
     },
