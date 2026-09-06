@@ -1,11 +1,12 @@
-import type {
-  ComposerContextId,
-  ComposerContextRecord,
-  ElementContextRecord,
-  PreviewAnnotationContextRecord,
+import {
+  type ComposerContextId,
+  type ComposerContextRecord,
+  type ElementContextRecord,
+  type PreviewAnnotationContextRecord,
   ReviewCommentContextRecord,
-  TerminalContextRecord,
+  type TerminalContextRecord,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 
 import { formatComposerContextReference } from "./composerContextReferences.ts";
 
@@ -33,6 +34,7 @@ const REVIEW_FENCE = /(`{3,})([^\s`]*)[^\n]*\n([\s\S]*?)\n\1/g;
 const REVIEW_TOKEN = "\uE000";
 const LEGACY_MARKERS =
   /<(?:terminal_context|element_context|preview_annotation|review_comment)\b|￼/;
+const isReviewCommentContextRecord = Schema.is(ReviewCommentContextRecord);
 
 interface ParsedEntry {
   header: string;
@@ -263,7 +265,8 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
   // behind them nor lose their position. Unparseable blocks stay as text.
   let rest = text.replace(INLINE_REVIEW, (whole, attributes: string, rawBody: string) => {
     const record = reviewRecord(attributes, rawBody, reviews.length + 1);
-    if (!record) return whole;
+    // Keep the original prose if converting it would produce a record the wire drops.
+    if (!record || !isReviewCommentContextRecord(record)) return whole;
     reviews.push(record);
     return `${reviewToken}${reviews.length - 1}${reviewToken}`;
   });
@@ -289,14 +292,18 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
     }
     const element = stripTrailing(rest, TRAILING_ELEMENT);
     if (element) {
+      const entries = parseEntries(element.match[1] ?? "");
+      if (entries.length === 0 || entries.some((entry) => elementRecord(entry, 1) === null)) break;
       rest = element.text;
-      elementEntries.unshift(...parseEntries(element.match[1] ?? ""));
+      elementEntries.unshift(...entries);
       continue;
     }
     const terminal = stripTrailing(rest, TRAILING_TERMINAL);
     if (terminal) {
+      const entries = parseEntries(terminal.match[1] ?? "");
+      if (entries.length === 0 || entries.some((entry) => terminalRecord(entry, 1) === null)) break;
       rest = terminal.text;
-      terminalEntries.unshift(...parseEntries(terminal.match[1] ?? ""));
+      terminalEntries.unshift(...entries);
       continue;
     }
     break;
