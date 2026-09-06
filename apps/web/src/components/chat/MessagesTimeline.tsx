@@ -2382,11 +2382,21 @@ function UserMessageContextChip(props: {
   );
 }
 
-function UserMessageContextPopover(props: { chip: ReactNode; children: ReactNode }) {
+function UserMessageContextPopover(props: {
+  chip: ReactNode;
+  children: ReactNode;
+  copyMarkdown: string;
+}) {
   return (
     <Popover>
       <PopoverTrigger
-        render={<button type="button" className="inline-flex max-w-full align-baseline" />}
+        render={
+          <button
+            type="button"
+            className="inline-flex max-w-full align-baseline"
+            data-markdown-copy={props.copyMarkdown}
+          />
+        }
       >
         {props.chip}
       </PopoverTrigger>
@@ -2525,6 +2535,7 @@ function UserMessageContextReferenceChip(props: {
   if (record?.kind === "review-comment") {
     return (
       <UserMessageContextPopover
+        copyMarkdown={copyMarkdown}
         chip={
           <UserMessageContextChip
             icon={<MessageCircleIcon className={iconClassName} />}
@@ -2553,6 +2564,7 @@ function UserMessageContextReferenceChip(props: {
   if (record?.kind === "preview-annotation") {
     return (
       <UserMessageContextPopover
+        copyMarkdown={copyMarkdown}
         chip={
           <UserMessageContextChip
             icon={<MousePointerClickIcon className={iconClassName} />}
