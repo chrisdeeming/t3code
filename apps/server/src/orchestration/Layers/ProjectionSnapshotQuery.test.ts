@@ -1,6 +1,7 @@
 import {
   type AgentSessionImportSource,
   ChatAttachment,
+  ComposerContextId,
   CheckpointRef,
   EventId,
   MessageId,
@@ -8,6 +9,7 @@ import {
   ThreadId,
   TurnId,
   ProviderInstanceId,
+  OrchestrationMessageContext,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -620,23 +622,41 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
         },
       ];
       const attachmentsJson = yield* encodeChatAttachments(attachments);
+      const messageContext: OrchestrationMessageContext = {
+        version: 1,
+        records: [
+          {
+            version: 1,
+            contextId: ComposerContextId.make("notes-context"),
+            kind: "file",
+            label: "notes.txt",
+            attachmentId: "notes",
+            name: "notes.txt",
+            mimeType: "text/plain",
+            sizeBytes: 8,
+          },
+        ],
+      };
+      const contextJson = yield* Schema.encodeEffect(
+        Schema.fromJsonString(OrchestrationMessageContext),
+      )(messageContext);
       yield* sql`
         WITH RECURSIVE history(n) AS (
           VALUES (1) UNION ALL SELECT n + 1 FROM history WHERE n < 2000
         )
         INSERT INTO projection_thread_messages (
-          message_id, thread_id, turn_id, role, text, attachments_json,
+          message_id, thread_id, turn_id, role, text, attachments_json, context_json,
           is_streaming, created_at, updated_at
         )
         SELECT 'turn-start-history:' || n, ${threadId}, 'old-turn:' || n, 'assistant',
-          'Unrelated assistant output', 'not-json', 0, ${createdAt}, ${createdAt}
+          'Unrelated assistant output', 'not-json', 'not-json', 0, ${createdAt}, ${createdAt}
         FROM history
       `;
       yield* sql`
         INSERT INTO projection_thread_messages (
-          message_id, thread_id, role, text, attachments_json, is_streaming, created_at, updated_at
+          message_id, thread_id, role, text, attachments_json, context_json, is_streaming, created_at, updated_at
         ) VALUES (${messageId}, ${threadId}, 'user', 'Read these notes',
-          ${attachmentsJson}, 0, ${createdAt}, ${createdAt})
+          ${attachmentsJson}, ${contextJson}, 0, ${createdAt}, ${createdAt})
       `;
       yield* sql`
         INSERT INTO projection_thread_messages (
@@ -662,6 +682,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
             createdAt,
             updatedAt: createdAt,
             attachments,
+            context: messageContext,
           },
           hasOtherUserMessages: false,
         }),
