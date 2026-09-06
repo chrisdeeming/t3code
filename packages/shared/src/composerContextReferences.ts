@@ -175,8 +175,8 @@ function formatElementDetails(element: ElementContextDetails): string[] {
   return lines;
 }
 
-/** Body lines for one payload. Returns null for kinds whose marker is self-describing. */
-function formatComposerContextProviderPayload(record: KnownComposerContextRecord): string | null {
+/** Body lines for one payload, including authoritative paths and names behind display labels. */
+function formatComposerContextProviderPayload(record: KnownComposerContextRecord): string {
   switch (record.kind) {
     case "image":
     case "file":
@@ -227,8 +227,9 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
       return lines.join("\n");
     }
     case "mention":
+      return `path: ${record.path}`;
     case "skill":
-      return null;
+      return `name: ${record.name}`;
   }
 }
 
@@ -236,16 +237,13 @@ function formatEnvelopeEntry(
   kind: ComposerContextKind,
   contextId: ComposerContextId,
   record: ComposerContextRecord | undefined,
-): string | null {
+): string {
   const open = `<${CONTEXT_ENTRY_TAG} kind="${escapeAttribute(kind)}" id="${escapeAttribute(contextId)}"`;
   if (!record) return `${open} unavailable="true"/>`;
   const body =
-    record.kind === "mention" || record.kind === "skill"
-      ? null
-      : "payload" in record
-        ? JSON.stringify(record.payload)
-        : formatComposerContextProviderPayload(record);
-  if (body === null) return null;
+    "payload" in record
+      ? JSON.stringify(record.payload)
+      : formatComposerContextProviderPayload(record);
   return `${open}>\n${escapeComposerContextPayloadText(body)}\n</${CONTEXT_ENTRY_TAG}>`;
 }
 
@@ -260,7 +258,11 @@ export function projectComposerContextForProvider(input: {
 }): string {
   const occurrences = collectComposerContextReferences(input.text);
   if (occurrences.length === 0) return input.text;
-  const recordsById = new Map(input.records.map((record) => [record.contextId, record]));
+  const recordsById = new Map<ComposerContextId, ComposerContextRecord | undefined>();
+  for (const record of input.records) {
+    // Even callers that bypass the wire schema must not silently select an ambiguous payload.
+    recordsById.set(record.contextId, recordsById.has(record.contextId) ? undefined : record);
+  }
   const body = replaceComposerContextReferences(input.text, (occurrence) =>
     formatComposerContextProviderMarker(
       recordsById.get(occurrence.contextId)?.kind ?? occurrence.kind,
@@ -279,7 +281,7 @@ export function projectComposerContextForProvider(input: {
       occurrence.contextId,
       record,
     );
-    if (entry !== null) entries.push(entry);
+    entries.push(entry);
   }
   if (entries.length === 0) return body;
   return `${body}\n\n<${CONTEXT_ENVELOPE_TAG} version="1">\n${entries.join("\n")}\n</${CONTEXT_ENVELOPE_TAG}>`;
