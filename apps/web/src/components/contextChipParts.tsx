@@ -22,6 +22,9 @@ export function ContextChipPopover(props: {
   accessibleLabel: string;
   chip: ReactNode;
   children: ReactNode;
+  triggerClassName?: string;
+  popupClassName?: string;
+  viewportClassName?: string;
 }) {
   return (
     <Popover>
@@ -32,6 +35,7 @@ export function ContextChipPopover(props: {
             className={cn(
               "inline-flex max-w-full cursor-pointer rounded-[0.5em] align-baseline",
               CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
+              props.triggerClassName,
             )}
             aria-label={`${props.accessibleLabel}. Show details`}
             data-markdown-copy={props.copyMarkdown}
@@ -42,8 +46,8 @@ export function ContextChipPopover(props: {
       </PopoverTrigger>
       <PopoverPopup
         side="top"
-        className="w-[min(36rem,calc(100vw-2rem))]"
-        viewportClassName="overflow-x-auto p-2"
+        className={cn("w-[min(36rem,calc(100vw-2rem))]", props.popupClassName)}
+        viewportClassName={cn("overflow-x-auto p-2", props.viewportClassName)}
       >
         <PopoverTitle className="sr-only">{props.accessibleLabel}</PopoverTitle>
         {props.children}
