@@ -3,7 +3,6 @@ import {
   collectComposerContextReferences,
   formatComposerContextReference,
   replaceComposerContextReferences,
-  type ComposerContextReferenceOccurrence,
 } from "@t3tools/shared/composerContextReferences";
 
 /**
@@ -50,12 +49,6 @@ export function formatInlineContextReference(reference: ComposerContextReference
     contextId: reference.contextId as ComposerContextId,
     label: reference.label,
   });
-}
-
-export function collectInlineContextReferences(
-  prompt: string,
-): ComposerContextReferenceOccurrence[] {
-  return collectComposerContextReferences(prompt);
 }
 
 /** Payload ids referenced by the prompt, once each in first-occurrence order. */
