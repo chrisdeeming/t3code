@@ -1,14 +1,7 @@
 import type { PreviewAnnotationPayload } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { videoMimeType } from "@t3tools/shared/video";
-import {
-  CircleDashedIcon,
-  FilmIcon,
-  GitPullRequestIcon,
-  ImageIcon,
-  MessageCircleIcon,
-  MousePointerClickIcon,
-} from "lucide-react";
+import { GitPullRequestIcon, MessageCircleIcon, MousePointerClickIcon } from "lucide-react";
 import { createContext, type MouseEvent, type ReactElement, type ReactNode, use } from "react";
 
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
@@ -35,7 +28,6 @@ import {
 import type { TerminalContextDraft } from "~/lib/terminalContext";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
-import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import {
   createContextPresentationRegistry,
   type ContextPresentationCapability,
@@ -49,11 +41,15 @@ import {
   CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
   CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES,
   PULL_REQUEST_INLINE_CHIP_TONE_CLASS_NAMES,
-  middleTruncateAttachmentName,
 } from "./composerInlineChip";
-import { PullRequestContextDetails } from "./PullRequestContextDetails";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
-import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "./ui/popover";
+import {
+  ContextChipPopover,
+  FileChipContent,
+  ImageChipButton,
+  PullRequestChip,
+  UnresolvedChip,
+} from "./contextChipParts";
 
 /**
  * Draft-side payload behind a context reference chip. Each kind keeps its existing draft
@@ -150,32 +146,9 @@ function ContextChip(props: {
   );
   if (props.detailsMode === "popover") {
     return (
-      <Popover>
-        <PopoverTrigger
-          render={
-            <button
-              type="button"
-              className={cn(
-                "inline-flex max-w-full cursor-pointer rounded-[0.5em] align-baseline",
-                CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
-              )}
-              aria-label={`${props.kindLabel}, ${props.label}. Show details`}
-            />
-          }
-        >
-          {content}
-        </PopoverTrigger>
-        <PopoverPopup
-          side="top"
-          className="w-[min(36rem,calc(100vw-2rem))]"
-          viewportClassName="overflow-x-auto p-2"
-        >
-          <PopoverTitle className="sr-only">
-            {props.kindLabel}, {props.label}
-          </PopoverTitle>
-          {props.details}
-        </PopoverPopup>
-      </Popover>
+      <ContextChipPopover accessibleLabel={props.kindLabel + ", " + props.label} chip={content}>
+        {props.details}
+      </ContextChipPopover>
     );
   }
   if (props.detailsMode === "none") return content;
@@ -224,42 +197,18 @@ function ImageContextChip(props: {
   upload: AttachmentUploadState | undefined;
 }) {
   const actions = use(ComposerContextActionsContext);
-  const suffix = uploadStatusSuffix(props.upload);
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
-            type="button"
-            className={cn(
-              COMPOSER_INLINE_CHIP_CLASS_NAME,
-              CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.image,
-              CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
-              "cursor-zoom-in",
-            )}
-            aria-label={`Image attachment, ${props.record.name}`}
+          <ImageChipButton
+            name={props.record.name}
+            previewUrl={props.record.previewUrl}
+            className={COMPOSER_INLINE_CHIP_CLASS_NAME}
+            labelClassName={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}
+            suffix={uploadStatusSuffix(props.upload)}
             onClick={() => actions.expandImage(props.record.id)}
-          >
-            {props.record.previewUrl ? (
-              <img
-                src={props.record.previewUrl}
-                alt=""
-                className="size-3.5 shrink-0 rounded-sm object-cover"
-              />
-            ) : (
-              <ImageIcon
-                className={cn(
-                  COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
-                  CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES.image,
-                  "size-3.5",
-                )}
-              />
-            )}
-            <span className={cn(COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME, "max-w-72")}>
-              {middleTruncateAttachmentName(props.record.name)}
-            </span>
-            {suffix ? <span className="text-[10px] text-current">{suffix}</span> : null}
-          </button>
+          />
         }
       />
       <TooltipPopup side="top" className="max-w-80 whitespace-pre-wrap leading-tight">
@@ -289,31 +238,15 @@ function FileContextChip(props: {
     needsReattach && "border-dashed text-foreground",
     props.upload?.status === "failed" && "border-destructive/35 bg-destructive/8 text-destructive",
   );
-  const icon = isVideo ? (
-    <FilmIcon
-      className={cn(
-        COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
-        CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES.video,
-        "size-3.5",
-      )}
-    />
-  ) : (
-    <PierreEntryIcon
-      pathValue={props.record.name}
-      kind="file"
-      theme={resolvedTheme}
-      className="size-3.5"
-    />
-  );
   const content = (
-    <>
-      {icon}
-      <span className={cn(COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME, "max-w-72")}>
-        {middleTruncateAttachmentName(props.record.name)}
-      </span>
-      <span className="shrink-0 text-[10px] text-current">{size}</span>
-      {suffix ? <span className="text-[10px] text-current">{suffix}</span> : null}
-    </>
+    <FileChipContent
+      name={props.record.name}
+      size={size}
+      isVideo={isVideo}
+      theme={resolvedTheme}
+      labelClassName={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}
+      suffix={suffix}
+    />
   );
   return (
     <Tooltip>
@@ -352,38 +285,15 @@ function PullRequestContextChip(props: { record: ReviewCommentContext; toneClass
   const actions = use(ComposerContextActionsContext);
   const metadata = props.record.pullRequest;
   if (metadata === undefined) return null;
-  const label = reviewCommentContextLabel(props.record);
-  const kindLabel = pullRequestContextKindLabel(props.record);
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            className={cn(
-              COMPOSER_INLINE_CHIP_CLASS_NAME,
-              props.toneClassName,
-              CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
-              "cursor-pointer",
-            )}
-            aria-label={`${kindLabel} ${label}: ${metadata.title}. Open in pull request panel.`}
-            onClick={(event) => actions.openPullRequest(event, metadata.url)}
-          >
-            <GitPullRequestIcon
-              className={cn(
-                COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
-                CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES["pull-request"],
-                "size-3.5",
-              )}
-            />
-            <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{label}</span>
-          </button>
-        }
-      />
-      <TooltipPopup side="top" className="max-w-96 leading-tight">
-        <PullRequestContextDetails metadata={metadata} />
-      </TooltipPopup>
-    </Tooltip>
+    <PullRequestChip
+      metadata={metadata}
+      label={reviewCommentContextLabel(props.record)}
+      kindLabel={pullRequestContextKindLabel(props.record)}
+      className={cn(COMPOSER_INLINE_CHIP_CLASS_NAME, props.toneClassName)}
+      labelClassName={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}
+      onOpen={actions.openPullRequest}
+    />
   );
 }
 
@@ -453,28 +363,13 @@ function ComposerPreviewAnnotationDetails({
 
 function UnresolvedContextChip(props: { label: string }) {
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className={cn(
-              COMPOSER_INLINE_CHIP_CLASS_NAME,
-              CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
-              "border-dashed text-foreground",
-            )}
-            aria-label={`Unavailable context, ${props.label}`}
-            data-context-unresolved="true"
-            tabIndex={0}
-          >
-            <CircleDashedIcon className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />
-            <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{props.label}</span>
-          </span>
-        }
-      />
-      <TooltipPopup side="top" className="max-w-80 leading-tight">
-        This context is no longer available. Remove it or attach it again.
-      </TooltipPopup>
-    </Tooltip>
+    <UnresolvedChip
+      label={props.label}
+      className={COMPOSER_INLINE_CHIP_CLASS_NAME}
+      labelClassName={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}
+      tooltip="This context is no longer available. Remove it or attach it again."
+      tooltipClassName="max-w-80 leading-tight"
+    />
   );
 }
 
