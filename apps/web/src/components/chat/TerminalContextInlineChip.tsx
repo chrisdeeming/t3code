@@ -7,13 +7,11 @@ import {
   COMPOSER_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
-  CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
   CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES,
   CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
   CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES,
 } from "../composerInlineChip";
-import { ContextChipPopover } from "../contextChipParts";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { ContextChipPopover, ContextChipShell } from "../contextChipParts";
 
 interface TerminalContextInlineChipProps {
   label: string;
@@ -31,25 +29,27 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
   const chipClassName =
     props.surface === "transcript" ? CHAT_INLINE_CHIP_CLASS_NAME : COMPOSER_INLINE_CHIP_CLASS_NAME;
 
-  const content = (
-    <>
-      <TerminalIcon
-        className={cn(
-          COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
-          CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES.terminal,
-          "size-3.5",
-          expired && "opacity-100",
-        )}
-      />
-      <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{label}</span>
-    </>
+  const icon = (
+    <TerminalIcon
+      className={cn(
+        COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
+        CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES.terminal,
+        "size-3.5",
+        expired && "opacity-100",
+      )}
+    />
   );
 
   if (!expired && text.length > 0 && detailsMode === "popover") {
     return (
       <ContextChipPopover
         accessibleLabel={`Terminal excerpt, ${label}`}
-        chip={content}
+        chip={
+          <>
+            {icon}
+            <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{label}</span>
+          </>
+        }
         triggerClassName={cn(
           chipClassName,
           CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.terminal,
@@ -81,41 +81,26 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
     );
   }
 
-  if (!expired && detailsMode === "none") {
-    return (
-      <span
-        className={cn(chipClassName, CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.terminal)}
-        aria-label={`Terminal excerpt, ${label}`}
-      >
-        {content}
-      </span>
-    );
-  }
-
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className={cn(
-              chipClassName,
-              CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.terminal,
-              CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
-              expired && "border-destructive/35 bg-destructive/8 text-destructive",
-            )}
-            aria-label={`Terminal excerpt, ${label}${expired ? ", expired" : ""}`}
-            data-terminal-context-expired={expired ? "true" : undefined}
-            tabIndex={0}
-          >
-            {content}
-          </span>
-        }
-      />
-      <TooltipPopup side="top" className="max-w-80 whitespace-pre-wrap leading-tight">
-        {expired
+    <ContextChipShell
+      icon={icon}
+      label={label}
+      className={cn(
+        chipClassName,
+        CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.terminal,
+        expired && "border-destructive/35 bg-destructive/8 text-destructive",
+      )}
+      labelClassName={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}
+      aria-label={`Terminal excerpt, ${label}${expired ? ", expired" : ""}`}
+      data-terminal-context-expired={expired ? "true" : undefined}
+      tooltipClassName="max-w-80 whitespace-pre-wrap leading-tight"
+      tooltip={
+        expired
           ? `Terminal context expired. Remove and re-add ${label} to include it in your message.`
-          : text}
-      </TooltipPopup>
-    </Tooltip>
+          : detailsMode === "none"
+            ? undefined
+            : text
+      }
+    />
   );
 }
