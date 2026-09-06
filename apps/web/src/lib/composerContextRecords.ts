@@ -79,7 +79,7 @@ export function isPullRequestSummaryContext(comment: ReviewCommentPresentation):
   );
 }
 
-export function pullRequestContextNumber(comment: ReviewCommentPresentation): number | null {
+function pullRequestContextNumber(comment: ReviewCommentPresentation): number | null {
   if (comment.pullRequest !== undefined) return comment.pullRequest.number;
   const legacyNumber = /^PR #(\d+)$/u.exec(comment.filePath)?.[1];
   return legacyNumber === undefined ? null : Number(legacyNumber);
