@@ -116,9 +116,6 @@ import {
   WrenchIcon,
   XIcon,
   ZapIcon,
-  CircleDashedIcon,
-  FilmIcon,
-  ImageIcon,
 } from "lucide-react";
 import type {
   ComposerContextId,
@@ -183,7 +180,13 @@ import {
 } from "./MessagesTimeline.logic";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popover";
+import {
+  ContextChipPopover as UserMessageContextPopover,
+  FileChipContent,
+  ImageChipButton,
+  PullRequestChip,
+  UnresolvedChip,
+} from "../contextChipParts";
 import {
   asKnownContextRecord,
   isPullRequestSummaryContext,
@@ -209,10 +212,8 @@ import {
   CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
   CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES,
   PULL_REQUEST_INLINE_CHIP_TONE_CLASS_NAMES,
-  middleTruncateAttachmentName,
 } from "../composerInlineChip";
 import { createContextPresentationRegistry } from "../contextPresentationRegistry";
-import { PullRequestContextDetails } from "../PullRequestContextDetails";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import { cn } from "~/lib/utils";
@@ -2559,41 +2560,6 @@ function UserMessageContextChip(props: {
   );
 }
 
-function UserMessageContextPopover(props: {
-  copyMarkdown: string;
-  accessibleLabel: string;
-  chip: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <Popover>
-      <PopoverTrigger
-        render={
-          <button
-            type="button"
-            className={cn(
-              "inline-flex max-w-full cursor-pointer rounded-[0.5em] align-baseline",
-              CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
-            )}
-            aria-label={`${props.accessibleLabel}. Show details`}
-            data-markdown-copy={props.copyMarkdown}
-          />
-        }
-      >
-        {props.chip}
-      </PopoverTrigger>
-      <PopoverPopup
-        side="top"
-        className="w-[min(36rem,calc(100vw-2rem))]"
-        viewportClassName="overflow-x-auto p-2"
-      >
-        <PopoverTitle className="sr-only">{props.accessibleLabel}</PopoverTitle>
-        {props.children}
-      </PopoverPopup>
-    </Popover>
-  );
-}
-
 function UserMessagePullRequestContextChip(props: {
   record: Extract<KnownComposerContextRecord, { kind: "review-comment" }>;
   copyMarkdown: string;
@@ -2602,39 +2568,16 @@ function UserMessagePullRequestContextChip(props: {
   const { openPullRequest } = use(TimelineRowCtx);
   const metadata = props.record.pullRequest;
   if (metadata === undefined) return null;
-  const label = reviewCommentContextLabel(props.record);
-  const kindLabel = pullRequestContextKindLabel(props.record);
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            className={cn(
-              CHAT_INLINE_CHIP_CLASS_NAME,
-              props.toneClassName,
-              CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
-              "cursor-pointer",
-            )}
-            aria-label={`${kindLabel} ${label}: ${metadata.title}. Open in pull request panel.`}
-            data-markdown-copy={props.copyMarkdown}
-            onClick={(event) => openPullRequest(event, metadata.url)}
-          >
-            <GitPullRequestIcon
-              className={cn(
-                COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
-                CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES["pull-request"],
-                "size-3.5",
-              )}
-            />
-            <span className={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}>{label}</span>
-          </button>
-        }
-      />
-      <TooltipPopup side="top" className="max-w-96 leading-tight">
-        <PullRequestContextDetails metadata={metadata} />
-      </TooltipPopup>
-    </Tooltip>
+    <PullRequestChip
+      metadata={metadata}
+      label={reviewCommentContextLabel(props.record)}
+      kindLabel={pullRequestContextKindLabel(props.record)}
+      className={cn(CHAT_INLINE_CHIP_CLASS_NAME, props.toneClassName)}
+      labelClassName={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}
+      copyMarkdown={props.copyMarkdown}
+      onOpen={openPullRequest}
+    />
   );
 }
 
@@ -2782,13 +2725,13 @@ interface UserMessageContextRenderContext {
 
 function UnavailableUserMessageContextChip(props: UserMessageContextRenderContext) {
   return (
-    <UserMessageContextChip
-      icon={<CircleDashedIcon className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />}
+    <UnresolvedChip
       label={props.reference.label}
-      kindLabel="Unavailable context"
+      className={CHAT_INLINE_CHIP_CLASS_NAME}
+      labelClassName={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}
       copyMarkdown={props.copyMarkdown}
       tooltip="This context is no longer available."
-      unresolved
+      tooltipClassName="max-w-96 whitespace-pre-wrap leading-tight"
     />
   );
 }
@@ -2816,37 +2759,14 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         }
         const attachment = context.attachment;
         return (
-          <button
-            type="button"
-            className={cn(
-              CHAT_INLINE_CHIP_CLASS_NAME,
-              CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.image,
-              CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
-              "cursor-zoom-in",
-            )}
-            aria-label={`Image attachment, ${record.name}`}
+          <ImageChipButton
+            name={record.name}
+            previewUrl={attachment.previewUrl}
+            className={CHAT_INLINE_CHIP_CLASS_NAME}
+            labelClassName={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}
             data-markdown-copy={context.copyMarkdown}
             onClick={() => context.onExpandImage(attachment)}
-          >
-            {attachment.previewUrl ? (
-              <img
-                src={attachment.previewUrl}
-                alt=""
-                className="size-3.5 shrink-0 rounded-sm object-cover"
-              />
-            ) : (
-              <ImageIcon
-                className={cn(
-                  COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
-                  CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES.image,
-                  "size-3.5",
-                )}
-              />
-            )}
-            <span className={cn(CHAT_INLINE_CHIP_LABEL_CLASS_NAME, "max-w-72")}>
-              {middleTruncateAttachmentName(record.name)}
-            </span>
-          </button>
+          />
         );
       },
     },
@@ -2890,26 +2810,13 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
                     isVideo ? context.onExpandVideo(attachment) : context.onOpenFile(attachment)
                   }
                 >
-                  {isVideo ? (
-                    <FilmIcon
-                      className={cn(
-                        COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
-                        CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES.video,
-                        "size-3.5",
-                      )}
-                    />
-                  ) : (
-                    <PierreEntryIcon
-                      pathValue={record.name}
-                      kind="file"
-                      theme={context.resolvedTheme}
-                      className="size-3.5"
-                    />
-                  )}
-                  <span className={cn(CHAT_INLINE_CHIP_LABEL_CLASS_NAME, "max-w-72")}>
-                    {middleTruncateAttachmentName(record.name)}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-current">{size}</span>
+                  <FileChipContent
+                    name={record.name}
+                    size={size}
+                    isVideo={isVideo}
+                    theme={context.resolvedTheme}
+                    labelClassName={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}
+                  />
                 </button>
               }
             />
