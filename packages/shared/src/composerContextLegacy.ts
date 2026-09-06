@@ -31,7 +31,6 @@ const INLINE_REVIEW = /<review_comment\b([^>]*)>\s*([\s\S]*?)<\/review_comment>/
 const REVIEW_ATTRIBUTE = /([a-zA-Z][a-zA-Z0-9_-]*)="([^"]*)"/g;
 const REVIEW_FENCE = /(`{3,})([^\s`]*)[^\n]*\n([\s\S]*?)\n\1/g;
 const REVIEW_TOKEN = "\uE000";
-const TRAILING_REVIEW_TOKENS = /(?:\s*\uE000(\d+)\uE000)+\s*$/;
 const LEGACY_MARKERS =
   /<(?:terminal_context|element_context|preview_annotation|review_comment)\b|￼/;
 
@@ -167,18 +166,28 @@ function previewRecord(body: string, index: number): PreviewAnnotationContextRec
       styleChanges.push(line.slice(2));
     }
   }
-  const pageTitle = read("Page: ");
+  const page = read("Page: ");
+  const pageIsUrl = /^https?:\/\//i.test(page);
+  const elements = Array.from(body.matchAll(/<element_context>\n([\s\S]*?)\n<\/element_context>/g))
+    .flatMap((match) => parseEntries(match[1] ?? ""))
+    .map((entry, elementIndex) => elementRecord(entry, elementIndex + 1))
+    .filter((record) => record !== null)
+    .map(
+      ({ version: _version, contextId: _contextId, kind: _kind, label: _label, ...details }) =>
+        details,
+    );
   return {
     version: 1,
     contextId: legacyId("preview-annotation", index),
     kind: "preview-annotation",
-    label: pageTitle || "Preview annotation",
+    label: page || "Preview annotation",
     annotationId: read("Id: "),
-    pageUrl: "",
-    pageTitle: pageTitle || null,
+    pageUrl: pageIsUrl ? page : (elements[0]?.pageUrl ?? ""),
+    pageTitle: pageIsUrl ? null : page || null,
     comment: read("Comment: "),
     targetSummary: read("Targets: "),
     styleChanges,
+    ...(elements.length > 0 ? { elements } : {}),
   };
 }
 
@@ -244,13 +253,19 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
   const previewBodies: string[] = [];
   const reviews: ReviewCommentContextRecord[] = [];
 
+  // A literal private-use token in the message must never be mistaken for our placeholder.
+  let reviewToken = REVIEW_TOKEN;
+  while (text.includes(reviewToken)) reviewToken += reviewToken;
+  const reviewTokenPattern = new RegExp(`${reviewToken}(\\d+)${reviewToken}`, "g");
+  const trailingReviewTokenPattern = new RegExp(`(?:\\s*${reviewToken}\\d+${reviewToken})+\\s*$`);
+
   // Review blocks become tokens in place first so they neither hide the trailing blocks
   // behind them nor lose their position. Unparseable blocks stay as text.
   let rest = text.replace(INLINE_REVIEW, (whole, attributes: string, rawBody: string) => {
     const record = reviewRecord(attributes, rawBody, reviews.length + 1);
     if (!record) return whole;
     reviews.push(record);
-    return `${REVIEW_TOKEN}${reviews.length - 1}${REVIEW_TOKEN}`;
+    return `${reviewToken}${reviews.length - 1}${reviewToken}`;
   });
 
   // Blocks were appended in send order (terminal, element, preview, review), so they peel
@@ -258,10 +273,10 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
   // Only reviews that trailed the original text were appended by the old send path; a
   // review that sat before other blocks keeps its place.
   const trailingReviewTokens: number[] = [];
-  const tokens = TRAILING_REVIEW_TOKENS.exec(rest);
+  const tokens = trailingReviewTokenPattern.exec(rest);
   if (tokens && tokens[0].length > 0) {
     trailingReviewTokens.push(
-      ...Array.from(tokens[0].matchAll(/\uE000(\d+)\uE000/g), (m) => Number(m[1])),
+      ...Array.from(tokens[0].matchAll(reviewTokenPattern), (m) => Number(m[1])),
     );
     rest = rest.slice(0, tokens.index).replace(/\n+$/, "");
   }
@@ -296,7 +311,7 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
   const previews = previewBodies.map((body, index) => previewRecord(body, index + 1));
   const appendedReviews = trailingReviewTokens.map((index) => reviews[index]!);
 
-  let body = rest.replace(/\uE000(\d+)\uE000/g, (_whole, index: string) =>
+  let body = rest.replace(reviewTokenPattern, (_whole, index: string) =>
     formatComposerContextReference(reviews[Number(index)]!),
   );
 
@@ -313,7 +328,10 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
   for (const record of terminals) {
     if (placedTerminals.has(record)) continue;
     const label = inlineTerminalLabel(record);
-    const at = body.indexOf(label);
+    let at = body.indexOf(label);
+    while (at !== -1 && /[\d-]/.test(body[at + label.length] ?? "")) {
+      at = body.indexOf(label, at + 1);
+    }
     if (at === -1) continue;
     body = `${body.slice(0, at)}${formatComposerContextReference(record)}${body.slice(at + label.length)}`;
     placedTerminals.add(record);

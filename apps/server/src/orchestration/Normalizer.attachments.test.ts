@@ -8,6 +8,7 @@ import {
   type ClientOrchestrationCommand,
   CommandId,
   MessageId,
+  type OrchestrationMessageContext,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -28,8 +29,9 @@ function turnStartCommand(input: {
   readonly threadId?: string;
   readonly attachments: ReadonlyArray<
     | { readonly id: string; readonly sizeBytes: number }
-    | { readonly dataUrl: string; readonly sizeBytes: number }
+    | { readonly dataUrl: string; readonly sizeBytes: number; readonly id?: string }
   >;
+  readonly context?: OrchestrationMessageContext;
 }): ClientOrchestrationCommand {
   return {
     type: "thread.turn.start",
@@ -45,6 +47,7 @@ function turnStartCommand(input: {
         mimeType: "image/png",
         ...attachment,
       })),
+      ...(input.context !== undefined ? { context: input.context } : {}),
     },
     runtimeMode: "full-access",
     interactionMode: "default",
@@ -53,6 +56,52 @@ function turnStartCommand(input: {
 }
 
 describe("normalizeDispatchCommand attachments", () => {
+  it.effect("rebinds image context records from the client id to the persisted id", () =>
+    Effect.gen(function* () {
+      const normalized = yield* normalizeDispatchCommand(
+        turnStartCommand({
+          attachments: [
+            { id: "local-image-1", dataUrl: "data:image/png;base64,cGl4ZWxz", sizeBytes: 6 },
+          ],
+          context: {
+            version: 1,
+            records: [
+              {
+                version: 1,
+                contextId: "local-image-1" as never,
+                kind: "image",
+                label: "screenshot.png",
+                attachmentId: "local-image-1",
+                name: "screenshot.png",
+                mimeType: "image/png",
+                sizeBytes: 6,
+              },
+              {
+                version: 1,
+                contextId: "ctx-skill" as never,
+                kind: "skill",
+                label: "$review",
+                name: "review",
+              },
+            ],
+          },
+        }),
+      );
+      if (normalized.type !== "thread.turn.start") {
+        throw new Error("Expected a thread.turn.start command.");
+      }
+      const persistedId = normalized.message.attachments[0]!.id;
+      expect(persistedId.startsWith("thread-1-")).toBe(true);
+      const records = normalized.message.context?.records ?? [];
+      expect(records[0]).toMatchObject({
+        kind: "image",
+        contextId: "local-image-1",
+        attachmentId: persistedId,
+      });
+      expect(records[1]).toMatchObject({ kind: "skill", name: "review" });
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect("preserves inline image attachments from existing mobile clients", () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
@@ -83,6 +132,21 @@ describe("normalizeDispatchCommand attachments", () => {
       const normalized = yield* normalizeDispatchCommand(
         turnStartCommand({
           attachments: [{ id: `pending-${attachmentUuid}`, sizeBytes: bytes.byteLength }],
+          context: {
+            version: 1,
+            records: [
+              {
+                version: 1,
+                contextId: "ctx_pending" as never,
+                kind: "image",
+                label: "upload.png",
+                attachmentId: `pending-${attachmentUuid}`,
+                name: "upload.png",
+                mimeType: "image/png",
+                sizeBytes: bytes.byteLength,
+              },
+            ],
+          },
         }),
       );
       if (normalized.type !== "thread.turn.start") {
@@ -92,6 +156,7 @@ describe("normalizeDispatchCommand attachments", () => {
       const attachmentId = normalized.message.attachments[0]!.id;
       expect(attachmentId.startsWith("thread-1-")).toBe(true);
       expect(attachmentId).not.toBe(`thread-1-${attachmentUuid}`);
+      expect(normalized.message.context?.records[0]).toMatchObject({ attachmentId });
       expect(NodeFS.existsSync(pendingPath)).toBe(true);
       const claimedPngPath = NodePath.join(config.attachmentsDir, `${attachmentId}.png`);
       expect(NodeFS.existsSync(claimedPngPath)).toBe(true);
