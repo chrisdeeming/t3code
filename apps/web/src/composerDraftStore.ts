@@ -54,6 +54,7 @@ import {
   formatInlineContextReference,
   removeInlineContextReference,
   toComposerContextId,
+  toKindScopedComposerContextId,
 } from "./lib/composerContextReferences";
 import {
   fileContextReference,
@@ -1865,8 +1866,34 @@ function normalizePersistedDraftsByThreadId(
       draftCandidate.interactionMode === "plan" || draftCandidate.interactionMode === "default"
         ? draftCandidate.interactionMode
         : null;
+    const contextIds = new Map<string, string>();
+    for (const [kind, entries] of [
+      ["image", attachments],
+      ["file", files],
+      ["terminal", terminalContexts],
+      ["review-comment", reviewComments],
+      ["preview-annotation", previewAnnotations],
+    ] as const) {
+      for (const entry of entries) {
+        const contextId = toKindScopedComposerContextId(kind, entry.id);
+        contextIds.set(`${kind}/${entry.id}`, contextId);
+        contextIds.set(`${kind}/${toComposerContextId(entry.id)}`, contextId);
+        if (kind === "preview-annotation") {
+          contextIds.set(`${kind}/${toComposerContextId(`annotation-${entry.id}`)}`, contextId);
+        }
+      }
+    }
+    // Older drafts used producer ids (including dots and colons) directly in links.
+    // Rewrite only links backed by this draft, before appending any missing references.
+    const migratedPrompt = promptCandidate.replace(
+      /\[([^\]\r\n]*)\]\(t3-context:\/\/v1\/([a-z-]+)\/([^/()\r\n]+)\)/g,
+      (source, label: string, kind: string, id: string) => {
+        const contextId = contextIds.get(`${kind}/${id}`);
+        return contextId ? formatInlineContextReference({ kind, contextId, label }) : source;
+      },
+    );
     const prompt = ensureInlineContextReferences(
-      migrateLegacyTerminalContextPlaceholders(promptCandidate, terminalContexts),
+      migrateLegacyTerminalContextPlaceholders(migratedPrompt, terminalContexts),
       terminalContexts.map((context) => terminalContextReference({ ...context, text: "" })),
     );
     // If the draft already has the v3 shape, use it directly
@@ -2928,7 +2955,11 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 existing.terminalContexts
                   .filter((context) => !normalizedContexts.some((next) => next.id === context.id))
                   .reduce(
-                    (prompt, context) => removeInlineContextReference(prompt, context.id).prompt,
+                    (prompt, context) =>
+                      removeInlineContextReference(
+                        prompt,
+                        terminalContextReference(context).contextId,
+                      ).prompt,
                     existing.prompt,
                   ),
                 normalizedContexts.map(terminalContextReference),
@@ -3280,7 +3311,10 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft: ComposerThreadDraftState = {
               ...current,
-              prompt: removeInlineContextReference(current.prompt, imageId).prompt,
+              prompt: removeInlineContextReference(
+                current.prompt,
+                toKindScopedComposerContextId("image", imageId),
+              ).prompt,
               images: current.images.filter((image) => image.id !== imageId),
               nonPersistedImageIds: current.nonPersistedImageIds.filter((id) => id !== imageId),
               persistedAttachments: current.persistedAttachments.filter(
@@ -3355,7 +3389,10 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               replacements.size === 0
                 ? existing.prompt
                 : replaceComposerContextReferences(existing.prompt, (occurrence) => {
-                    const replacement = replacements.get(occurrence.contextId);
+                    const original = existing.files.find(
+                      (file) => fileContextReference(file).contextId === occurrence.contextId,
+                    );
+                    const replacement = original ? replacements.get(original.id) : undefined;
                     return replacement
                       ? formatInlineContextReference(fileContextReference(replacement))
                       : occurrence.source;
@@ -3381,7 +3418,10 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft = {
               ...current,
-              prompt: removeInlineContextReference(current.prompt, fileId).prompt,
+              prompt: removeInlineContextReference(
+                current.prompt,
+                toKindScopedComposerContextId("file", fileId),
+              ).prompt,
               files: current.files.filter((file) => file.id !== fileId),
             } satisfies ComposerThreadDraftState;
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
@@ -3565,7 +3605,10 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft: ComposerThreadDraftState = {
               ...current,
-              prompt: removeInlineContextReference(current.prompt, contextId).prompt,
+              prompt: removeInlineContextReference(
+                current.prompt,
+                toKindScopedComposerContextId("terminal", contextId),
+              ).prompt,
               terminalContexts: current.terminalContexts.filter(
                 (context) => context.id !== contextId,
               ),
@@ -3592,7 +3635,9 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             const nextDraft: ComposerThreadDraftState = {
               ...current,
               prompt: current.terminalContexts.reduce(
-                (prompt, context) => removeInlineContextReference(prompt, context.id).prompt,
+                (prompt, context) =>
+                  removeInlineContextReference(prompt, terminalContextReference(context).contextId)
+                    .prompt,
                 current.prompt,
               ),
               terminalContexts: [],

@@ -25,6 +25,14 @@ function forward(position: ComposerPromptHistoryPosition | null, currentPrompt: 
 }
 
 describe("recallableComposerPrompt", () => {
+  it("strips an annotation whose comment contains a literal opening tag", () => {
+    expect(
+      recallableComposerPrompt(
+        "Prompt\n<preview_annotation>\nComment: Render <preview_annotation>\n</preview_annotation>",
+      ),
+    ).toBe("Prompt");
+  });
+
   it("preserves a malformed annotation containing a nested opening tag", () => {
     const text =
       "Prompt\n<preview_annotation>\nouter literal\n<preview_annotation>\ninner\n</preview_annotation>";
