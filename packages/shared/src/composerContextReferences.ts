@@ -79,7 +79,7 @@ export function collectComposerContextReferences(
     if (!parsed) continue;
     occurrences.push({
       ...parsed,
-      label: match[2]!,
+      label: sanitizeComposerContextLabel(match[2]!, parsed.kind),
       image: match[1] === "!",
       source: match[0],
       start: match.index,
