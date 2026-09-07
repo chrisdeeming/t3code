@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 import {
   composerContextEditorTokens,
+  composerContextSendBlockReason,
   composerMentionPath,
   createComposerContextHistory,
   referencedComposerContext,
@@ -51,6 +52,41 @@ const annotation = {
 };
 
 describe("mobile composer context", () => {
+  it("blocks a context payload that exceeds the aggregate wire budget", () => {
+    const record = {
+      ...annotation,
+      styleChangeDetails: Array.from({ length: 200 }, () => ({
+        targetId: "element",
+        selector: null,
+        property: "content",
+        previousValue: "x".repeat(8_000),
+        value: "y".repeat(8_000),
+      })),
+    };
+    expect(composerContextSendBlockReason({ version: 1, records: [record] })).toBeNull();
+    expect(
+      composerContextSendBlockReason({
+        version: 1,
+        records: Array.from({ length: 6 }, (_, index) => ({
+          ...record,
+          contextId: ComposerContextId.make(`preview-${index}`),
+        })),
+      }),
+    ).toContain("too much context");
+  });
+
+  it("blocks over-limit recovery drafts until enough context has been removed", () => {
+    const records = Array.from({ length: 201 }, (_, index) => ({
+      ...terminal,
+      contextId: ComposerContextId.make(`terminal-${index}`),
+    }));
+    expect(composerContextSendBlockReason({ version: 1, records })).toContain("at most 200");
+    expect(
+      composerContextSendBlockReason({ version: 1, records: records.slice(0, 200) }),
+    ).toBeNull();
+    expect(composerContextSendBlockReason()).toBeNull();
+  });
+
   it("opens the full file path from bare, quoted, and canonical mentions", () => {
     expect(composerMentionPath("@src/Checkout.tsx")).toBe("src/Checkout.tsx");
     expect(composerMentionPath('@"src/My Checkout.tsx"')).toBe("src/My Checkout.tsx");

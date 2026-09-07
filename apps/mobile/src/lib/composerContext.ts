@@ -2,10 +2,11 @@ import {
   COMPOSER_CONTEXT_MAX_RECORDS,
   ComposerContextId,
   type ComposerContextRecord,
-  type OrchestrationMessageContext,
+  OrchestrationMessageContext,
   type PullRequestContextMetadata,
   type ReviewCommentContextRecord,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import {
   collectComposerContextReferences,
   formatComposerContextReference,
@@ -15,6 +16,21 @@ import {
   collectComposerInlineTokens,
   type ComposerInlineToken,
 } from "@t3tools/shared/composerInlineTokens";
+
+const decodeMessageContext = Schema.decodeUnknownOption(OrchestrationMessageContext);
+
+/** Recovery drafts can exceed wire limits, but must never enter the outbox in that state. */
+export function composerContextSendBlockReason(
+  context?: OrchestrationMessageContext,
+): string | null {
+  if (!context) return null;
+  if (context.records.length > COMPOSER_CONTEXT_MAX_RECORDS) {
+    return `Remove context items until there are at most ${COMPOSER_CONTEXT_MAX_RECORDS}.`;
+  }
+  return decodeMessageContext(context)._tag === "None"
+    ? "This draft has too much context to send. Remove some context items and try again."
+    : null;
+}
 
 /** Resolve the tapped source, not its display label, which can be only a basename. */
 export function composerMentionPath(source: string, context?: OrchestrationMessageContext) {

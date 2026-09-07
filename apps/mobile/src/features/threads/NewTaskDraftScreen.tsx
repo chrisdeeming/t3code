@@ -29,6 +29,7 @@ import {
 import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
 import { WorkspaceFilePreviewSheet } from "../files/WorkspaceFilePreviewSheet";
 import { composerContextImportsAtom } from "../../state/use-composer-drafts";
+import { composerContextSendBlockReason } from "../../lib/composerContext";
 import {
   ComposerActionButton,
   ComposerInlineControl,
@@ -1015,6 +1016,12 @@ export function NewTaskDraftScreen(props: {
         "Too many attachments",
         `Remove attachments until there are at most ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}.`,
       );
+      return;
+    }
+
+    const contextBlockReason = composerContextSendBlockReason(draft.context);
+    if (contextBlockReason) {
+      Alert.alert("Too much context", contextBlockReason);
       return;
     }
 

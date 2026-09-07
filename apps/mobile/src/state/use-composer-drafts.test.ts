@@ -164,6 +164,7 @@ import {
   ensureComposerDraftsLoaded,
   type ComposerDraft,
   findNewTaskDraftKeys,
+  findLocalComposerClipboardAttachment,
   flushComposerDrafts,
   getComposerDraftSnapshot,
   mergeComposerDraftContentState,
@@ -213,7 +214,111 @@ afterEach(() => {
   incomingShareStorageMocks.load.mockResolvedValue([]);
 });
 
+function contextDraft(start: number, count: number): ComposerDraft {
+  const records = Array.from({ length: count }, (_, index) => ({
+    version: 1 as const,
+    contextId: ComposerContextId.make(`skill-${start + index}`),
+    kind: "skill" as const,
+    label: "Skill",
+    name: "skill",
+  }));
+  return {
+    text: records.map((record) => `[Skill](t3-context://v1/skill/${record.contextId})`).join(" "),
+    context: { version: 1, records },
+    attachments: [],
+  };
+}
+
 describe("mobile composer drafts", () => {
+  it.each(["new-task:draft-1", "pending-task:queued-1"])(
+    "finds draft-only local clipboard files in %s",
+    (key) => {
+      const environmentId = EnvironmentId.make("environment-1");
+      const file = {
+        type: "file" as const,
+        id: "local-file",
+        name: "notes.txt",
+        mimeType: "text/plain",
+        sizeBytes: 4,
+        fileUri: "file:///notes.txt",
+      };
+      appAtomRegistry.set(composerDraftsAtom, {
+        [key]: {
+          text: "",
+          attachments: [file],
+          project: {
+            environmentId,
+            projectId: ProjectId.make("project-1"),
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        },
+      });
+      appAtomRegistry.set(threadOutboxManager.queuedMessagesByThreadKeyAtom, {
+        queued: [
+          {
+            environmentId,
+            threadId: ThreadId.make("thread-1"),
+            messageId: MessageId.make("queued-1"),
+            commandId: CommandId.make("command-1"),
+            text: "Queued",
+            attachments: [],
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      });
+      expect(findLocalComposerClipboardAttachment(environmentId, file.id)).toEqual(file);
+      expect(
+        findLocalComposerClipboardAttachment(EnvironmentId.make("different-environment"), file.id),
+      ).toBeUndefined();
+    },
+  );
+
+  it("keeps over-limit recovery context reloadable without losing other drafts", () => {
+    const key = "environment-1:recovery";
+    const merged = mergeComposerDraftContentState(
+      { [key]: contextDraft(0, 200), other: DRAFT },
+      key,
+      contextDraft(200, 200),
+    );
+    expect(merged[key]?.context?.records).toHaveLength(400);
+    const reloaded = decodePersistedComposerState(
+      JSON.parse(JSON.stringify({ schemaVersion: 1, drafts: merged })),
+    ).drafts;
+    expect(reloaded[key]).toEqual(merged[key]);
+    expect(reloaded.other).toEqual(DRAFT);
+  });
+
+  it("prunes unreferenced context during a content merge", () => {
+    const existing = contextDraft(0, 2);
+    const incoming = contextDraft(2, 2);
+    const merged = mergeComposerDraftContentState(
+      { key: { ...existing, text: "[Skill](t3-context://v1/skill/skill-0)" } },
+      "key",
+      { ...incoming, text: "[Skill](t3-context://v1/skill/skill-2)" },
+    );
+    expect(merged.key?.context?.records.map((record) => record.contextId)).toEqual([
+      "skill-0",
+      "skill-2",
+    ]);
+  });
+
+  it("restores and persists both full cloud and live context drafts", async () => {
+    const load = vi.spyOn(threadOutboxManager, "load").mockResolvedValue(true);
+    onTestFinished(() => load.mockRestore());
+    await waitForComposerDraftsLoaded();
+    const key = "environment-1:restored";
+    appAtomRegistry.set(composerDraftsAtom, { [key]: contextDraft(0, 200) });
+    appAtomRegistry.set(composerCloudDraftsAtom, {
+      accountId: null,
+      signedOut: { account: { drafts: { [key]: contextDraft(200, 200) }, queuedMessages: [] } },
+    });
+    await restoreCloudComposerDrafts("account");
+    expect(getComposerDraftSnapshot(key).context?.records).toHaveLength(400);
+    const reloaded = decodePersistedComposerState(JSON.parse(composerDraftFileMocks.getDocument()));
+    expect(reloaded.drafts[key]?.context?.records).toHaveLength(400);
+    expect(reloaded.cloudDrafts.signedOut).toEqual({});
+  });
+
   it("removes a file only after its last reference is deleted, while retaining images", async () => {
     const outboxLoad = vi.spyOn(threadOutboxManager, "load").mockResolvedValue(true);
     onTestFinished(() => outboxLoad.mockRestore());
