@@ -296,11 +296,13 @@ import {
   removeInlineContextReference,
   stripInlineContextReferences,
 } from "../lib/composerContextReferences";
+import { serializeLegacyContextMessage } from "@t3tools/shared/composerContextLegacySend";
 import {
   buildMessageContext,
   previewAnnotationContextLabel,
   previewAnnotationContextReference,
   reviewCommentContextLabel,
+  terminalContextReference,
 } from "../lib/composerContextRecords";
 import { type ReviewCommentContext } from "../reviewCommentContext";
 import { environmentCatalog } from "../connection/catalog";
@@ -6969,7 +6971,8 @@ export default function ChatView(props: ChatViewProps) {
     const messageTextForSend = composerTerminalContexts
       .filter((context) => !composerTerminalContextsSnapshot.includes(context))
       .reduce(
-        (text, context) => removeInlineContextReference(text, context.id).prompt,
+        (text, context) =>
+          removeInlineContextReference(text, terminalContextReference(context).contextId).prompt,
         promptForSend,
       )
       .trim();
@@ -6989,6 +6992,11 @@ export default function ChatView(props: ChatViewProps) {
     const outgoingMessageContext = buildOutgoingMessageContext(
       composerAttachmentsSnapshot.map((attachment) => attachment.id),
     );
+    // Servers from before inline context drop the records and forward the links as literal
+    // text, so their turns carry the payload the legacy way instead.
+    const supportsInlineMessageContext =
+      appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+        .inlineMessageContext === true;
     const outgoingMessageText = formatOutgoingPrompt({
       provider: ctxSelectedProvider,
       model: ctxSelectedModel,
@@ -7313,7 +7321,16 @@ export default function ChatView(props: ChatViewProps) {
                     : composerAttachmentsSnapshot[index]!.id,
                 ),
               );
-              return context !== undefined ? { context } : {};
+              if (context === undefined) return {};
+              if (!supportsInlineMessageContext) {
+                return {
+                  text: serializeLegacyContextMessage({
+                    text: outgoingMessageText,
+                    records: context.records,
+                  }),
+                };
+              }
+              return { context };
             })(),
           },
           modelSelection: ctxSelectedModelSelection,
