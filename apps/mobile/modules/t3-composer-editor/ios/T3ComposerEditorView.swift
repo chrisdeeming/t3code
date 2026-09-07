@@ -6,6 +6,8 @@ private struct ComposerTokenPayload: Decodable {
   let source: String
   let label: String
   let iconUri: String?
+  let accent: String?
+  let symbol: String?
   let start: Int
   let end: Int
 }
@@ -44,9 +46,11 @@ private struct ComposerChipStyle {
 
 private final class ComposerTextAttachment: NSTextAttachment {
   let source: String
+  let label: String
 
-  init(source: String, image: UIImage, size: CGSize, baselineOffset: CGFloat) {
+  init(source: String, label: String, image: UIImage, size: CGSize, baselineOffset: CGFloat) {
     self.source = source
+    self.label = label
     super.init(data: nil, ofType: nil)
     self.image = image
     bounds = CGRect(x: 0, y: baselineOffset, width: size.width, height: size.height)
@@ -54,6 +58,14 @@ private final class ComposerTextAttachment: NSTextAttachment {
 
   required init?(coder: NSCoder) {
     nil
+  }
+}
+
+private final class ComposerContextAccessibilityElement: UIAccessibilityElement {
+  var activate: (() -> Bool)?
+
+  override func accessibilityActivate() -> Bool {
+    activate?() ?? false
   }
 }
 
@@ -72,6 +84,8 @@ private final class ComposerTextView: UITextView {
   ])
 
   var onPasteImages: (([String]) -> Void)?
+  var onPasteContext: (([String: String]) -> Void)?
+  var clipboardFragment = ""
   var onAttributedMutation: (() -> Void)?
   var onSubmit: (() -> Void)?
   var isReadOnly = false
@@ -114,6 +128,11 @@ private final class ComposerTextView: UITextView {
       return
     }
     let pasteboard = UIPasteboard.general
+    let context = T3ComposerClipboard.read()
+    if !context["fragment", default: ""].isEmpty || context["html", default: ""].contains("data-t3-context-fragment=") {
+      onPasteContext?(context)
+      return
+    }
     let imageProviders = pasteboard.itemProviders.filter {
       $0.canLoadObject(ofClass: UIImage.self)
     }
@@ -194,7 +213,7 @@ private final class ComposerTextView: UITextView {
     guard selectedRange.length > 0 else {
       return super.copy(sender)
     }
-    UIPasteboard.general.string = serializedText(in: selectedRange)
+    T3ComposerClipboard.write(text: serializedText(in: selectedRange), fragment: clipboardFragment)
   }
 
   override func cut(_ sender: Any?) {
@@ -308,7 +327,7 @@ private final class ComposerTextView: UITextView {
   }
 }
 
-public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDropDelegate {
+public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDropDelegate, UIGestureRecognizerDelegate {
   private let textView = ComposerTextView()
   private let placeholderLabel = UILabel()
   private var value = ""
@@ -346,6 +365,8 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
   let onComposerBlur = EventDispatcher()
   let onComposerSubmit = EventDispatcher()
   let onComposerPasteImages = EventDispatcher()
+  let onComposerContextPress = EventDispatcher()
+  let onComposerPasteContext = EventDispatcher()
   let onComposerContentSizeChange = EventDispatcher()
 
   public required init(appContext: AppContext? = nil) {
@@ -364,12 +385,19 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     textView.onPasteImages = { [weak self] urls in
       self?.onComposerPasteImages(["uris": urls])
     }
+    textView.onPasteContext = { [weak self] context in
+      self?.onComposerPasteContext(context)
+    }
     textView.onAttributedMutation = { [weak self] in
       self?.emitTextChange()
     }
     textView.onSubmit = { [weak self] in
       self?.onComposerSubmit([:])
     }
+    let contextTap = UITapGestureRecognizer(target: self, action: #selector(openContext(_:)))
+    contextTap.cancelsTouchesInView = false
+    contextTap.delegate = self
+    textView.addGestureRecognizer(contextTap)
     addSubview(textView)
 
     placeholderLabel.numberOfLines = 0
@@ -377,6 +405,71 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     addSubview(placeholderLabel)
     applyTypography()
     applyTheme()
+  }
+
+  @objc private func openContext(_ recognizer: UITapGestureRecognizer) {
+    guard let (index, attachment) = contextAttachment(at: recognizer.location(in: textView)) else {
+      textView.becomeFirstResponder()
+      return
+    }
+    openContext(index: index, attachment: attachment)
+  }
+
+  private func openContext(index: Int, attachment: ComposerTextAttachment) {
+    let start = textView.sourceOffset(forDisplayOffset: index)
+    onComposerContextPress(["source": attachment.source, "start": start, "end": start + (attachment.source as NSString).length])
+  }
+
+  public override var accessibilityElements: [Any]? {
+    get {
+      var elements: [Any] = [textView]
+      let layout = textView.layoutManager
+      textView.textStorage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: textView.textStorage.length)) { value, range, _ in
+        guard let attachment = value as? ComposerTextAttachment, !attachment.source.hasPrefix("$") else { return }
+        let glyphRange = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        let rect = layout.boundingRect(forGlyphRange: glyphRange, in: textView.textContainer)
+          .offsetBy(dx: textView.textContainerInset.left, dy: textView.textContainerInset.top)
+        guard rect.intersects(textView.bounds) else { return }
+        let element = ComposerContextAccessibilityElement(accessibilityContainer: self)
+        element.accessibilityLabel = attachment.label
+        element.accessibilityTraits = .button
+        element.accessibilityFrameInContainerSpace = textView.convert(rect, to: self)
+        element.activate = { [weak self] in
+          guard let self, range.location < self.textView.textStorage.length,
+                self.textView.textStorage.attribute(.attachment, at: range.location, effectiveRange: nil) as? ComposerTextAttachment === attachment else { return false }
+          self.openContext(index: range.location, attachment: attachment)
+          return true
+        }
+        elements.append(element)
+      }
+      return elements
+    }
+    set { super.accessibilityElements = newValue }
+  }
+
+  public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+    true
+  }
+
+  public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+    true
+  }
+
+  public func textView(_ textView: UITextView, shouldInteractWith textAttachment: NSTextAttachment, in characterRange: NSRange, interaction: UITextItemInteraction) -> Bool {
+    // A chip is text context, not an image to save to the camera roll.
+    !(textAttachment is ComposerTextAttachment)
+  }
+
+  private func contextAttachment(at point: CGPoint) -> (Int, ComposerTextAttachment)? {
+    let containerPoint = CGPoint(x: point.x - textView.textContainerInset.left, y: point.y - textView.textContainerInset.top)
+    let layout = textView.layoutManager
+    let index = layout.characterIndex(for: containerPoint, in: textView.textContainer, fractionOfDistanceBetweenInsertionPoints: nil)
+    guard index < textView.textStorage.length,
+          let attachment = textView.textStorage.attribute(.attachment, at: index, effectiveRange: nil) as? ComposerTextAttachment,
+          !attachment.source.hasPrefix("$") else { return nil }
+    let glyphRange = layout.glyphRange(forCharacterRange: NSRange(location: index, length: 1), actualCharacterRange: nil)
+    guard layout.boundingRect(forGlyphRange: glyphRange, in: textView.textContainer).contains(containerPoint) else { return nil }
+    return (index, attachment)
   }
 
   public override func layoutSubviews() {
@@ -396,6 +489,10 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
       height: max(lineHeight, placeholderLabel.font.lineHeight)
     )
     emitContentSizeIfNeeded()
+  }
+
+  func setClipboardFragment(_ fragment: String) {
+    textView.clipboardFragment = fragment
   }
 
   public override func didMoveToWindow() {
@@ -646,18 +743,22 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
 
   private func makeAttachmentString(_ token: ComposerTokenPayload) -> NSAttributedString {
     let isSkill = token.type == "skill"
-    let tint = UIColor(composerHex: isSkill ? theme.skillText : theme.fileTint) ?? .secondaryLabel
-    let iconName = isSkill ? "cube" : "doc"
+    let accent = token.accent.flatMap { UIColor(composerHex: $0) }
+    let foreground = UIColor(composerHex: theme.chipText) ?? .label
+    let border = UIColor(composerHex: theme.chipBorder) ?? .separator
+    let tint = accent.map { blend($0, over: foreground, weight: 0.22) }
+      ?? UIColor(composerHex: isSkill ? theme.skillText : theme.fileTint) ?? .secondaryLabel
+    let iconName = token.symbol ?? (isSkill ? "cube" : "doc")
     let iconImage = token.iconUri.flatMap(iconImage(for:))
     let style = ComposerChipStyle(
       tint: tint,
-      backgroundColor: UIColor(
+      backgroundColor: accent?.withAlphaComponent(0.11) ?? UIColor(
         composerHex: isSkill ? theme.skillBackground : theme.chipBackground
       ) ?? .secondarySystemFill,
-      borderColor: UIColor(
+      borderColor: accent.map { blend($0, over: border, weight: 0.34) } ?? UIColor(
         composerHex: isSkill ? theme.skillBorder : theme.chipBorder
       ) ?? .separator,
-      textColor: UIColor(composerHex: isSkill ? theme.skillText : theme.chipText) ?? .label
+      textColor: tint
     )
     let image = renderChip(
       label: token.label,
@@ -670,6 +771,7 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     let baselineOffset = floor((font.capHeight - image.size.height) / 2)
     let attachment = ComposerTextAttachment(
       source: token.source,
+      label: token.label,
       image: image,
       size: image.size,
       baselineOffset: baselineOffset
@@ -688,44 +790,46 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     iconImage: UIImage?,
     style: ComposerChipStyle
   ) -> UIImage {
-    let font = UIFont(name: "DMSans-Medium", size: max(12, fontSize - 2))
-      ?? UIFont.systemFont(ofSize: max(12, fontSize - 2), weight: .medium)
+    let chipFontSize = fontSize * 0.86
+    let font = UIFont(name: "DMSans-Medium", size: chipFontSize)
+      ?? UIFont.systemFont(ofSize: chipFontSize, weight: .medium)
     let fallbackIcon = UIImage(
       systemName: iconName,
       withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)
     )
     let icon = iconImage ?? fallbackIcon
     let textSize = (label as NSString).size(withAttributes: [.font: font])
-    let iconWidth = icon == nil ? 0 : 14
-    let iconGap = icon == nil ? 0 : 5
-    let height: CGFloat = 24
-    let width = ceil(9 + CGFloat(iconWidth + iconGap) + textSize.width + 9)
+    let iconWidth: CGFloat = icon == nil ? 0 : chipFontSize * 1.17
+    let iconGap: CGFloat = icon == nil ? 0 : chipFontSize * 0.33
+    let padding = chipFontSize * 0.5
+    let height = ceil(chipFontSize * 1.41)
+    let width = ceil(padding * 2 + iconWidth + iconGap + textSize.width)
     let format = UIGraphicsImageRendererFormat.preferred()
     format.opaque = false
     let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format)
     return renderer.image { context in
       let rect = CGRect(origin: .zero, size: CGSize(width: width, height: height))
-      let path = UIBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), cornerRadius: 7)
+      let path = UIBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), cornerRadius: chipFontSize * 0.5)
       style.backgroundColor.setFill()
       path.fill()
       style.borderColor.setStroke()
       path.lineWidth = 1
       path.stroke()
 
-      var x: CGFloat = 9
+      var x = padding
       if let icon {
         let renderedIcon = iconImage == nil
           ? icon.withTintColor(style.tint, renderingMode: .alwaysOriginal)
           : icon
         renderedIcon.draw(
-          in: CGRect(x: x, y: 5, width: 14, height: 14)
+          in: CGRect(x: x, y: (height - iconWidth) / 2, width: iconWidth, height: iconWidth)
         )
-        x += 19
+        x += iconWidth + iconGap
       }
       let paragraph = NSMutableParagraphStyle()
       paragraph.alignment = .left
       (label as NSString).draw(
-        in: CGRect(x: x, y: 3, width: textSize.width + 1, height: 18),
+        in: CGRect(x: x, y: (height - textSize.height) / 2, width: textSize.width + 1, height: textSize.height),
         withAttributes: [
           .font: font,
           .foregroundColor: style.textColor,
@@ -734,6 +838,19 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
       )
       context.cgContext.setAllowsAntialiasing(true)
     }
+  }
+
+  private func blend(_ accent: UIColor, over base: UIColor, weight: CGFloat) -> UIColor {
+    var ar: CGFloat = 0, ag: CGFloat = 0, ab: CGFloat = 0, aa: CGFloat = 0
+    var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+    accent.getRed(&ar, green: &ag, blue: &ab, alpha: &aa)
+    base.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+    return UIColor(
+      red: ar * weight + br * (1 - weight),
+      green: ag * weight + bg * (1 - weight),
+      blue: ab * weight + bb * (1 - weight),
+      alpha: aa * weight + ba * (1 - weight)
+    )
   }
 
   private func iconImage(for uri: String) -> UIImage? {

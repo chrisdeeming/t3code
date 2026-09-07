@@ -23,9 +23,12 @@ import { useFontFamily } from "../../lib/useFontFamily";
 import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   resolveEnvironmentMachineKind,
+  type EnvironmentId,
 } from "@t3tools/contracts";
 
 import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
+import { WorkspaceFilePreviewSheet } from "../files/WorkspaceFilePreviewSheet";
+import { composerContextImportsAtom } from "../../state/use-composer-drafts";
 import {
   ComposerActionButton,
   ComposerInlineControl,
@@ -152,6 +155,11 @@ export function NewTaskDraftScreen(props: {
 }) {
   const projects = useProjects();
   const flow = useNewTaskFlow();
+  const [mentionPreview, setMentionPreview] = useState<{
+    environmentId: EnvironmentId;
+    cwd: string;
+    path: string;
+  } | null>(null);
   const navigation = useNavigation();
   const {
     consumeShare,
@@ -315,7 +323,10 @@ export function NewTaskDraftScreen(props: {
     cancelledIncomingShareId !== props.incomingShareId &&
     !isIncomingShareAwaitingServerConfig,
   );
-  const isComposerInteractionLocked = isIncomingShareTransferPending || flow.submitting;
+  const contextImports = useAtomValue(composerContextImportsAtom);
+  const isImportingContext = flow.draftKey ? contextImports[flow.draftKey] === true : false;
+  const isComposerInteractionLocked =
+    isIncomingShareTransferPending || flow.submitting || isImportingContext;
   // Also guard while a submit is in flight: an Android back press or iOS
   // Cancel would otherwise abandon the screen while the task still starts.
   // T3 owns /usage-limits only where Limits has data for the selected provider.
@@ -326,14 +337,19 @@ export function NewTaskDraftScreen(props: {
       selectedEnvironmentServerConfig?.providers ?? [],
       selectedEnvironmentServerConfig?.usageLimitSources ?? [],
     );
+  const composerWorkspaceCwd =
+    (flow.workspaceMode === "worktree"
+      ? selectedProject?.workspaceRoot
+      : (flow.selectedWorktreePath ?? selectedProject?.workspaceRoot)) || null;
   const composerMenu = useComposerCommandMenu({
     draftMessage: flow.prompt,
     ownerKey: flow.draftKey,
     environmentId: selectedProject?.environmentId ?? null,
-    projectCwd:
-      (flow.workspaceMode === "worktree"
-        ? selectedProject?.workspaceRoot
-        : (flow.selectedWorktreePath ?? selectedProject?.workspaceRoot)) || null,
+    pullRequestProjectId: selectedEnvironmentServerConfig?.environment.capabilities.pullRequests
+      ? (selectedProject?.id ?? null)
+      : null,
+    pullRequestRepository: selectedProject?.repositoryIdentity?.displayName ?? null,
+    projectCwd: composerWorkspaceCwd,
     selectedProviderStatus: flow.selectedProviderStatus,
     hasThread: false,
     hasCompactableConversation: false,
@@ -946,6 +962,7 @@ export function NewTaskDraftScreen(props: {
       return;
     }
     const draft = getComposerDraftSnapshot(draftKey);
+    if (appAtomRegistry.get(composerContextImportsAtom)[draftKey]) return;
     // Read the latest explicit pick. Antigravity selections stay unchanged
     // when setup or a catalog change makes them unavailable.
     const modelSelection =
@@ -1093,6 +1110,7 @@ export function NewTaskDraftScreen(props: {
 
   const isAndroid = Platform.OS === "android";
   const canStart =
+    !isImportingContext &&
     attachmentBlockReason === null &&
     !modelUnavailable &&
     Boolean(flow.selectedProject) &&
@@ -1104,33 +1122,51 @@ export function NewTaskDraftScreen(props: {
     !voiceInput.blocksSubmission &&
     !(flow.workspaceMode === "worktree" && !flow.selectedBranchName);
   const promptEditor = (
-    <ComposerEditor
-      ref={promptInputRef}
-      // The context-first screen intentionally opens with the keyboard closed.
-      // Focusing is a user action, so presenting the form sheet has one motion.
-      autoFocus={false}
-      editable={!isComposerInteractionLocked}
-      readOnly={voiceInput.freezesEditor}
-      multiline
-      scrollEnabled
-      value={flow.prompt}
-      skills={composerMenu.skills}
-      selection={composerMenu.selection}
-      onChangeText={flow.setPrompt}
-      onSelectionChange={composerMenu.onSelectionChange}
-      onFocus={() => setIsComposerFocused(true)}
-      onBlur={() => setIsComposerFocused(false)}
-      onPasteImages={(uris) => void handleNativePasteImages(uris)}
-      placeholder="Ask anything…"
-      singleLineCentered={false}
-      contentInsetVertical={0}
-      style={{
-        minHeight: 72,
-        maxHeight: 160,
-        paddingVertical: 4,
-      }}
-      textStyle={{ ...bodyText, color: foregroundColor, fontFamily: regularFontFamily }}
-    />
+    <>
+      <ComposerEditor
+        draftKey={flow.draftKey}
+        environmentId={selectedProject.environmentId}
+        onOpenMention={(path) => {
+          if (!composerWorkspaceCwd) return;
+          promptInputRef.current?.blur();
+          void KeyboardController.dismiss({ animated: true });
+          setMentionPreview({
+            environmentId: selectedProject.environmentId,
+            cwd: composerWorkspaceCwd,
+            path,
+          });
+        }}
+        ref={promptInputRef}
+        // The context-first screen intentionally opens with the keyboard closed.
+        // Focusing is a user action, so presenting the form sheet has one motion.
+        autoFocus={false}
+        // Clipboard imports use the editor's read-only mode to retain keyboard focus.
+        editable={!isIncomingShareTransferPending && !flow.submitting}
+        readOnly={voiceInput.freezesEditor}
+        multiline
+        scrollEnabled
+        value={flow.prompt}
+        skills={composerMenu.skills}
+        selection={composerMenu.selection}
+        onChangeText={flow.setPrompt}
+        onSelectionChange={composerMenu.onSelectionChange}
+        onFocus={() => setIsComposerFocused(true)}
+        onBlur={() => setIsComposerFocused(false)}
+        onPasteImages={(uris) => void handleNativePasteImages(uris)}
+        placeholder="Ask anything…"
+        singleLineCentered={false}
+        contentInsetVertical={0}
+        style={{
+          minHeight: 72,
+          maxHeight: 160,
+          paddingVertical: 4,
+        }}
+        textStyle={{ ...bodyText, color: foregroundColor, fontFamily: regularFontFamily }}
+      />
+      {mentionPreview ? (
+        <WorkspaceFilePreviewSheet {...mentionPreview} onClose={() => setMentionPreview(null)} />
+      ) : null}
+    </>
   );
 
   const closeNewTask = () => {
@@ -1257,12 +1293,15 @@ export function NewTaskDraftScreen(props: {
 
   const composerDock = (
     <View className="bg-sheet px-[12px] pt-1" style={{ paddingBottom: controlsBottomPadding }}>
-      {!voiceInput.isBusy && composerMenu.trigger && composerMenu.items.length > 0 ? (
+      {!voiceInput.isBusy &&
+      composerMenu.trigger &&
+      (composerMenu.items.length > 0 || composerMenu.trigger.kind === "pull-request") ? (
         <View className="mb-2">
           <ComposerCommandPopover
             items={composerMenu.items}
             triggerKind={composerMenu.trigger.kind}
             isLoading={composerMenu.isLoading}
+            error={composerMenu.error}
             onSelect={composerMenu.onSelect}
           />
         </View>

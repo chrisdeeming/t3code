@@ -1,4 +1,77 @@
 import type { MarkdownNode } from "react-native-nitro-markdown/headless";
+import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
+import { videoMimeType } from "@t3tools/shared/video";
+/** Matches the restrained kind accents used by web's composerInlineChip. */
+const CONTEXT_CHIP_PRESENTATIONS = {
+  image: { accent: "#f43f5e", symbol: "photo" },
+  video: { accent: "#f97316", symbol: "play.rectangle" },
+  file: { accent: "#0ea5e9", symbol: "doc" },
+  mention: { accent: "#06b6d4", symbol: "doc" },
+  terminal: { accent: "#10b981", symbol: "terminal" },
+  element: { accent: "#f59e0b", symbol: "cursorarrow.click" },
+  "preview-annotation": { accent: "#f59e0b", symbol: "cursorarrow.click" },
+  "review-comment": { accent: "#8b5cf6", symbol: "text.bubble" },
+  "pull-request": { accent: "#6366f1", symbol: "arrow.triangle.branch" },
+  skill: { accent: "#d946ef", symbol: "cube" },
+} as const;
+
+export function contextChipPresentation(
+  kind: string,
+  record?: {
+    readonly kind?: string;
+    readonly name?: string;
+    readonly mimeType?: string;
+    readonly sectionId?: string;
+  },
+) {
+  const presentationKind =
+    kind === "file" &&
+    videoMimeType({
+      name: record?.name ?? "",
+      mimeType: record?.mimeType ?? "",
+    })
+      ? "video"
+      : kind === "review-comment" && record?.sectionId?.startsWith("pull-request:")
+        ? "pull-request"
+        : kind;
+  return Object.hasOwn(CONTEXT_CHIP_PRESENTATIONS, presentationKind)
+    ? CONTEXT_CHIP_PRESENTATIONS[presentationKind as keyof typeof CONTEXT_CHIP_PRESENTATIONS]
+    : CONTEXT_CHIP_PRESENTATIONS.file;
+}
+import {
+  formatComposerContextReference,
+  parseComposerContextHref,
+} from "@t3tools/shared/composerContextReferences";
+
+/** Native selections count UTF-16 display units, including each inline image placeholder. */
+export function nativeMarkdownContextCopyRanges(
+  runs: ReadonlyArray<{
+    readonly run: {
+      readonly href?: string;
+      readonly text: string;
+      readonly skillName?: string;
+      readonly fileIcon?: string;
+      readonly sourceText?: string;
+    };
+    readonly text: string;
+    readonly inlineImageLength: number;
+  }>,
+) {
+  let offset = 0;
+  return runs.flatMap(({ run, text, inlineImageLength }) => {
+    const start = offset;
+    offset += text.length + inlineImageLength;
+    const reference = parseComposerContextHref(run.href ?? "");
+    const source = reference
+      ? formatComposerContextReference({ ...reference, label: run.text })
+      : run.skillName
+        ? `$${run.skillName}`
+        : run.fileIcon && run.href
+          ? (run.sourceText ?? `[${run.text}](<${run.href}>)`)
+          : null;
+    return source === null ? [] : [{ start, end: offset, text: source }];
+  });
+}
 
 import type { SelectableMarkdownSkill } from "./SelectableMarkdownText.types";
 import {
@@ -18,6 +91,7 @@ export interface NativeMarkdownTextRun {
   readonly fileIcon?: MarkdownFileIcon;
   readonly skillName?: string;
   readonly skillLabel?: string;
+  readonly sourceText?: string;
   readonly role?:
     | "body"
     | "heading"
@@ -259,6 +333,36 @@ function decorateSkillRuns(
   return decorated;
 }
 
+function decorateMentionRuns(runs: ReadonlyArray<NativeMarkdownTextRun>) {
+  return runs.flatMap((run) => {
+    if (run.code || run.href || run.skillName || run.role === "code-block") return [run];
+    const decorated: NativeMarkdownTextRun[] = [];
+    let cursor = 0;
+    for (const token of collectComposerInlineTokens(`${run.text} `)) {
+      if (token.type !== "mention" || !token.source.startsWith("@")) continue;
+      // Sentence punctuation is not part of an unquoted file reference.
+      const path = token.source.startsWith('@"')
+        ? token.value
+        : token.value.replace(/[.,;!?]+$/, "");
+      const presentation = resolveMarkdownLinkPresentation(path);
+      if (presentation.kind !== "file") continue;
+      const end = token.end - (token.value.length - path.length);
+      if (token.start > cursor)
+        decorated.push({ ...run, text: run.text.slice(cursor, token.start) });
+      decorated.push({
+        ...run,
+        text: presentation.label,
+        href: presentation.href,
+        fileIcon: presentation.icon,
+        sourceText: run.text.slice(token.start, end),
+      });
+      cursor = end;
+    }
+    if (cursor < run.text.length) decorated.push({ ...run, text: run.text.slice(cursor) });
+    return decorated;
+  });
+}
+
 function appendChildren(
   runs: NativeMarkdownTextRun[],
   node: MarkdownNode,
@@ -310,6 +414,15 @@ function appendNode(
     case "strikethrough":
       return appendChildren(runs, node, { ...context, strikethrough: true });
     case "link": {
+      const reference = parseComposerContextHref(node.href ?? "");
+      if (reference) {
+        return appendChildren(runs, node, {
+          ...context,
+          href: node.href,
+          fileIcon:
+            reference.kind === "image" ? "image" : reference.kind === "terminal" ? "bash" : "text",
+        });
+      }
       const presentation = resolveMarkdownLinkPresentation(node.href ?? "");
       if (presentation.kind === "file") {
         return appendRun(runs, presentation.label, {
@@ -792,5 +905,5 @@ export function nativeMarkdownDocumentRuns(
       runs[lastIndex] = { ...last, text };
     }
   }
-  return decorateSkillRuns(runs, skills);
+  return decorateMentionRuns(decorateSkillRuns(runs, skills));
 }

@@ -3,6 +3,7 @@ import type { AssistantCitation, ComposerContextClipboardFragment } from "@t3too
 import {
   COMPOSER_CONTEXT_CLIPBOARD_MIME,
   decodeComposerContextFragment,
+  decodeComposerContextClipboardHtml,
 } from "@t3tools/shared/composerContextClipboard";
 import {
   collectComposerContextReferences,
@@ -152,7 +153,8 @@ export function importPastedComposerText(
   // Only records whose links are in the pasted text get imported; a fragment may carry
   // more (it was built for a larger copy) and must not start transfers for those.
   const decodedFragment = importContextFragment
-    ? decodeComposerContextFragment(clipboardData.getData(COMPOSER_CONTEXT_CLIPBOARD_MIME))
+    ? (decodeComposerContextFragment(clipboardData.getData(COMPOSER_CONTEXT_CLIPBOARD_MIME)) ??
+      decodeComposerContextClipboardHtml(clipboardData.getData("text/html")))
     : null;
   const pastedIds = new Set<string>(
     collectComposerContextReferences(pastedText).map((occurrence) => occurrence.contextId),

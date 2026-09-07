@@ -3,6 +3,9 @@ package expo.modules.t3markdowntext
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -11,12 +14,18 @@ import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.TextView
+import android.util.Base64
+import android.util.LruCache
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.uimanager.UIManagerHelper
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import kotlin.math.max
 import kotlin.math.min
+import org.json.JSONObject
+import org.json.JSONArray
+import java.net.URLEncoder
+import java.io.ByteArrayOutputStream
 
 private const val OBJECT_REPLACEMENT_CHARACTER = "\uFFFC"
 
@@ -47,7 +56,8 @@ private fun copyTextWithoutInlineImages(
 
 private class SanitizingSelectionActionModeCallback(
   private val textView: TextView,
-  private val delegate: ActionMode.Callback?
+  private val delegate: ActionMode.Callback?,
+  var contextClipboardConfig: String
 ) : ActionMode.Callback {
   override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean =
     delegate?.onCreateActionMode(mode, menu) ?: true
@@ -61,11 +71,43 @@ private class SanitizingSelectionActionModeCallback(
       val end = max(textView.selectionStart, textView.selectionEnd)
       if (start >= 0 && end > start) {
         val originalText = textView.text.subSequence(start, end).toString()
-        val selectedText = copyTextWithoutInlineImages(textView.text, start, end)
-        if (selectedText != originalText) {
+        val config = runCatching { JSONObject(contextClipboardConfig) }.getOrNull()
+        val ranges = config?.optJSONArray("ranges")
+        val canonical = StringBuilder(originalText)
+        var hasContext = false
+        if (ranges != null) for (index in ranges.length() - 1 downTo 0) {
+          val range = ranges.optJSONObject(index) ?: continue
+          val first = max(start, range.optInt("start"))
+          val last = min(end, range.optInt("end"))
+          if (last > first) {
+            canonical.replace(first - start, last - start, range.optString("text"))
+            hasContext = true
+          }
+        }
+        val selectedText = if (hasContext) canonical.toString().replace(OBJECT_REPLACEMENT_CHARACTER, "") else copyTextWithoutInlineImages(textView.text, start, end)
+        if (hasContext || selectedText != originalText) {
           val clipboard =
             textView.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-          clipboard.setPrimaryClip(ClipData.newPlainText(null, selectedText))
+          val payload = runCatching { JSONObject(config?.optString("fragment") ?: "") }.getOrNull()
+          val records = payload?.optJSONArray("records")
+          val copied = JSONArray()
+          val ids = mutableSetOf<String>()
+          if (records != null) {
+            for (index in 0 until records.length()) {
+              val record = records.getJSONObject(index)
+              if (selectedText.contains("/${record.optString("contextId")})")) {
+                ids.add(record.optString("contextId"))
+                if (record.has("screenshotContextId")) ids.add(record.getString("screenshotContextId"))
+              }
+            }
+            for (index in 0 until records.length()) if (ids.contains(records.getJSONObject(index).optString("contextId"))) copied.put(records.getJSONObject(index))
+          }
+          if (hasContext && payload != null && copied.length() > 0) {
+            payload.put("records", copied)
+            val attribute = URLEncoder.encode(payload.toString(), "UTF-8").replace("+", "%20")
+            val escaped = selectedText.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            clipboard.setPrimaryClip(ClipData.newHtmlText(null, selectedText, "<pre data-t3-context-fragment=\"$attribute\">$escaped</pre>"))
+          } else clipboard.setPrimaryClip(ClipData.newPlainText(null, selectedText))
           mode.finish()
           return true
         }
@@ -80,10 +122,41 @@ private class SanitizingSelectionActionModeCallback(
 }
 
 class T3MarkdownTextSelectionModule : Module() {
+  private val chipImages = LruCache<String, Map<String, Any>>(128)
+
   override fun definition() = ModuleDefinition {
     Name("T3MarkdownTextSelection")
 
-    Function("installCopySanitizer") { reactTag: Int ->
+    Function("renderContextChip") { payloadJson: String ->
+      val metrics = appContext.reactContext?.resources?.displayMetrics ?: return@Function null
+      val key = "${metrics.density}:${metrics.widthPixels}:$payloadJson"
+      chipImages.get(key)?.let { return@Function it }
+      val payload = JSONObject(payloadJson)
+      val chip = T3ContextChip(
+        label = payload.optString("label").take(4096),
+        symbol = payload.optString("symbol", "doc"),
+        fontSize = payload.optDouble("fontSize", 12.0).toFloat().coerceIn(10f, 40f) * metrics.density,
+        accent = T3ContextChip.color(payload.optString("accent"), Color.GRAY),
+        foreground = T3ContextChip.color(payload.optString("foreground"), Color.BLACK),
+        border = T3ContextChip.color(payload.optString("border"), Color.GRAY),
+        maximumWidth = (metrics.widthPixels - 80 * metrics.density).coerceAtLeast(100f),
+        density = metrics.density,
+      )
+      val bitmap = Bitmap.createBitmap(chip.width.toInt(), chip.height.toInt(), Bitmap.Config.ARGB_8888)
+      chip.draw(Canvas(bitmap), 0f, 0f)
+      val bytes = ByteArrayOutputStream()
+      bitmap.compress(Bitmap.CompressFormat.PNG, 100, bytes)
+      bitmap.recycle()
+      val result = mapOf<String, Any>(
+        "uri" to "data:image/png;base64,${Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)}",
+        "width" to chip.width / metrics.density,
+        "height" to chip.height / metrics.density,
+      )
+      chipImages.put(key, result)
+      result
+    }
+
+    Function("installCopySanitizer") { reactTag: Int, contextClipboardConfig: String ->
       val reactContext = appContext.reactContext as? ReactContext ?: return@Function
       reactContext.runOnUiQueueThread {
         val textView =
@@ -93,11 +166,12 @@ class T3MarkdownTextSelectionModule : Module() {
             .getOrNull() as? TextView ?: return@runOnUiQueueThread
         val currentCallback = textView.customSelectionActionModeCallback
         if (currentCallback is SanitizingSelectionActionModeCallback) {
+          currentCallback.contextClipboardConfig = contextClipboardConfig
           return@runOnUiQueueThread
         }
         textView.setSpannableFactory(MarkdownSpannableFactory)
         textView.customSelectionActionModeCallback =
-          SanitizingSelectionActionModeCallback(textView, currentCallback)
+          SanitizingSelectionActionModeCallback(textView, currentCallback, contextClipboardConfig)
       }
     }
   }
