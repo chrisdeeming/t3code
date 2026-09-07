@@ -1,6 +1,6 @@
 import type { ThreadId } from "@t3tools/contracts";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
-import { toComposerContextId } from "./composerContextReferences";
+import { toKindScopedComposerContextId } from "./composerContextReferences";
 
 export interface TerminalContextSelection {
   terminalId: string;
@@ -30,7 +30,7 @@ export interface TerminalContextReferenceSource {
 export function formatTerminalContextReference(context: TerminalContextReferenceSource): string {
   return formatComposerContextReference({
     kind: "terminal",
-    contextId: toComposerContextId(context.id),
+    contextId: toKindScopedComposerContextId("terminal", context.id),
     label: formatTerminalContextLabel(context),
   });
 }
