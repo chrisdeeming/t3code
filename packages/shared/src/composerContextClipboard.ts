@@ -18,7 +18,13 @@ export function encodeComposerContextFragment(
 }
 
 /** HTML is the portable flavor shared by browsers and native system clipboards. */
-export function encodeComposerContextClipboardHtml(text: string, fragment: string): string {
+export function encodeComposerContextClipboardHtml(
+  text: string,
+  fragment: string,
+  html?: string,
+): string {
+  if (html !== undefined)
+    return `<div data-t3-context-fragment="${encodeURIComponent(fragment)}">${html}</div>`;
   const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return `<pre data-t3-context-fragment="${encodeURIComponent(fragment)}">${escaped}</pre>`;
 }

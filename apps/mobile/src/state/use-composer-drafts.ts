@@ -93,30 +93,40 @@ export function insertComposerDraftContext(
   let inserted = false;
   updateComposerDrafts((current) => {
     const draft = normalizeDraft(current[draftKey]);
-    const selection =
-      lastComposerSelection?.draftKey === draftKey && lastComposerSelection.text === draft.text
-        ? lastComposerSelection
-        : null;
-    const start = Math.max(0, Math.min(selection?.start ?? draft.text.length, draft.text.length));
-    const end = Math.max(start, Math.min(selection?.end ?? start, draft.text.length));
-    const before = draft.text.slice(0, start);
-    const after = draft.text.slice(end);
-    const insertion = `${before.length > 0 && !/\s$/.test(before) && !/^\s/.test(content.text) ? " " : ""}${content.text}${!/\s$/.test(content.text) && (after.length === 0 || !/^\s/.test(after)) ? " " : ""}`;
-    const text = before + insertion + after;
-    const records = new Map(draft.context?.records.map((record) => [record.contextId, record]));
-    for (const record of content.context.records) records.set(record.contextId, record);
-    const context = referencedComposerContext(text, { version: 1, records: [...records.values()] });
-    if ((context?.records.length ?? 0) > COMPOSER_CONTEXT_MAX_RECORDS) return current;
+    const nextDraft = draftWithInsertedContext(draftKey, draft, content);
+    if (!nextDraft) return current;
     inserted = true;
-    lastComposerSelection = {
-      draftKey,
-      text,
-      start: start + insertion.length,
-      end: start + insertion.length,
-    };
-    return { ...current, [draftKey]: { ...draft, text, context } };
+    return { ...current, [draftKey]: nextDraft };
   });
   return inserted;
+}
+
+function draftWithInsertedContext(
+  draftKey: string,
+  draft: ComposerDraft,
+  content: { text: string; context: OrchestrationMessageContext },
+): ComposerDraft | null {
+  const selection =
+    lastComposerSelection?.draftKey === draftKey && lastComposerSelection.text === draft.text
+      ? lastComposerSelection
+      : null;
+  const start = Math.max(0, Math.min(selection?.start ?? draft.text.length, draft.text.length));
+  const end = Math.max(start, Math.min(selection?.end ?? start, draft.text.length));
+  const before = draft.text.slice(0, start);
+  const after = draft.text.slice(end);
+  const insertion = `${before.length > 0 && !/\s$/.test(before) && !/^\s/.test(content.text) ? " " : ""}${content.text}${!/\s$/.test(content.text) && (after.length === 0 || !/^\s/.test(after)) ? " " : ""}`;
+  const text = before + insertion + after;
+  const records = new Map(draft.context?.records.map((record) => [record.contextId, record]));
+  for (const record of content.context.records) records.set(record.contextId, record);
+  const context = referencedComposerContext(text, { version: 1, records: [...records.values()] });
+  if ((context?.records.length ?? 0) > COMPOSER_CONTEXT_MAX_RECORDS) return null;
+  lastComposerSelection = {
+    draftKey,
+    text,
+    start: start + insertion.length,
+    end: start + insertion.length,
+  };
+  return { ...draft, text, context };
 }
 
 export class ComposerDraftPersistenceError extends Schema.TaggedError<ComposerDraftPersistenceError>()(
@@ -1001,14 +1011,30 @@ export function setStickyComposerModelSelection(modelSelection: ModelSelection):
 }
 
 export function setComposerDraftText(draftKey: string, value: string): void {
+  let removed: ReadonlyArray<DraftComposerAttachment> = [];
   updateComposerDrafts((current) => {
+    const existing = normalizeDraft(current[draftKey]);
+    const context = referencedComposerContext(value, existing.context);
+    const retainedIds = new Set(context?.records.map((record) => record.contextId));
+    const removedFileIds = new Set(
+      existing.context?.records.flatMap((record) =>
+        record.kind === "file" && "attachmentId" in record && !retainedIds.has(record.contextId)
+          ? [record.attachmentId]
+          : [],
+      ),
+    );
+    removed = existing.attachments.filter(
+      (attachment) => attachment.type !== "image" && removedFileIds.has(attachment.id),
+    );
     const draft = {
-      ...normalizeDraft(current[draftKey]),
+      ...existing,
       text: value,
-      context: referencedComposerContext(value, current[draftKey]?.context),
+      context,
+      attachments: existing.attachments.filter((attachment) => !removed.includes(attachment)),
     };
     return withComposerDraft(current, draftKey, draft);
   });
+  scheduleUnusedComposerAttachmentCleanup(removed);
 }
 
 export function appendComposerDraftText(draftKey: string, value: string): void {
@@ -1055,41 +1081,46 @@ export function appendComposerDraftAttachments(
             options?.maxAttachments ?? PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
           ) - existing.attachments.length,
         );
-    const accepted = attachments.slice(0, remaining);
-    rejected = attachments.slice(remaining);
+    const contextCapacity = options?.appendReference
+      ? Math.max(0, COMPOSER_CONTEXT_MAX_RECORDS - (existing.context?.records.length ?? 0))
+      : attachments.length;
+    const accepted = attachments.slice(0, Math.min(remaining, contextCapacity));
+    rejected = attachments.slice(accepted.length);
     if (accepted.length === 0) {
       return current;
     }
-    return {
-      ...current,
-      [draftKey]: {
-        ...existing,
-        attachments: [...existing.attachments, ...accepted],
-      },
-    };
-  });
-  scheduleUnusedComposerAttachmentCleanup(rejected);
-  if (options?.appendReference) {
-    const records = attachments.slice(0, attachments.length - rejected.length).map((attachment) => {
-      const common = {
-        version: 1 as const,
-        contextId: ComposerContextId.make(attachment.id),
-        label: attachment.name,
-        attachmentId: attachment.id,
-        name: attachment.name,
-        mimeType: attachment.mimeType,
-        sizeBytes: attachment.sizeBytes,
-      };
-      return attachment.type === "image"
-        ? { ...common, kind: "image" as const }
-        : { ...common, kind: "file" as const };
-    });
-    if (records.length > 0)
-      insertComposerDraftContext(draftKey, {
+    let draft = { ...existing, attachments: [...existing.attachments, ...accepted] };
+    if (options?.appendReference) {
+      const records = accepted.map((attachment) => {
+        const common = {
+          version: 1 as const,
+          contextId: ComposerContextId.make(attachment.id),
+          label: attachment.name,
+          attachmentId: attachment.id,
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+        };
+        return attachment.type === "image"
+          ? { ...common, kind: "image" as const }
+          : { ...common, kind: "file" as const };
+      });
+      const inserted = draftWithInsertedContext(draftKey, draft, {
         text: records.map(formatComposerContextReference).join(" "),
         context: { version: 1, records },
       });
-  }
+      if (!inserted) {
+        rejected = attachments;
+        return current;
+      }
+      draft = { ...inserted, attachments: [...inserted.attachments] };
+    }
+    return {
+      ...current,
+      [draftKey]: draft,
+    };
+  });
+  scheduleUnusedComposerAttachmentCleanup(rejected);
   return rejected.length;
 }
 

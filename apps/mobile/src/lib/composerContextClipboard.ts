@@ -52,7 +52,12 @@ export function writeComposerContextClipboard(
   text: string,
   fragment: ComposerContextClipboardFragment,
 ): Promise<void> {
-  return nativeClipboard().writeContextClipboard(text, encodeComposerContextFragment(fragment));
+  const encoded = encodeComposerContextFragment(fragment);
+  if (!encoded)
+    return Promise.reject(
+      new Error("This context selection is too large to copy. Select fewer items."),
+    );
+  return nativeClipboard().writeContextClipboard(text, encoded);
 }
 
 /** Copies signed source assets into owned local files; the usual upload queue handles the destination. */

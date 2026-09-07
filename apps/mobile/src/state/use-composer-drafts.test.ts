@@ -214,6 +214,86 @@ afterEach(() => {
 });
 
 describe("mobile composer drafts", () => {
+  it("removes a file only after its last reference is deleted, while retaining images", async () => {
+    const outboxLoad = vi.spyOn(threadOutboxManager, "load").mockResolvedValue(true);
+    onTestFinished(() => outboxLoad.mockRestore());
+    const cleanup = Promise.withResolvers<void>();
+    composerAttachmentCleanupMocks.remove.mockImplementationOnce(async () => {
+      cleanup.resolve();
+    });
+    const key = "environment-1:remove-context-files";
+    const file = {
+      id: "file-1",
+      type: "file" as const,
+      name: "notes.txt",
+      mimeType: "text/plain",
+      sizeBytes: 4,
+      fileUri: "file:///notes.txt",
+    };
+    const image = {
+      ...file,
+      id: "image-1",
+      type: "image" as const,
+      name: "image.png",
+      mimeType: "image/png",
+      fileUri: "file:///image.png",
+      previewUri: "file:///image.png",
+    };
+    appendComposerDraftAttachments(key, [file, image], { appendReference: true });
+    const fileLink = "[notes.txt](t3-context://v1/file/file-1)";
+    setComposerDraftText(key, `${fileLink} ${fileLink}`);
+    expect(getComposerDraftSnapshot(key).attachments).toEqual([file, image]);
+    setComposerDraftText(key, fileLink);
+    expect(getComposerDraftSnapshot(key).attachments).toEqual([file, image]);
+    setComposerDraftText(key, "plain text");
+    expect(getComposerDraftSnapshot(key).attachments).toEqual([image]);
+    await cleanup.promise;
+  });
+
+  it("rejects attachments atomically when no context slots remain", async () => {
+    const outboxLoad = vi.spyOn(threadOutboxManager, "load").mockResolvedValue(true);
+    onTestFinished(() => outboxLoad.mockRestore());
+    const cleanup = Promise.withResolvers<void>();
+    composerAttachmentCleanupMocks.remove.mockImplementationOnce(async () => {
+      cleanup.resolve();
+    });
+    const key = "environment-1:full-context";
+    const records = Array.from({ length: 200 }, (_, index) => ({
+      version: 1 as const,
+      contextId: `ctx-${index}` as never,
+      kind: "skill" as const,
+      label: "Skill",
+      name: "skill",
+    }));
+    appAtomRegistry.set(composerDraftsAtom, {
+      [key]: {
+        text: records
+          .map((record) => `[Skill](t3-context://v1/skill/${record.contextId})`)
+          .join(" "),
+        context: { version: 1, records },
+        attachments: [],
+      },
+    });
+    const before = getComposerDraftSnapshot(key);
+    expect(
+      appendComposerDraftAttachments(
+        key,
+        [
+          {
+            id: "overflow",
+            type: "file",
+            name: "notes.txt",
+            mimeType: "text/plain",
+            sizeBytes: 4,
+            fileUri: "file:///overflow.txt",
+          },
+        ],
+        { appendReference: true },
+      ),
+    ).toBe(1);
+    expect(getComposerDraftSnapshot(key)).toEqual(before);
+    await cleanup.promise;
+  });
   it("inserts context at the saved caret and retains its payload through persistence and restore", () => {
     const draftKey = "context-environment:context-thread";
     const record = {
