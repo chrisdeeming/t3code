@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 
 import type { ReviewRenderableLineRow } from "./reviewModel";
 
@@ -286,9 +287,15 @@ export function parseReviewCommentMessageSegments(
   const segments: ReviewCommentMessageSegment[] = [];
   let cursor = 0;
   let parsedCommentIndex = 0;
-
-  for (const match of value.matchAll(REVIEW_COMMENT_BLOCK_PATTERN)) {
-    const matchIndex = match.index ?? 0;
+  // Labels are opaque text, even when they contain legacy review markup. Keep offsets intact.
+  const masked = replaceComposerContextReferences(value, (reference) =>
+    " ".repeat(reference.source.length),
+  );
+  for (const maskedMatch of masked.matchAll(REVIEW_COMMENT_BLOCK_PATTERN)) {
+    const match = new RegExp(REVIEW_COMMENT_BLOCK_PATTERN.source).exec(
+      value.slice(maskedMatch.index, maskedMatch.index + maskedMatch[0].length),
+    )!;
+    const matchIndex = maskedMatch.index;
     const beforeText = value.slice(cursor, matchIndex);
     if (beforeText.length > 0) {
       segments.push({
