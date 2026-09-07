@@ -2517,7 +2517,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       let blob: Blob;
       try {
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         blob = await response.blob();
       } catch {
