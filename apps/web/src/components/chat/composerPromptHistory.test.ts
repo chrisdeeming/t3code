@@ -25,12 +25,17 @@ function forward(position: ComposerPromptHistoryPosition | null, currentPrompt: 
 }
 
 describe("recallableComposerPrompt", () => {
-  it("strips the whole annotation when its body contains an opening annotation tag", () => {
+  it("preserves a malformed annotation containing a nested opening tag", () => {
+    const text =
+      "Prompt\n<preview_annotation>\nouter literal\n<preview_annotation>\ninner\n</preview_annotation>";
+    expect(recallableComposerPrompt(text)).toBe(text);
+  });
+  it("does not strip a terminal label embedded in ordinary prose", () => {
     expect(
       recallableComposerPrompt(
-        "Prompt\n<preview_annotation>\nouter literal\n<preview_annotation>\ninner\n</preview_annotation>",
+        "email@build:7\n<terminal_context>\n- Build line 7:\n  output\n</terminal_context>",
       ),
-    ).toBe("Prompt");
+    ).toBe("email@build:7");
   });
   it("strips legacy send-time context blocks and the ultrathink prefix", () => {
     const sent =
