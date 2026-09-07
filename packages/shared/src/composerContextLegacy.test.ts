@@ -32,6 +32,19 @@ describe("upgradeLegacyContextMessage", () => {
     },
   );
 
+  it.each([".", ",", ":", ";", "!", "?", ")"])(
+    "upgrades terminal labels before punctuation %s",
+    (suffix) => {
+      const result = upgradeLegacyContextMessage(
+        `See @build:7${suffix}\n<terminal_context>\n- Build line 7:\n  output\n</terminal_context>`,
+      );
+      expect(result.text).toBe(
+        `See [Build line 7](t3-context://v1/terminal/legacy_terminal_1)${suffix}`,
+      );
+      expect(result.records).toHaveLength(1);
+    },
+  );
+
   it.each(["terminal_context", "element_context"])(
     "preserves malformed trailing %s blocks as text",
     (tag) => {
