@@ -216,13 +216,17 @@ export function buildMessageContext(input: {
   attachments?: ReadonlyArray<BoundComposerAttachment>;
 }): OrchestrationMessageContext | undefined {
   // An annotation's screenshot travels as the image attachment that reuses its id.
-  const attachmentIds = new Set((input.attachments ?? []).map((bound) => bound.attachment.id));
+  const screenshotAttachmentIds = new Set(
+    (input.attachments ?? []).flatMap(({ attachment }) =>
+      attachment.type === "image" ? [attachment.id] : [],
+    ),
+  );
   const records: ComposerContextRecord[] = [
     ...input.terminalContexts.map(terminalContextRecord),
     ...input.reviewComments.map(reviewCommentContextRecord),
     ...input.previewAnnotations.map((annotation) =>
       previewAnnotationContextRecord(annotation, {
-        screenshotContextId: attachmentIds.has(annotation.id) ? annotation.id : undefined,
+        screenshotContextId: screenshotAttachmentIds.has(annotation.id) ? annotation.id : undefined,
       }),
     ),
     ...(input.attachments ?? []).map(attachmentContextRecord),
