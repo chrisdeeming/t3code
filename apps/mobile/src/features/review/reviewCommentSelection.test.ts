@@ -43,6 +43,13 @@ function makeTarget(): ReviewCommentTarget {
 }
 
 describe("review comment serialization", () => {
+  it("treats legacy markup inside a context label as opaque text", () => {
+    const text =
+      '[<review_comment sectionId="s" filePath="app.ts" startIndex="0" endIndex="0">Review this</review_comment>](t3-context://v1/mention/context-1)';
+    expect(parseReviewCommentMessageSegments(text)).toEqual([
+      { kind: "text", id: "review-comment-text:0", text },
+    ]);
+  });
   it("preserves enough metadata for inline diff rendering", () => {
     const serialized = formatReviewCommentContext(makeTarget(), "Please keep this configurable.");
 
