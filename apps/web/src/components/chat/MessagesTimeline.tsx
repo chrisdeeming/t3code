@@ -19,6 +19,7 @@ import {
   type TurnId,
 } from "@t3tools/contracts";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
+import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import type { CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
 import {
   resolveWorkEntryToolPresentation,
@@ -1592,7 +1593,13 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
             )}
             {resolvedContext.text && (
-              <MessageCopyButton text={resolvedContext.text} variant="ghost" />
+              <MessageCopyButton
+                text={replaceComposerContextReferences(
+                  resolvedContext.text,
+                  (reference) => reference.label,
+                )}
+                variant="ghost"
+              />
             )}
           </div>
         </div>
@@ -2479,10 +2486,10 @@ function UserMessagePreviewAnnotationDetails(props: {
           {props.record.targetSummary ? (
             <span className="truncate">{props.record.targetSummary}</span>
           ) : null}
-          {props.record.styleChanges.length > 0 ? (
+          {(props.record.styleChanges?.length ?? 0) > 0 ? (
             <span className="inline-flex shrink-0 items-center gap-1">
               <PaintbrushIcon className="size-3" />
-              {props.record.styleChanges.length}
+              {props.record.styleChanges?.length ?? 0}
             </span>
           ) : null}
         </div>
@@ -2545,7 +2552,7 @@ function UserMessageContextReferenceChip(props: {
   if (record?.kind === "element") {
     const lines = [record.label, record.pageUrl];
     if (record.selector) lines.push(record.selector);
-    if (record.htmlPreview.trim()) lines.push("", record.htmlPreview.trim().slice(0, 600));
+    if (record.htmlPreview?.trim()) lines.push("", record.htmlPreview.trim().slice(0, 600));
     return (
       <UserMessageContextChip
         icon={<MousePointerClickIcon className={iconClassName} />}

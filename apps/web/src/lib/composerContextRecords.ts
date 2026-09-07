@@ -13,7 +13,10 @@ import type {
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
 import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
 
-import { type ComposerContextReference, toComposerContextId } from "./composerContextReferences";
+import {
+  type ComposerContextReference,
+  toKindScopedComposerContextId,
+} from "./composerContextReferences";
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
 import { normalizeElementContextSelection } from "./elementContext";
 import {
@@ -51,19 +54,19 @@ export function previewAnnotationContextLabel(annotation: PreviewAnnotationPaylo
 export function terminalContextReference(context: TerminalContextDraft): ComposerContextReference {
   return {
     kind: "terminal",
-    contextId: toComposerContextId(context.id),
+    contextId: toKindScopedComposerContextId("terminal", context.id),
     label: formatTerminalContextLabel(context),
   };
 }
 
 /** Review producers mint ids in their own grammars; the context id is a folded form of them. */
 export function reviewCommentContextId(commentId: string): ComposerContextId {
-  return toComposerContextId(commentId);
+  return toKindScopedComposerContextId("review-comment", commentId);
 }
 
 /** Distinct from the screenshot image, which reuses the annotation id as its attachment id. */
 export function previewAnnotationContextId(annotationId: string): ComposerContextId {
-  return toComposerContextId(`annotation-${annotationId}`);
+  return toKindScopedComposerContextId("preview-annotation", annotationId);
 }
 
 export function reviewCommentContextReference(
@@ -89,7 +92,7 @@ export function previewAnnotationContextReference(
 export function terminalContextRecord(context: TerminalContextDraft): TerminalContextRecord {
   return {
     version: 1,
-    contextId: toComposerContextId(context.id),
+    contextId: toKindScopedComposerContextId("terminal", context.id),
     kind: "terminal",
     label: sanitizeComposerContextLabel(formatTerminalContextLabel(context), "terminal"),
     terminalId: context.terminalId,
@@ -163,17 +166,25 @@ export function previewAnnotationContextRecord(
       : {}),
     styleChangeDetails: annotation.styleChanges.map((change) => ({ ...change })),
     ...(options?.screenshotContextId !== undefined
-      ? { screenshotContextId: options.screenshotContextId as ComposerContextId }
+      ? { screenshotContextId: toKindScopedComposerContextId("image", options.screenshotContextId) }
       : {}),
   };
 }
 
 export function imageContextReference(image: ComposerImageAttachment): ComposerContextReference {
-  return { kind: "image", contextId: image.id, label: image.name };
+  return {
+    kind: "image",
+    contextId: toKindScopedComposerContextId("image", image.id),
+    label: image.name,
+  };
 }
 
 export function fileContextReference(file: ComposerFileAttachment): ComposerContextReference {
-  return { kind: "file", contextId: file.id, label: file.name };
+  return {
+    kind: "file",
+    contextId: toKindScopedComposerContextId("file", file.id),
+    label: file.name,
+  };
 }
 
 /** Binds a draft attachment to the id the receiving side will know it by. */
@@ -188,7 +199,7 @@ export function attachmentContextRecord(
   const { attachment, attachmentId } = bound;
   const base = {
     version: 1 as const,
-    contextId: attachment.id as ComposerContextId,
+    contextId: toKindScopedComposerContextId(attachment.type, attachment.id),
     label: sanitizeComposerContextLabel(attachment.name, attachment.type),
     attachmentId,
     name: attachment.name,
