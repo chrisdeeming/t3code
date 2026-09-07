@@ -6,6 +6,46 @@ describe("upgradeLegacyContextMessage", () => {
   const review =
     '<review_comment sectionId="s" filePath="f.ts" startIndex="1" endIndex="1">note</review_comment>';
 
+  it.each([
+    {
+      tag: "terminal_context",
+      body: `- Build line 1:\n  ${review}`,
+      payload: { kind: "terminal", text: review },
+    },
+    {
+      tag: "element_context",
+      body: `- <div>:\n  html:\n    ${review}`,
+      payload: { kind: "element", htmlPreview: review },
+    },
+    {
+      tag: "preview_annotation",
+      body: `Page: Example\nComment: ${review}`,
+      payload: { kind: "preview-annotation", comment: review },
+    },
+    {
+      tag: "preview_annotation",
+      body: `Page: Example\n<element_context>\n- <div>:\n  html:\n    ${review}\n</element_context>`,
+      payload: {
+        kind: "preview-annotation",
+        elements: [expect.objectContaining({ htmlPreview: review })],
+      },
+    },
+  ])("preserves review-shaped payloads in $tag", ({ tag, body, payload }) => {
+    for (const suffix of ["", `\n${review}`]) {
+      const result = upgradeLegacyContextMessage(
+        `Before ${review} after\n<${tag}>\n${body}\n</${tag}>${suffix}`,
+      );
+      expect(result.records[0]).toMatchObject(payload);
+      expect(result.records.filter((record) => record.kind === "review-comment")).toHaveLength(
+        suffix ? 2 : 1,
+      );
+      expect(result.text).not.toContain("\uE000");
+      expect(result.text).toContain(
+        "Before [f.ts line](t3-context://v1/review-comment/legacy_review-comment_1) after",
+      );
+    }
+  });
+
   it.each(["terminal_context", "element_context"])(
     "keeps mixed messages atomic for malformed %s",
     (tag) => {
