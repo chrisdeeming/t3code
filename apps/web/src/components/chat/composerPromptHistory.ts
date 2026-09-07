@@ -128,7 +128,11 @@ export function recallableComposerPrompt(messageText: string): string {
     }
     const legacy = TRAILING_LEGACY_CONTEXT.exec(prompt);
     if (legacy) {
-      if (legacy[1] === "preview_annotation" && /^<preview_annotation>\s*$/m.test(legacy[2]!))
+      if (
+        legacy[1] === "preview_annotation" &&
+        /^<preview_annotation>\s*$/m.test(legacy[2]!) &&
+        !/^(?:Id|Page|Comment|Targets): /m.test(legacy[2]!)
+      )
         break;
       const headers = Array.from(legacy[2]!.matchAll(/^- (.+):$/gm), (match) => match[1]!);
       if (legacy[1] !== "preview_annotation" && headers.length === 0) break;
