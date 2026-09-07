@@ -42,7 +42,7 @@ export function parseComposerContextHref(
 /** Labels must survive a Markdown link: no brackets or line breaks, bounded, never empty. */
 export function sanitizeComposerContextLabel(label: string, kind: ComposerContextKind): string {
   const cleaned = label
-    .replace(/[[\]\r\n]/g, " ")
+    .replace(/[[\]\\\r\n]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, COMPOSER_CONTEXT_LABEL_MAX_CHARS);
