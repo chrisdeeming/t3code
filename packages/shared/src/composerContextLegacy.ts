@@ -28,7 +28,8 @@ const TRAILING_TERMINAL = /\n*<terminal_context>\n([\s\S]*?)\n<\/terminal_contex
 const TRAILING_ELEMENT = /\n*<element_context>\n([\s\S]*?)\n<\/element_context>\s*$/;
 const TRAILING_PREVIEW =
   /\n*<preview_annotation>\n((?:(?!\n<\/preview_annotation>)[\s\S])*)\n<\/preview_annotation>\s*$/;
-const REVIEW_OPEN = /<review_comment\b([^>]*)>/g;
+const REVIEW_OR_CONTEXT_BLOCK =
+  /<review_comment\b([^>]*)>|^<(terminal_context|element_context|preview_annotation)>\n[\s\S]*?\n<\/\2>/gm;
 const REVIEW_ATTRIBUTE = /([a-zA-Z][a-zA-Z0-9_-]*)="([^"]*)"/g;
 const REVIEW_FENCE = /(`{3,})([^\s`]*)[^\n]*\n([\s\S]*?)\n\1/g;
 const REVIEW_TOKEN = "\uE000";
@@ -265,9 +266,11 @@ function replaceReviewBlocks(
   replace: (whole: string, attributes: string, body: string) => string,
 ): string {
   const parts: string[] = [];
-  const openings = new RegExp(REVIEW_OPEN);
+  const openings = new RegExp(REVIEW_OR_CONTEXT_BLOCK);
   let consumed = 0;
   for (let opening = openings.exec(text); opening; opening = openings.exec(text)) {
+    // Other context blocks own their payload, including any review-shaped source text.
+    if (opening[2]) continue;
     const bodyStart = openings.lastIndex;
     const boundaries = /^(`{3,})([^\n]*)$|<\/review_comment>/gm;
     boundaries.lastIndex = bodyStart;
