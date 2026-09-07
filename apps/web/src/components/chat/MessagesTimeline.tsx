@@ -1390,14 +1390,16 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   );
   const resolvedContext = resolveUserMessageContext(row.message);
   const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
-  const regularImages = userImages.filter((image) => !image.name.startsWith("preview-annotation-"));
   const revertTurnCount = row.revertTurnCount;
-  // Files with a chip in the prose need no row; older messages keep their rows.
+  // Attachments with a chip in the prose need no standalone row; older messages keep theirs.
   const chippedAttachmentIds = new Set(
     collectComposerContextReferences(resolvedContext.text).flatMap((occurrence) => {
       const record = asKnownContextRecord(resolvedContext.recordsById.get(occurrence.contextId));
       return record?.kind === "file" || record?.kind === "image" ? [record.attachmentId] : [];
     }),
+  );
+  const regularImages = userImages.filter(
+    (image) => !image.name.startsWith("preview-annotation-") && !chippedAttachmentIds.has(image.id),
   );
   const unchippedFiles = otherUserFiles.filter((file) => !chippedAttachmentIds.has(file.id));
   const annotationRecordIds = resolvedContext.records
