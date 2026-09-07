@@ -801,6 +801,38 @@ describe("composerDraftStore terminal contexts", () => {
     expect(draft?.terminalContexts.map((context) => context.id)).toEqual(["ctx-1"]);
   });
 
+  it("inserts terminal selections at the caret without overwriting the updated prompt", () => {
+    const store = useComposerDraftStore.getState();
+    const context = makeTerminalContext({ id: "caret-context" });
+    const reference = formatTerminalContextReference(context);
+    store.setPrompt(threadRef, "before after");
+    const unregister = store.setContextInsertionHandler(threadRef, () => {
+      store.setPrompt(threadRef, `before ${reference} after`);
+      return true;
+    });
+    store.addTerminalContexts(threadRef, [context]);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(`before ${reference} after`);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.terminalContexts).toHaveLength(1);
+    unregister?.();
+  });
+
+  it.each([false, true])(
+    "appends terminal selections with insertAtCaret=%s when not placed",
+    (insertAtCaret) => {
+      const store = useComposerDraftStore.getState();
+      const context = makeTerminalContext({ id: "append-context" });
+      const handler = vi.fn(() => false);
+      const unregister = store.setContextInsertionHandler(threadRef, handler);
+      store.setPrompt(threadRef, "before");
+      store.addTerminalContexts(threadRef, [context], { insertAtCaret });
+      expect(handler).toHaveBeenCalledTimes(insertAtCaret ? 1 : 0);
+      expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(
+        `before ${formatTerminalContextReference(context)} `,
+      );
+      unregister?.();
+    },
+  );
+
   it("normalizes legacy terminal ids before storing and removing their references", () => {
     const store = useComposerDraftStore.getState();
     store.setTerminalContexts(threadRef, [makeTerminalContext({ id: "old terminal:one" })]);
@@ -2985,7 +3017,7 @@ describe("composerDraftStore attachment references", () => {
       },
     ]);
     const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
-    expect(acceptedIds).toEqual(["fresh-1"]);
+    expect(acceptedIds).toEqual([]);
     expect(draft?.files.map((file) => file.id)).toEqual(["fresh-1"]);
     expect(draft?.prompt).toBe("see [notes.txt](t3-context://v1/file/file_fresh-1) ok");
   });
@@ -3038,5 +3070,30 @@ describe("composerDraftStore attachment references", () => {
       useComposerDraftStore.getInitialState(),
     );
     expect(mergedState.draftsByThreadKey[threadKeyFor(threadId)]?.prompt).toBe(`old ${fileLink} `);
+  });
+
+  it("migrates legacy image references without doubling their image marker", () => {
+    const merged = useComposerDraftStore.persist.getOptions().merge!(
+      {
+        draftsByThreadKey: {
+          [threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]: {
+            prompt: "see ![shot.png](t3-context://v1/image/img-1) after",
+            attachments: [
+              {
+                id: "img-1",
+                name: "shot.png",
+                mimeType: "image/png",
+                sizeBytes: 1,
+                dataUrl: "data:image/png;base64,YQ==",
+              },
+            ],
+          },
+        },
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(merged.draftsByThreadKey[threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]?.prompt).toBe(
+      "see ![shot.png](t3-context://v1/image/image_img-1) after",
+    );
   });
 });

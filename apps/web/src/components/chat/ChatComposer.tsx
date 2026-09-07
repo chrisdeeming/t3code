@@ -4552,12 +4552,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   };
 
   const removeComposerImage = (imageId: string) => {
-    const referenced = collectInlineContextIds(promptRef.current).includes(imageId);
+    const image = composerImagesRef.current.find((candidate) => candidate.id === imageId);
+    const referenced = collectInlineContextIds(promptRef.current).includes(
+      image ? imageContextReference(image).contextId : "",
+    );
     if (!referenced) {
       removeComposerImageFromDraft(imageId);
       return;
     }
-    const image = composerImagesRef.current.find((candidate) => candidate.id === imageId);
     const confirmation = requestConfirmDialog(
       `Remove ${image?.name ?? "this image"} from the message?\nIt is referenced in your text; removing it also removes every reference.`,
       { variant: "destructive" },
