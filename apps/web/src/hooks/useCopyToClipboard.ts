@@ -91,6 +91,11 @@ export async function writeTextToClipboard(
   }
 
   if (!value) return false;
+  if (extraFlavors) {
+    extraFlavors = Object.fromEntries(
+      Object.entries(extraFlavors).filter(([type]) => type !== "text/plain"),
+    );
+  }
 
   if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
     if (writeTextWithExecCommand(value)) return true;
