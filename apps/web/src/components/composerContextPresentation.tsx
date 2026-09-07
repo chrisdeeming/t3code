@@ -17,10 +17,13 @@ import {
 } from "~/lib/attachmentUploadState";
 import { cn } from "~/lib/utils";
 import {
+  fileContextReference,
+  imageContextReference,
   previewAnnotationContextId,
   previewAnnotationContextLabel,
   reviewCommentContextId,
   reviewCommentContextLabel,
+  terminalContextReference,
 } from "~/lib/composerContextRecords";
 import type { TerminalContextDraft } from "~/lib/terminalContext";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
@@ -70,13 +73,21 @@ export function composerContextRecordsFromDraft(input: {
 }): ComposerDraftContextRecords {
   const records = new Map<string, ComposerDraftContextRecord>();
   for (const record of input.images ?? []) {
-    records.set(record.id, { kind: "image", record, upload: input.uploadsByImageId?.[record.id] });
+    records.set(imageContextReference(record).contextId, {
+      kind: "image",
+      record,
+      upload: input.uploadsByImageId?.[record.id],
+    });
   }
   for (const record of input.files ?? []) {
-    records.set(record.id, { kind: "file", record, upload: input.uploadsByImageId?.[record.id] });
+    records.set(fileContextReference(record).contextId, {
+      kind: "file",
+      record,
+      upload: input.uploadsByImageId?.[record.id],
+    });
   }
   for (const record of input.terminalContexts) {
-    records.set(record.id, { kind: "terminal", record });
+    records.set(terminalContextReference(record).contextId, { kind: "terminal", record });
   }
   for (const record of input.reviewComments ?? []) {
     records.set(reviewCommentContextId(record.id), { kind: "review-comment", record });
