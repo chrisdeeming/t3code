@@ -17,7 +17,7 @@ const terminalReference = formatTerminalContextReference({
 const terminalSegment = {
   type: "context-reference" as const,
   kind: "terminal",
-  contextId: "ctx-1",
+  contextId: "terminal_ctx-1",
   label: "Terminal 1 lines 3-4",
   source: terminalReference,
 };
@@ -159,7 +159,7 @@ describe("splitPromptIntoComposerSegments", () => {
       {
         type: "context-reference",
         kind: "terminal",
-        contextId: "ctx-1",
+        contextId: "terminal_ctx-1",
         label: "Terminal 1 lines 3-4",
         source: reference,
       },
