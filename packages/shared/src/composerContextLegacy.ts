@@ -342,7 +342,7 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
     while (
       at !== -1 &&
       (/[\p{L}\p{N}\p{M}_@.-]$/u.test(body.slice(0, at)) ||
-        /^[\p{L}\p{N}\p{M}_@.-]/u.test(body.slice(at + label.length)))
+        /^[\p{L}\p{N}\p{M}_-]/u.test(body.slice(at + label.length)))
     ) {
       at = body.indexOf(label, at + 1);
     }
