@@ -1890,6 +1890,11 @@ function normalizePersistedDraftsByThreadId(
           contextIds.set(`${kind}/${toComposerContextId(`annotation-${entry.id}`)}`, contextId);
         }
       }
+      // A live canonical reference wins over another record's legacy producer-ID alias.
+      for (const entry of entries) {
+        const contextId = toKindScopedComposerContextId(kind, entry.id);
+        contextIds.set(`${kind}/${contextId}`, contextId);
+      }
     }
     // Older drafts used producer ids (including dots and colons) directly in links.
     // Rewrite only links backed by this draft, before appending any missing references.
