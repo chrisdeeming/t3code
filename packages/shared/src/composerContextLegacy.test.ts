@@ -3,6 +3,32 @@ import { describe, expect, it } from "vite-plus/test";
 import { upgradeLegacyContextMessage } from "./composerContextLegacy.ts";
 
 describe("upgradeLegacyContextMessage", () => {
+  it.each([
+    `- ${"x".repeat(256)} line 1:\n  output`,
+    `- Build line 1:\n  ${"x".repeat(64_001)}`,
+    "- Build lines 9-1:\n  output",
+    Array.from({ length: 201 }, () => "- Build line 1:\n  output").join("\n"),
+  ])("keeps terminal source when conversion exceeds the wire contract", (body) => {
+    const text = `Prompt\n<terminal_context>\n${body}\n</terminal_context>`;
+    expect(upgradeLegacyContextMessage(text)).toEqual({ text, records: [] });
+  });
+
+  it.each([
+    `<element_context>\n- <div>:\n  html:\n    ${"x".repeat(8_001)}\n</element_context>`,
+    `<preview_annotation>\nComment: ${"x".repeat(8_001)}\n</preview_annotation>`,
+  ])("keeps oversized element and preview source", (text) => {
+    expect(upgradeLegacyContextMessage(text)).toEqual({ text, records: [] });
+  });
+
+  it("does not replace terminal labels embedded in ordinary text", () => {
+    const upgraded = upgradeLegacyContextMessage(
+      "email@build:7\n<terminal_context>\n- Build line 7:\n  output\n</terminal_context>",
+    );
+    expect(upgraded.text).toBe(
+      "email@build:7\n\n[Build line 7](t3-context://v1/terminal/legacy_terminal_1)",
+    );
+  });
+
   it.each(["terminal_context", "element_context"])(
     "preserves malformed trailing %s blocks as text",
     (tag) => {
