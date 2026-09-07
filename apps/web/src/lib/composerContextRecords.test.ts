@@ -49,6 +49,30 @@ const annotation: PreviewAnnotationPayload = {
 };
 
 describe("composerContextRecords", () => {
+  it("builds distinct records for producer IDs that differ by a kind prefix", () => {
+    const context = buildMessageContext({
+      terminalContexts: [],
+      reviewComments: [],
+      previewAnnotations: [],
+      attachments: ["x", "image_x"].map((id) => ({
+        attachment: {
+          type: "image" as const,
+          id,
+          name: `${id}.png`,
+          mimeType: "image/png",
+          sizeBytes: 1,
+          file: new File(["x"], `${id}.png`, { type: "image/png" }),
+          previewUrl: `blob:${id}`,
+        },
+        attachmentId: `uploaded-${id}`,
+      })),
+    })!;
+    expect(
+      Schema.decodeUnknownSync(OrchestrationMessageContext)(context).records.map(
+        (record) => record.contextId,
+      ),
+    ).toEqual(["image_x", "image_image_x"]);
+  });
   it("scopes colliding producer ids and links the annotation to its screenshot record", () => {
     const id = "same.id:1";
     const context = buildMessageContext({
