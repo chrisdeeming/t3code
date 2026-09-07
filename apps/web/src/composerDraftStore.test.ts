@@ -3096,4 +3096,29 @@ describe("composerDraftStore attachment references", () => {
       "see ![shot.png](t3-context://v1/image/image_img-1) after",
     );
   });
+
+  it("preserves canonical references when another producer ID matches their namespace", () => {
+    const prompt =
+      "![x.png](t3-context://v1/image/image_x) ![image_x.png](t3-context://v1/image/image_image_x)";
+    const merged = useComposerDraftStore.persist.getOptions().merge!(
+      {
+        draftsByThreadKey: {
+          [threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]: {
+            prompt,
+            attachments: ["x", "image_x"].map((id) => ({
+              id,
+              name: `${id}.png`,
+              mimeType: "image/png",
+              sizeBytes: 1,
+              dataUrl: "data:image/png;base64,YQ==",
+            })),
+          },
+        },
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(merged.draftsByThreadKey[threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]?.prompt).toBe(
+      prompt,
+    );
+  });
 });
