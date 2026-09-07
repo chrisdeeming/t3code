@@ -165,6 +165,10 @@ export const PreviewAnnotationContextRecord = Schema.Struct({
   elements: Schema.optional(Schema.Array(ElementContextDetails).check(Schema.isMaxLength(50))),
   /** Original target ids and edits allow pasted annotations to retain exact style changes. */
   elementIds: Schema.optional(Schema.Array(ShortString).check(Schema.isMaxLength(50))),
+  /** Region and stroke geometry is lossy on purpose, but their counts feed the target summary,
+      so a pasted annotation still says what it marked. */
+  regionCount: Schema.optional(NonNegativeInt),
+  strokeCount: Schema.optional(NonNegativeInt),
   styleChangeDetails: Schema.optional(
     Schema.Array(
       Schema.Struct({
