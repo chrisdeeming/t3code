@@ -1,4 +1,5 @@
 import {
+  EnvironmentId,
   OrchestrationMessageContext,
   ThreadId,
   type PreviewAnnotationPayload,
@@ -23,6 +24,7 @@ import {
   terminalContextRecord,
   terminalContextReference,
   terminalContextDraftFromRecord,
+  uploadedAttachmentContextRecord,
 } from "./composerContextRecords";
 
 const decodeMessageContext = Schema.decodeUnknownSync(OrchestrationMessageContext);
@@ -60,6 +62,52 @@ const annotation: PreviewAnnotationPayload = {
 };
 
 describe("composerContextRecords", () => {
+  it("copies only ready or persisted server-side attachment IDs", () => {
+    const environmentId = EnvironmentId.make("env");
+    const image = {
+      type: "image" as const,
+      id: "local-image",
+      name: "shot.png",
+      mimeType: "image/png",
+      sizeBytes: 1,
+      file: new File(["x"], "shot.png"),
+      previewUrl: "blob:shot",
+    };
+    expect(uploadedAttachmentContextRecord(image, undefined)).toBeNull();
+    expect(
+      uploadedAttachmentContextRecord(image, { status: "uploading", environmentId, progress: 0.5 }),
+    ).toBeNull();
+    expect(
+      uploadedAttachmentContextRecord(image, {
+        status: "failed",
+        environmentId,
+        reason: "offline",
+        attachmentId: "unfinished",
+      }),
+    ).toBeNull();
+    expect(
+      uploadedAttachmentContextRecord(image, {
+        status: "ready",
+        environmentId,
+        attachmentId: "uploaded-image",
+      }),
+    ).toMatchObject({ attachmentId: "uploaded-image", contextId: "image_local-image" });
+    const file = {
+      type: "file" as const,
+      id: "local-file",
+      name: "notes.txt",
+      mimeType: "text/plain",
+      sizeBytes: 1,
+      file: null,
+    };
+    expect(uploadedAttachmentContextRecord(file, undefined)).toBeNull();
+    expect(
+      uploadedAttachmentContextRecord(
+        { ...file, uploadedAttachmentId: "persisted-file", uploadEnvironmentId: environmentId },
+        undefined,
+      ),
+    ).toMatchObject({ attachmentId: "persisted-file", contextId: "file_local-file" });
+  });
   it("does not bind an annotation screenshot to a same-ID file", () => {
     const context = buildMessageContext({
       terminalContexts: [],
