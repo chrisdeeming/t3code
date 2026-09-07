@@ -16,6 +16,7 @@ import {
   buildMessageContext,
   previewAnnotationContextLabel,
   previewAnnotationContextRecord,
+  previewAnnotationFromRecord,
   resolveUserMessageContext,
   reviewCommentContextRecord,
   terminalContextRecord,
@@ -165,6 +166,23 @@ describe("composerContextRecords", () => {
     expect(image).toMatchObject({ attachmentId: "uploaded-image" });
   });
 
+  it("restores multiple edits on one target without parsing display strings", () => {
+    const styleChanges = [
+      ...annotation.styleChanges,
+      {
+        targetId: "el_1",
+        selector: "#pay",
+        property: "content",
+        previousValue: "a → b",
+        value: "first\nsecond → third",
+      },
+    ];
+    const restored = previewAnnotationFromRecord(
+      previewAnnotationContextRecord({ ...annotation, styleChanges }),
+    );
+    expect(restored.styleChanges).toEqual(styleChanges);
+    expect(restored.elements[0]?.id).toBe("el_1");
+  });
   it("builds a preview annotation record with element details and readable style changes", () => {
     expect(previewAnnotationContextLabel(annotation)).toBe("Make this bigger");
     expect(previewAnnotationContextRecord(annotation, { screenshotContextId: "ann_1" })).toEqual({
