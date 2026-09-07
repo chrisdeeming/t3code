@@ -27,14 +27,7 @@ import {
   useState,
   type RefObject,
 } from "react";
-import {
-  Alert,
-  Keyboard,
-  Platform,
-  Pressable,
-  View,
-  type ViewStyle,
-} from "react-native";
+import { Alert, Keyboard, Platform, Pressable, View, type ViewStyle } from "react-native";
 import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
 import {
   composerAttachmentUploadBlockReason,

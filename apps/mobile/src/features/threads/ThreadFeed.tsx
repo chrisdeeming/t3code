@@ -112,10 +112,7 @@ import {
   type MediaVideoPreviewSource,
 } from "../../lib/videoPreviewSource";
 import { CopyTextButton } from "../../components/CopyTextButton";
-import {
-  parseReviewCommentMessageSegments,
-  type ReviewInlineComment,
-} from "../review/reviewCommentSelection";
+import { parseReviewCommentMessageSegments } from "../review/reviewCommentSelection";
 import type { ReviewDiffTheme } from "../review/shikiReviewHighlighter";
 import {
   ReviewCommentCard,
