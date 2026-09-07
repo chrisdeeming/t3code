@@ -100,6 +100,21 @@ function ComposerCitationDecorator(props: { citation: AssistantCitation; nodeKey
     );
     return accepted;
   };
+  /** Cancelling a comment on a just-created citation removes the chip the cite action added. */
+  const onRemove = () => {
+    if (!editor.isEditable()) return;
+    editor.update(
+      () => {
+        const node = $getNodeByKey(props.nodeKey);
+        if (node instanceof ComposerCitationNode) {
+          node.selectPrevious();
+          node.remove();
+        }
+      },
+      { tag: HISTORY_PUSH_TAG },
+    );
+    editor.getRootElement()?.focus({ preventScroll: true });
+  };
   return (
     <span
       className="inline-flex min-w-0 max-w-full"
