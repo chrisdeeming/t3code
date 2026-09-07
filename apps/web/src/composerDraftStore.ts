@@ -661,7 +661,7 @@ interface ComposerDraftStoreState {
   setContextInsertionHandler: (
     threadRef: ComposerThreadTarget,
     handler: ComposerContextInsertionHandler | null,
-  ) => void;
+  ) => (() => void) | undefined;
   setReviewComments: (
     threadRef: ComposerThreadTarget,
     comments: ReadonlyArray<ReviewCommentContext>,
@@ -1861,6 +1861,9 @@ function normalizePersistedDraftsByThreadId(
     const reviewComments = Array.isArray(draftCandidate.reviewComments)
       ? draftCandidate.reviewComments.filter(isReviewCommentContext)
       : [];
+    const previewAnnotations = Array.isArray(draftCandidate.previewAnnotations)
+      ? draftCandidate.previewAnnotations.filter(Schema.is(PreviewAnnotationPayloadSchema))
+      : [];
     const runtimeMode = isRuntimeMode(draftCandidate.runtimeMode)
       ? draftCandidate.runtimeMode
       : null;
@@ -1928,6 +1931,7 @@ function normalizePersistedDraftsByThreadId(
       files.length === 0 &&
       terminalContexts.length === 0 &&
       reviewComments.length === 0 &&
+      previewAnnotations.length === 0 &&
       !hasModelData &&
       !runtimeMode &&
       !interactionMode
@@ -1952,6 +1956,7 @@ function normalizePersistedDraftsByThreadId(
       ...(files.length > 0 ? { files } : {}),
       ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
       ...(reviewComments.length > 0 ? { reviewComments } : {}),
+      ...(previewAnnotations.length > 0 ? { previewAnnotations } : {}),
       ...(hasModelData
         ? {
             modelSelectionByProvider: compactModelSelectionByProvider(modelSelectionByProvider),
@@ -2927,7 +2932,12 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             const nextDraft: ComposerThreadDraftState = {
               ...existing,
               prompt: ensureInlineContextReferences(
-                existing.prompt,
+                existing.terminalContexts
+                  .filter((context) => !normalizedContexts.some((next) => next.id === context.id))
+                  .reduce(
+                    (prompt, context) => removeInlineContextReference(prompt, context.id).prompt,
+                    existing.prompt,
+                  ),
                 normalizedContexts.map(terminalContextReference),
               ),
               terminalContexts: normalizedContexts,
@@ -3567,6 +3577,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft: ComposerThreadDraftState = {
               ...current,
+              prompt: removeInlineContextReference(current.prompt, contextId).prompt,
               terminalContexts: current.terminalContexts.filter(
                 (context) => context.id !== contextId,
               ),
@@ -3592,6 +3603,10 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft: ComposerThreadDraftState = {
               ...current,
+              prompt: current.terminalContexts.reduce(
+                (prompt, context) => removeInlineContextReference(prompt, context.id).prompt,
+                current.prompt,
+              ),
               terminalContexts: [],
             };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
@@ -3620,6 +3635,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           const placedAtCaret =
             !alreadyPresent &&
             options?.appendReference !== false &&
+            options?.insertAtCaret !== false &&
             (contextInsertionHandlers.get(threadKey)?.([reference]) ?? false);
           set((state) => {
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
@@ -3726,6 +3742,11 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           if (!threadKey) return;
           if (handler) contextInsertionHandlers.set(threadKey, handler);
           else contextInsertionHandlers.delete(threadKey);
+          return () => {
+            if (contextInsertionHandlers.get(threadKey) === handler) {
+              contextInsertionHandlers.delete(threadKey);
+            }
+          };
         },
         setReviewComments: (threadRef, comments) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef);
@@ -3876,10 +3897,11 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft: ComposerThreadDraftState = {
               ...current,
-              prompt: ensureInlineContextReferences(
-                "",
-                current.terminalContexts.map(terminalContextReference),
-              ),
+              prompt: ensureInlineContextReferences("", [
+                ...current.terminalContexts.map(terminalContextReference),
+                ...current.reviewComments.map(reviewCommentContextReference),
+                ...current.previewAnnotations.map(previewAnnotationContextReference),
+              ]),
               images: [],
               files: [],
               nonPersistedImageIds: [],

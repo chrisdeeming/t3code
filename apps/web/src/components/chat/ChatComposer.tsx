@@ -2704,6 +2704,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerDraftTarget,
       composerTerminalContexts,
       setComposerDraftTerminalContexts,
+      composerReviewComments,
+      composerPreviewAnnotations,
+      composerFiles,
+      removeComposerDraftReviewComment,
+      removeComposerDraftPreviewAnnotation,
+      removeComposerFileFromDraft,
     ],
   );
 
@@ -4639,8 +4645,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     (store) => store.setContextInsertionHandler,
   );
   useEffect(() => {
-    setContextInsertionHandler(composerDraftTarget, insertContextReferencesAtCaret);
-    return () => setContextInsertionHandler(composerDraftTarget, null);
+    return setContextInsertionHandler(composerDraftTarget, insertContextReferencesAtCaret);
   }, [composerDraftTarget, insertContextReferencesAtCaret, setContextInsertionHandler]);
 
   // File-tree drags land as mentions. Handled in the capture phase so the

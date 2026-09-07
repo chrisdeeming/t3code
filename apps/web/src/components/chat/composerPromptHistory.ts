@@ -13,7 +13,7 @@ import { PLAN_IMPLEMENTATION_PROMPT_PREFIX } from "../../proposedPlan";
 const CLAUDE_ULTRATHINK_PREFIX = "Ultrathink:\n";
 const REVIEW_COMMENT_BLOCK_PATTERN = /<review_comment\b[^>]*>[\s\S]*?<\/review_comment>/g;
 const TRAILING_LEGACY_CONTEXT =
-  /\n*<(terminal_context|element_context|preview_annotation)>\n((?:(?!<preview_annotation>)[\s\S])*?)\n<\/\1>\s*$/;
+  /\n*<(terminal_context|element_context|preview_annotation)>\n([\s\S]*?)\n<\/\1>\s*$/;
 
 /** Text sent in place of an empty prompt when a message is attachments only. */
 export const ATTACHMENT_ONLY_BOOTSTRAP_PROMPT =

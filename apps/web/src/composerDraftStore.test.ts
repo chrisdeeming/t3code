@@ -851,6 +851,17 @@ describe("composerDraftStore terminal contexts", () => {
     expect(draft?.terminalContexts.map((context) => context.id)).toEqual(["ctx-1"]);
   });
 
+  it.each(["replace", "remove", "clear"])("removes terminal links on %s", (operation) => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadRef, "Explain");
+    store.addTerminalContext(threadRef, makeTerminalContext({ id: "ctx-1" }));
+    if (operation === "replace") store.setTerminalContexts(threadRef, []);
+    else if (operation === "remove") store.removeTerminalContext(threadRef, "ctx-1");
+    else store.clearTerminalContexts(threadRef);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("Explain");
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.terminalContexts).toEqual([]);
+  });
+
   it("clears terminal contexts when clearing composer content", () => {
     useComposerDraftStore
       .getState()
@@ -2878,6 +2889,37 @@ describe("composerDraftStore inline context references", () => {
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(`${annotationLink} `);
     store.removePreviewAnnotation(threadRef, "ann-1");
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
+  });
+
+  it("keeps links for retained context when clearing text and attachments", () => {
+    const store = useComposerDraftStore.getState();
+    store.addReviewComment(threadRef, reviewComment);
+    store.addPreviewAnnotation(threadRef, annotation);
+    store.clearComposerPromptAndImages(threadRef);
+    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
+    expect(draft?.prompt).toContain(reviewLink);
+    expect(draft?.prompt).toContain(annotationLink);
+    expect(draft?.reviewComments).toEqual([reviewComment]);
+    expect(draft?.previewAnnotations).toEqual([annotation]);
+  });
+
+  it("rehydrates annotation-only drafts with their references", () => {
+    const merged = useComposerDraftStore.persist.getOptions().merge!(
+      {
+        draftsByThreadKey: {
+          [threadKeyFor(threadId)]: {
+            prompt: "",
+            attachments: [],
+            previewAnnotations: [annotation],
+          },
+        },
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(merged.draftsByThreadKey[threadKeyFor(threadId)]?.previewAnnotations).toEqual([
+      annotation,
+    ]);
+    expect(merged.draftsByThreadKey[threadKeyFor(threadId)]?.prompt).toContain(annotationLink);
   });
 
   it("adds links for persisted review comments that predate references", () => {
