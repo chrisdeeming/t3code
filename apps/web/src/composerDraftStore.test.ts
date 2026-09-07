@@ -2875,6 +2875,34 @@ describe("composerDraftStore inline context references", () => {
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
   });
 
+  it("keeps bulk-set preview annotations and their inline references in sync", () => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadRef, "Explain this preview.");
+    store.setPreviewAnnotations(threadRef, [annotation]);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(
+      `Explain this preview. ${annotationLink} `,
+    );
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.previewAnnotations).toEqual([annotation]);
+
+    const edited = { ...annotation, comment: "Updated comment" };
+    store.setPreviewAnnotations(threadRef, [edited]);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(
+      `Explain this preview. ${annotationLink} `,
+    );
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.previewAnnotations).toEqual([edited]);
+
+    store.setPreviewAnnotations(threadRef, []);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("Explain this preview.");
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.previewAnnotations).toEqual([]);
+  });
+
+  it("removes an annotation-only draft when bulk-cleared", () => {
+    const store = useComposerDraftStore.getState();
+    store.setPreviewAnnotations(threadRef, [annotation]);
+    store.setPreviewAnnotations(threadRef, []);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
+  });
+
   it("keeps links for retained context when clearing text and attachments", () => {
     const store = useComposerDraftStore.getState();
     store.addReviewComment(threadRef, reviewComment);
