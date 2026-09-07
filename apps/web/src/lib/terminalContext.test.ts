@@ -1,5 +1,7 @@
 import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
+import { collectComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import { terminalContextRecord } from "./composerContextRecords";
 
 import {
   filterTerminalContextsWithText,
@@ -27,6 +29,12 @@ function makeContext(overrides?: Partial<TerminalContextDraft>): TerminalContext
 }
 
 describe("terminalContext", () => {
+  it("folds legacy producer ids consistently in records and references", () => {
+    const context = makeContext({ id: "old terminal:one" });
+    const reference = collectComposerContextReferences(formatTerminalContextReference(context))[0];
+    expect(reference).toBeDefined();
+    expect(reference?.contextId).toBe(terminalContextRecord(context).contextId);
+  });
   it("formats terminal labels with line ranges", () => {
     expect(formatTerminalContextLabel(makeContext())).toBe("Terminal 1 lines 12-13");
     expect(
