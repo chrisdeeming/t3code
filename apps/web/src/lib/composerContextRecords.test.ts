@@ -57,6 +57,8 @@ describe("composerContextRecords", () => {
       comment: "Make this   bigger",
       targetSummary: "1 selected element",
       styleChanges: ["font-size: (unset) → 20px"],
+      styleChangeDetails: annotation.styleChanges,
+      elementIds: ["el_1"],
       screenshotContextId: "ann_1",
       elements: [
         {
