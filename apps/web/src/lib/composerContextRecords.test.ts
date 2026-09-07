@@ -146,11 +146,10 @@ describe("composerContextRecords", () => {
         attachmentId: `uploaded-${id}`,
       })),
     })!;
-    expect(
-      Schema.decodeUnknownSync(OrchestrationMessageContext)(context).records.map(
-        (record) => record.contextId,
-      ),
-    ).toEqual(["image_x", "image_image_x"]);
+    expect(decodeMessageContext(context).records.map((record) => record.contextId)).toEqual([
+      "image_x",
+      "image_image_x",
+    ]);
   });
   it("scopes colliding producer ids and links the annotation to its screenshot record", () => {
     const id = "same.id:1";
@@ -207,7 +206,7 @@ describe("composerContextRecords", () => {
         },
       ],
     })!;
-    expect(Schema.decodeUnknownSync(OrchestrationMessageContext)(context).records).toHaveLength(5);
+    expect(decodeMessageContext(context).records).toHaveLength(5);
     const preview = context.records.find((record) => record.kind === "preview-annotation");
     const image = context.records.find((record) => record.kind === "image");
     expect(preview).toMatchObject({ screenshotContextId: image!.contextId });

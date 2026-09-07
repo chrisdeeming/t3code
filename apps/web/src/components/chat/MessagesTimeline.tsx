@@ -1375,6 +1375,7 @@ function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
 
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
+  const { onImageExpand, onFileOpen } = ctx;
   const resources = useMemo(
     () => selectMessageImageResources(row.message.attachments),
     [row.message.attachments],
@@ -1502,9 +1503,9 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           attachment={attachment}
           onExpandImage={(image) => {
             const preview = buildExpandedImagePreview(userImages, image.id);
-            if (preview) ctx.onImageExpand(preview);
+            if (preview) onImageExpand(preview);
           }}
-          onOpenFile={(file) => ctx.onFileOpen(file)}
+          onOpenFile={onFileOpen}
         />
       );
     },
@@ -1514,8 +1515,8 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       userFiles,
       previewImages,
       annotationRecordIds,
-      ctx.onImageExpand,
-      ctx.onFileOpen,
+      onImageExpand,
+      onFileOpen,
     ],
   );
 
