@@ -330,25 +330,27 @@ export function previewAnnotationFromRecord(
     pageTitle: record.pageTitle,
     comment: record.comment,
     elements: (record.elements ?? []).map((element, index) => ({
-      id: `${record.contextId}-element-${index + 1}`,
+      id: record.elementIds?.[index] ?? `${record.contextId}-element-${index + 1}`,
       rect: { x: 0, y: 0, width: 0, height: 0 },
       element: { ...element, stack: [], pickedAt: new Date().toISOString() },
     })),
     regions: [],
     strokes: [],
-    styleChanges: record.styleChanges.flatMap((change, index) => {
-      const match = /^(.+?): (.*) → (.*)$/.exec(change);
-      if (!match) return [];
-      return [
-        {
-          targetId: `${record.contextId}-element-${index + 1}`,
-          selector: null,
-          property: match[1]!,
-          previousValue: match[2] === "(unset)" ? "" : match[2]!,
-          value: match[3]!,
-        },
-      ];
-    }),
+    styleChanges:
+      record.styleChangeDetails ??
+      record.styleChanges.flatMap((change) => {
+        const match = /^(.+?): ([\s\S]*?) → ([\s\S]*)$/.exec(change);
+        if (!match) return [];
+        return [
+          {
+            targetId: record.elementIds?.[0] ?? `${record.contextId}-element-1`,
+            selector: null,
+            property: match[1]!,
+            previousValue: match[2] === "(unset)" ? "" : match[2]!,
+            value: match[3]!,
+          },
+        ];
+      }),
     screenshot: null,
     createdAt: new Date().toISOString(),
   };
