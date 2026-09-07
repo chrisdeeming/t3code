@@ -3,6 +3,58 @@ import { describe, expect, it } from "vite-plus/test";
 import { upgradeLegacyContextMessage } from "./composerContextLegacy.ts";
 
 describe("upgradeLegacyContextMessage", () => {
+  const review =
+    '<review_comment sectionId="s" filePath="f.ts" startIndex="1" endIndex="1">note</review_comment>';
+
+  it.each(["terminal_context", "element_context"])(
+    "keeps mixed messages atomic for malformed %s",
+    (tag) => {
+      const text = `Before ${review} after\n<${tag}>\ninvalid entry\n</${tag}>`;
+      expect(upgradeLegacyContextMessage(text)).toEqual({ text, records: [] });
+    },
+  );
+
+  it.each([
+    "unparsed content",
+    "- Invalid header:\n  html: text",
+    "- <div>:\n  html:\n    <div />\nunparsed content",
+  ])("preserves malformed nested preview elements: %s", (body) => {
+    const text = `Before ${review} after\n<preview_annotation>\nPage: Example\n<element_context>\n${body}\n</element_context>\n</preview_annotation>`;
+    expect(upgradeLegacyContextMessage(text)).toEqual({ text, records: [] });
+  });
+
+  it("allows an empty nested element block", () => {
+    const result = upgradeLegacyContextMessage(
+      "<preview_annotation>\nPage: Example\n<element_context>\n\n</element_context>\n</preview_annotation>",
+    );
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0]).toMatchObject({ kind: "preview-annotation", pageTitle: "Example" });
+  });
+
+  it.each([3, 4, 6])("preserves closing review tags inside a %i-backtick fence", (length) => {
+    const fence = "`".repeat(length);
+    const diff = '+ const tag = "</review_comment>";\n</review_comment>\n+ final line';
+    const block = `<review_comment sectionId="s" filePath="f.ts" startIndex="1" endIndex="1">\nComment\n${fence}diff\n${diff}\n${fence}\n</review_comment>`;
+    const result = upgradeLegacyContextMessage(`Before ${block} between ${review} after`);
+    expect(result.text).toBe(
+      "Before [f.ts line](t3-context://v1/review-comment/legacy_review-comment_1) between [f.ts line](t3-context://v1/review-comment/legacy_review-comment_2) after",
+    );
+    expect(result.records).toHaveLength(2);
+    expect(result.records[0]).toMatchObject({ text: "Comment", diff, fenceLanguage: "diff" });
+  });
+
+  it("does not close a review fence at a shorter backtick run", () => {
+    const diff = "```\n</review_comment>\n+ remaining source";
+    const text = `<review_comment sectionId="s" filePath="f.ts" startIndex="1" endIndex="1">\nNote\n\`\`\`\`diff\n${diff}\n\`\`\`\`\n</review_comment>`;
+    expect(upgradeLegacyContextMessage(text).records[0]).toMatchObject({ text: "Note", diff });
+  });
+
+  it("preserves a review with an unterminated fence", () => {
+    const text =
+      '<review_comment sectionId="s" filePath="f.ts" startIndex="1" endIndex="1">\nNote\n```diff\n+ source\n</review_comment>';
+    expect(upgradeLegacyContextMessage(text)).toEqual({ text, records: [] });
+  });
+
   it.each([
     `- ${"x".repeat(256)} line 1:\n  output`,
     `- Build line 1:\n  ${"x".repeat(64_001)}`,
