@@ -3081,6 +3081,32 @@ describe("composerDraftStore attachment references", () => {
     expect(draft?.prompt).toBe("see [notes.txt](t3-context://v1/file/file_fresh-1) ok");
   });
 
+  it("restores a file-only draft with a reference and preserves it through prompt edits", () => {
+    const store = useComposerDraftStore.getState();
+    store.addFiles(
+      threadRef,
+      [
+        {
+          type: "file",
+          id: "restored",
+          name: "notes.txt",
+          mimeType: "text/plain",
+          sizeBytes: 3,
+          file: null,
+          uploadedAttachmentId: "uploaded",
+          uploadEnvironmentId: TEST_ENVIRONMENT_ID,
+        },
+      ],
+      { appendReference: true },
+    );
+    const restored = draftFor(threadId, TEST_ENVIRONMENT_ID)!;
+    expect(restored.prompt).toBe("[notes.txt](t3-context://v1/file/file_restored) ");
+    store.setPrompt(threadRef, `${restored.prompt}explain this`);
+    const edited = draftFor(threadId, TEST_ENVIRONMENT_ID)!;
+    expect(edited.files.map((file) => file.id)).toEqual(["restored"]);
+    expect(edited.prompt).toContain("t3-context://v1/file/file_restored");
+  });
+
   it.each(["old.file:1", "file-1"])(
     "rewrites persisted attachment references before removal: %s",
     (id) => {
