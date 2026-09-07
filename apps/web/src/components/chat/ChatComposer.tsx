@@ -3862,6 +3862,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       promptRef,
       setComposerDraftPrompt,
       takeStashEntry,
+      importContextRecords,
     ],
   );
 
@@ -4110,9 +4111,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
   }, [
     clearComposerDraftPromptAndImages,
+    clearComposerDraftTerminalContexts,
+    setComposerDraftPrompt,
     composerDraftTarget,
     composerFilesRef,
     composerImagesRef,
+    composerTerminalContextsRef,
+    composerReviewComments,
+    composerPreviewAnnotations,
+    removeComposerDraftReviewComment,
+    removeComposerDraftPreviewAnnotation,
     environmentId,
     finalizeStashEntryImages,
     promptRef,
