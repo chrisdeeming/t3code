@@ -1,3 +1,7 @@
+import {
+  COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS,
+  COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS,
+} from "@t3tools/contracts";
 import type {
   ComposerContextId,
   ComposerContextRecord,
@@ -32,6 +36,18 @@ import type { ReviewCommentContext } from "~/reviewCommentContext";
  */
 
 const PREVIEW_LABEL_MAX_CHARS = 48;
+
+/**
+ * A review selection can be arbitrarily large, but the wire schema bounds `text` and `diff`.
+ * Clamp at the same boundary so an oversized selection still sends, marked where it was cut,
+ * rather than failing to encode at send time.
+ */
+const TRUNCATION_MARKER = "\n… truncated …";
+
+function clampContextText(value: string, max: number): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, Math.max(0, max - TRUNCATION_MARKER.length))}${TRUNCATION_MARKER}`;
+}
 
 function basename(filePath: string): string {
   return filePath.split(/[\\/]/).at(-1) ?? filePath;
@@ -117,8 +133,8 @@ export function reviewCommentContextRecord(
     startIndex: comment.startIndex,
     endIndex: comment.endIndex,
     rangeLabel: comment.rangeLabel,
-    text: comment.text,
-    diff: comment.diff,
+    text: clampContextText(comment.text, COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS),
+    diff: clampContextText(comment.diff, COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS),
     ...(comment.fenceLanguage !== undefined ? { fenceLanguage: comment.fenceLanguage } : {}),
     ...(comment.pullRequest !== undefined ? { pullRequest: comment.pullRequest } : {}),
   };
