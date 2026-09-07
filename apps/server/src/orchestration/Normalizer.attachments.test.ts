@@ -59,6 +59,22 @@ function turnStartCommand(input: {
 }
 
 describe("normalizeDispatchCommand attachments", () => {
+  it.effect("rejects duplicate client ids before persisting attachments", () =>
+    Effect.gen(function* () {
+      const error = yield* normalizeDispatchCommand(
+        turnStartCommand({
+          attachments: [
+            { id: "same", dataUrl: "data:image/png;base64,cGl4ZWxz", sizeBytes: 6 },
+            { id: "same", dataUrl: "data:image/png;base64,b3RoZXI=", sizeBytes: 5 },
+          ],
+        }),
+      ).pipe(Effect.flip);
+      expect(error.message).toContain("duplicate attachment id");
+      const config = yield* ServerConfig.ServerConfig;
+      expect(NodeFS.readdirSync(config.attachmentsDir)).toEqual([]);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect("rebinds image context records from the client id to the persisted id", () =>
     Effect.gen(function* () {
       const normalized = yield* normalizeDispatchCommand(

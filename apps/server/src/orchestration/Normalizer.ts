@@ -150,6 +150,16 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
         message: `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} files per question response.`,
       });
     }
+    const clientAttachmentIds = new Set<string>();
+    for (const attachment of attachments) {
+      if (attachment.id === undefined) continue;
+      if (clientAttachmentIds.has(attachment.id)) {
+        return yield* new OrchestrationDispatchCommandError({
+          message: `Attachment '${attachment.name}' cannot be sent: duplicate attachment id.`,
+        });
+      }
+      clientAttachmentIds.add(attachment.id);
+    }
     const claimedAttachmentPaths: string[] = [];
     // Context records bind to attachments by the id the client knew; they follow the rename.
     const finalAttachmentIdByClientId = new Map<string, string>();
