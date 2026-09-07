@@ -4,6 +4,11 @@ import {
   type PreviewAnnotationPayload,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+
+import {
+  formatInlineContextReference,
+  removeInlineContextReference,
+} from "./composerContextReferences";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -14,7 +19,10 @@ import {
   resolveUserMessageContext,
   reviewCommentContextRecord,
   terminalContextRecord,
+  terminalContextReference,
 } from "./composerContextRecords";
+
+const decodeMessageContext = Schema.decodeUnknownSync(OrchestrationMessageContext);
 
 const annotation: PreviewAnnotationPayload = {
   id: "ann_1",
@@ -186,6 +194,51 @@ describe("composerContextRecords", () => {
         },
       ],
     });
+  });
+
+  it("removes an expired terminal chip by its kind-scoped id, not the producer id", () => {
+    const context = {
+      id: "term-1",
+      threadId: ThreadId.make("t"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      terminalId: "default",
+      terminalLabel: "Terminal 1",
+      lineStart: 3,
+      lineEnd: 4,
+      text: "boom",
+    };
+    const reference = terminalContextReference(context);
+    expect(reference.contextId).toBe("terminal_term-1");
+
+    const prompt = `prose ${formatInlineContextReference(reference)} tail`;
+    // The send path drops expired excerpts; the raw producer id matches nothing and would
+    // leave the chip behind.
+    expect(removeInlineContextReference(prompt, context.id).prompt).toBe(prompt);
+    expect(removeInlineContextReference(prompt, reference.contextId).prompt).toBe("prose tail");
+  });
+
+  it("clamps an oversized review selection so the record still encodes", () => {
+    const build = (diffLength: number) =>
+      reviewCommentContextRecord({
+        id: "rc-big",
+        sectionId: "file:a/b.ts",
+        sectionTitle: "File comment",
+        filePath: "a/b.ts",
+        startIndex: 0,
+        endIndex: 1,
+        rangeLabel: "L1",
+        text: "Why?",
+        diff: "d".repeat(diffLength),
+      });
+
+    // At the limit the diff is untouched; one character over it is clamped, and both encode.
+    const atLimit = build(32_000);
+    expect(atLimit.diff).toHaveLength(32_000);
+    const overLimit = build(32_001);
+    expect(overLimit.diff.length).toBeLessThanOrEqual(32_000);
+    expect(overLimit.diff.endsWith("… truncated …")).toBe(true);
+    expect(() => decodeMessageContext({ version: 1, records: [atLimit] })).not.toThrow();
+    expect(() => decodeMessageContext({ version: 1, records: [overLimit] })).not.toThrow();
   });
 
   it("builds terminal and review records and a message context in draft order", () => {
