@@ -7,11 +7,14 @@ import * as Schema from "effect/Schema";
 
 export { COMPOSER_CONTEXT_CLIPBOARD_MIME };
 
-const MAX_FRAGMENT_CHARS = 2_000_000;
+const MAX_FRAGMENT_CHARS = 16_000_000;
 const decodeFragment = Schema.decodeUnknownOption(ComposerContextClipboardFragment);
 
-export function encodeComposerContextFragment(fragment: ComposerContextClipboardFragment): string {
-  return JSON.stringify(fragment);
+export function encodeComposerContextFragment(
+  fragment: ComposerContextClipboardFragment,
+): string | null {
+  const encoded = JSON.stringify(fragment);
+  return encoded.length <= MAX_FRAGMENT_CHARS ? encoded : null;
 }
 
 /** Clipboard data is untrusted: anything that is not a valid version-1 fragment is ignored. */
