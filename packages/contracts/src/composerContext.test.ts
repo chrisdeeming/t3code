@@ -162,6 +162,30 @@ describe("ComposerContextRecord", () => {
 });
 
 describe("OrchestrationMessageContext", () => {
+  it("rejects aggregate context size even when each record is valid", () => {
+    const record = {
+      ...knownRecords["preview-annotation"],
+      styleChangeDetails: Array.from({ length: 200 }, () => ({
+        targetId: "target",
+        selector: null,
+        property: "content",
+        previousValue: "x".repeat(8_000),
+        value: "y".repeat(8_000),
+      })),
+    };
+    expect(Option.isSome(decodeRecord(record))).toBe(true);
+    expect(() => decodeContext({ version: 1, records: [record] })).not.toThrow();
+    expect(() =>
+      decodeContext({
+        version: 1,
+        records: Array.from({ length: 6 }, (_, index) => ({
+          ...record,
+          contextId: `ctx_${index}`,
+        })),
+      }),
+    ).toThrow();
+  });
+
   it("normalizes decoded record identifiers", () => {
     const context = decodeContext({
       version: 1,
