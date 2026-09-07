@@ -184,6 +184,8 @@ export function previewAnnotationContextRecord(
         }
       : {}),
     styleChangeDetails: annotation.styleChanges.map((change) => ({ ...change })),
+    ...(annotation.regions.length > 0 ? { regionCount: annotation.regions.length } : {}),
+    ...(annotation.strokes.length > 0 ? { strokeCount: annotation.strokes.length } : {}),
     ...(options?.screenshotContextId !== undefined
       ? { screenshotContextId: toKindScopedComposerContextId("image", options.screenshotContextId) }
       : {}),
@@ -351,8 +353,19 @@ export function previewAnnotationFromRecord(
       rect: { x: 0, y: 0, width: 0, height: 0 },
       element: { ...element, stack: [], pickedAt: new Date().toISOString() },
     })),
-    regions: [],
-    strokes: [],
+    // Geometry does not travel, but the counts do, so the rebuilt summary still reports
+    // what the annotation marked.
+    regions: Array.from({ length: record.regionCount ?? 0 }, (_unused, index) => ({
+      id: `${record.contextId}-region-${index + 1}`,
+      rect: { x: 0, y: 0, width: 0, height: 0 },
+    })),
+    strokes: Array.from({ length: record.strokeCount ?? 0 }, (_unused, index) => ({
+      id: `${record.contextId}-stroke-${index + 1}`,
+      color: "",
+      width: 0,
+      points: [],
+      bounds: { x: 0, y: 0, width: 0, height: 0 },
+    })),
     styleChanges:
       record.styleChangeDetails ??
       record.styleChanges.flatMap((change) => {
@@ -371,4 +384,21 @@ export function previewAnnotationFromRecord(
     screenshot: null,
     createdAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Whether two records carry the same payload, ignoring the label (display text, never
+ * identity). Context ids are a folded form of producer ids, so a collision alone does not mean
+ * the records are the same excerpt; the paste path compares payloads before de-duplicating.
+ */
+export function isSameComposerContextPayload(
+  left: ComposerContextRecord,
+  right: ComposerContextRecord,
+): boolean {
+  if (left.kind !== right.kind) return false;
+  const stableKey = (record: ComposerContextRecord) => {
+    const { label: _label, ...rest } = record;
+    return JSON.stringify(rest, Object.keys(rest).toSorted());
+  };
+  return stableKey(left) === stableKey(right);
 }

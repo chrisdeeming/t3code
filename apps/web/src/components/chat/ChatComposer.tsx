@@ -188,6 +188,7 @@ import {
 } from "~/lib/composerContextReferences";
 import {
   asKnownContextRecord,
+  isSameComposerContextPayload,
   uploadedAttachmentContextRecord,
   fileContextReference,
   imageContextReference,
@@ -1599,10 +1600,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const addComposerDraftFiles = useComposerDraftStore((store) => store.addFiles);
   const removeComposerDraftFile = useComposerDraftStore((store) => store.removeFile);
   const setComposerDraftFileUpload = useComposerDraftStore((store) => store.setFileUpload);
-  const addComposerDraftReviewComment = useComposerDraftStore((store) => store.addReviewComment);
-  const addComposerDraftPreviewAnnotation = useComposerDraftStore(
-    (store) => store.addPreviewAnnotation,
-  );
   const insertComposerDraftTerminalContext = useComposerDraftStore(
     (store) => store.insertTerminalContext,
   );
@@ -2407,6 +2404,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const buildContextClipboardFragment = useCallback(
     (contextIds: ReadonlyArray<string>): string | null => {
       const wanted = new Set(contextIds);
+      // An annotation's screenshot is referenced by the annotation record, not by the copied
+      // text. Pull it in so the round-trip keeps the image the annotation points at.
+      for (const annotation of composerPreviewAnnotations) {
+        if (
+          wanted.has(previewAnnotationContextId(annotation.id)) &&
+          composerImages.some((image) => image.id === annotation.id)
+        ) {
+          wanted.add(toKindScopedComposerContextId("image", annotation.id));
+        }
+      }
       const records: ComposerContextRecord[] = [
         ...composerTerminalContexts
           .filter((c) => wanted.has(terminalContextReference(c).contextId))
@@ -2540,46 +2547,59 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ): ReadonlyMap<string, string> => {
       const rewritten = new Map<string, string>();
       for (const candidate of records) {
-        if (composerContextRecords.has(candidate.contextId)) continue;
+        // Producer ids fold into context ids, so two different excerpts can collide. Only skip
+        // when the draft already holds the same payload; a colliding but different record is
+        // re-minted under a fresh id so both survive the paste.
+        const existing = composerContextRecords.get(candidate.contextId);
+        const existingRecord =
+          existing?.kind === "terminal"
+            ? terminalContextRecord(existing.record)
+            : existing?.kind === "review-comment"
+              ? reviewCommentContextRecord(existing.record)
+              : existing?.kind === "preview-annotation"
+                ? previewAnnotationContextRecord(existing.record)
+                : undefined;
+        if (existingRecord && isSameComposerContextPayload(existingRecord, candidate)) continue;
         const record = asKnownContextRecord(candidate);
         if (!record) continue;
+        const conflicts = existing !== undefined;
         switch (record.kind) {
           case "terminal": {
             const threadId = activeThread?.id ?? activeThreadId;
             if (!threadId) break;
-            const draft = terminalContextDraftFromRecord(record, threadId);
+            const imported = terminalContextDraftFromRecord(record, threadId);
+            const draft = conflicts ? { ...imported, id: randomUUID() } : imported;
             addComposerDraftTerminalContexts(composerDraftTarget, [draft], {
               appendReference: false,
             });
             rewritten.set(record.contextId, terminalContextReference(draft).contextId);
             break;
           }
-          case "review-comment":
-            addComposerDraftReviewComment(composerDraftTarget, reviewCommentFromRecord(record), {
+          case "review-comment": {
+            const imported = reviewCommentFromRecord(record);
+            const comment = conflicts ? { ...imported, id: randomUUID() } : imported;
+            addComposerDraftReviewComment(composerDraftTarget, comment, {
               appendReference: false,
             });
-            rewritten.set(
-              record.contextId,
-              reviewCommentContextId(reviewCommentFromRecord(record).id),
-            );
+            rewritten.set(record.contextId, reviewCommentContextId(comment.id));
             break;
-          case "preview-annotation":
-            addComposerDraftPreviewAnnotation(
-              composerDraftTarget,
-              previewAnnotationFromRecord(record),
-              { appendReference: false },
-            );
-            rewritten.set(
-              record.contextId,
-              previewAnnotationContextId(previewAnnotationFromRecord(record).id),
-            );
+          }
+          case "preview-annotation": {
+            const imported = previewAnnotationFromRecord(record);
+            const annotation = conflicts ? { ...imported, id: randomUUID() } : imported;
+            addComposerDraftPreviewAnnotation(composerDraftTarget, annotation, {
+              appendReference: false,
+            });
+            rewritten.set(record.contextId, previewAnnotationContextId(annotation.id));
             break;
+          }
           case "image":
           case "file": {
-            if (sourceEnvironmentId === null) {
+            if (sourceEnvironmentId === null && !conflicts) {
               rewritten.set(record.contextId, record.contextId);
               break;
             }
+            if (sourceEnvironmentId === null) break;
             const localId = randomUUID();
             rewritten.set(record.contextId, toKindScopedComposerContextId(record.kind, localId));
             void importAttachmentRecord(record, localId, sourceEnvironmentId);

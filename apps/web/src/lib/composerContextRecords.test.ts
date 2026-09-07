@@ -15,6 +15,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   attachmentContextRecord,
   buildMessageContext,
+  isSameComposerContextPayload,
   previewAnnotationContextLabel,
   previewAnnotationContextRecord,
   previewAnnotationFromRecord,
@@ -352,6 +353,42 @@ describe("composerContextRecords", () => {
     expect(overLimit.diff.endsWith("… truncated …")).toBe(true);
     expect(() => decodeMessageContext({ version: 1, records: [atLimit] })).not.toThrow();
     expect(() => decodeMessageContext({ version: 1, records: [overLimit] })).not.toThrow();
+  });
+
+  it("keeps a region-only annotation's target summary and screenshot across a round trip", () => {
+    const regionOnly: PreviewAnnotationPayload = {
+      ...annotation,
+      elements: [],
+      styleChanges: [],
+      regions: [{ id: "rg_1", rect: { x: 1, y: 2, width: 3, height: 4 } }],
+    };
+    const record = previewAnnotationContextRecord(regionOnly, { screenshotContextId: "ann_1" });
+    expect(record.targetSummary).toBe("1 marked region");
+    expect(record.screenshotContextId).toBe("image_ann_1");
+
+    // Re-encoding what a paste rebuilt must not empty the summary or drop the screenshot.
+    const reencoded = previewAnnotationContextRecord(previewAnnotationFromRecord(record), {
+      screenshotContextId: "ann_1",
+    });
+    expect(reencoded.targetSummary).toBe("1 marked region");
+    expect(reencoded.screenshotContextId).toBe("image_ann_1");
+  });
+
+  it("treats colliding ids with different payloads as distinct records", () => {
+    const base = terminalContextRecord({
+      id: "term-1",
+      threadId: ThreadId.make("t"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      terminalId: "default",
+      terminalLabel: "Terminal 1",
+      lineStart: 1,
+      lineEnd: 2,
+      text: "A",
+    });
+    expect(isSameComposerContextPayload(base, { ...base })).toBe(true);
+    // Labels are display text, never identity.
+    expect(isSameComposerContextPayload(base, { ...base, label: "different" })).toBe(true);
+    expect(isSameComposerContextPayload(base, { ...base, text: "B" })).toBe(false);
   });
 
   it("builds terminal and review records and a message context in draft order", () => {
