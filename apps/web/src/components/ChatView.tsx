@@ -294,6 +294,7 @@ import {
 import {
   ensureInlineContextReferences,
   removeInlineContextReference,
+  stripInlineContextReferences,
 } from "../lib/composerContextReferences";
 import {
   buildMessageContext,
@@ -7277,7 +7278,7 @@ export default function ChatView(props: ChatViewProps) {
         firstComposerImageName = firstComposerImage.name;
       }
     }
-    let titleSeed = assistantCitationsToPlainText(trimmed);
+    let titleSeed = assistantCitationsToPlainText(stripInlineContextReferences(trimmed)).trim();
     if (!titleSeed) {
       if (firstComposerImageName) {
         titleSeed = `Image: ${firstComposerImageName}`;

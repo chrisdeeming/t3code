@@ -851,6 +851,17 @@ describe("composerDraftStore terminal contexts", () => {
     expect(draft?.terminalContexts.map((context) => context.id)).toEqual(["ctx-1"]);
   });
 
+  it("normalizes legacy terminal ids before storing and removing their references", () => {
+    const store = useComposerDraftStore.getState();
+    store.setTerminalContexts(threadRef, [makeTerminalContext({ id: "old terminal:one" })]);
+    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID)!;
+    const id = draft.terminalContexts[0]!.id;
+    expect(id).toMatch(/^[a-z0-9_-]+$/i);
+    expect(draft.prompt).toContain(`/terminal/${id})`);
+    store.removeTerminalContext(threadRef, id);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
+  });
+
   it.each(["replace", "remove", "clear"])("removes terminal links on %s", (operation) => {
     const store = useComposerDraftStore.getState();
     store.setPrompt(threadRef, "Explain");
