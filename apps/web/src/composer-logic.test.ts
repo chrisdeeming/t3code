@@ -321,7 +321,7 @@ describe("filterComposerPullRequestMatches", () => {
     },
   ];
 
-  it("matches and de-duplicates number fragments within one repository newest first", () => {
+  it("matches and de-duplicates number fragments within one repository, exact match first", () => {
     expect(
       filterComposerPullRequestMatches({
         entries,
@@ -330,7 +330,31 @@ describe("filterComposerPullRequestMatches", () => {
         query: "7",
         limit: 10,
       }).map((entry) => entry.number),
-    ).toEqual([8987, 27, 7]);
+    ).toEqual([7, 8987, 27]);
+  });
+
+  it("keeps an older exact match when newer substring matches would fill the limit", () => {
+    const exact = {
+      number: 7,
+      projectId: "project-1",
+      repository: "t3tools/t3code",
+      updatedAt: "2020-01-01T00:00:00.000Z",
+    };
+    const newerSubstringMatches = Array.from({ length: 12 }, (_unused, index) => ({
+      number: 700 + index,
+      projectId: "project-1",
+      repository: "t3tools/t3code",
+      updatedAt: `2026-09-${String(index + 1).padStart(2, "0")}T12:00:00.000Z`,
+    }));
+    const matches = filterComposerPullRequestMatches({
+      entries: [...newerSubstringMatches, exact],
+      projectId: "project-1",
+      repository: "t3tools/t3code",
+      query: "7",
+      limit: 10,
+    });
+    expect(matches[0]?.number).toBe(7);
+    expect(matches).toHaveLength(10);
   });
 
   it("uses an empty query for a capped recent list", () => {
