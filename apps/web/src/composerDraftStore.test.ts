@@ -1038,7 +1038,7 @@ describe("composerDraftStore context persistence", () => {
     store.addTerminalContext(threadRef, terminal);
     store.addPreviewAnnotation(threadRef, annotation);
     const terminalLink = formatTerminalContextReference(terminal);
-    const prompt = `Inspect ${terminalLink}. Apply [Retry note](t3-context://v1/preview-annotation/annotation-retry-note). Compare ${terminalLink} again.`;
+    const prompt = `Inspect ${terminalLink}. Apply [Retry note](t3-context://v1/preview-annotation/preview-annotation_retry-note). Compare ${terminalLink} again.`;
     store.setPrompt(threadRef, prompt);
     let state = useComposerDraftStore.getState();
     const merge = useComposerDraftStore.persist.getOptions().merge!;
@@ -1071,7 +1071,9 @@ describe("composerDraftStore context persistence", () => {
     );
     const draft = state.draftsByThreadKey[scopedThreadKey(threadRef)];
     expect(draft?.previewAnnotations).toEqual([annotation]);
-    expect(draft?.prompt).toContain("t3-context://v1/preview-annotation/annotation-retry-note");
+    expect(draft?.prompt).toContain(
+      "t3-context://v1/preview-annotation/preview-annotation_retry-note",
+    );
   });
 });
 

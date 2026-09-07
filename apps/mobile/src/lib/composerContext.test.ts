@@ -52,6 +52,22 @@ const annotation = {
 };
 
 describe("mobile composer context", () => {
+  it("does not evict live recovery payloads from the editor's bounded undo history", () => {
+    const records = Array.from({ length: 400 }, (_, index) => ({
+      ...terminal,
+      contextId: ComposerContextId.make(`terminal-${index}`),
+    }));
+    const text = records.map(formatComposerContextReference).join(" ");
+    const restore = createComposerContextHistory();
+    expect(restore(text, { version: 1, records })?.records).toEqual(records);
+    expect(
+      restore(records.slice(1).map(formatComposerContextReference).join(" "), {
+        version: 1,
+        records,
+      })?.records,
+    ).toEqual(records.slice(1));
+  });
+
   it("blocks a context payload that exceeds the aggregate wire budget", () => {
     const record = {
       ...annotation,

@@ -51,7 +51,9 @@ export function createComposerContextHistory() {
       records.delete(record.contextId);
       records.set(record.contextId, record);
     }
-    while (records.size > COMPOSER_CONTEXT_MAX_RECORDS) {
+    // Recovery drafts can exceed the send cap. Evict undo-only entries, never live payloads.
+    const limit = Math.max(COMPOSER_CONTEXT_MAX_RECORDS, current?.records.length ?? 0);
+    while (records.size > limit) {
       const oldest = records.keys().next().value;
       if (oldest === undefined) break;
       records.delete(oldest);
