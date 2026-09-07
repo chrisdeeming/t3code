@@ -25,6 +25,13 @@ function forward(position: ComposerPromptHistoryPosition | null, currentPrompt: 
 }
 
 describe("recallableComposerPrompt", () => {
+  it("strips the whole annotation when its body contains an opening annotation tag", () => {
+    expect(
+      recallableComposerPrompt(
+        "Prompt\n<preview_annotation>\nouter literal\n<preview_annotation>\ninner\n</preview_annotation>",
+      ),
+    ).toBe("Prompt");
+  });
   it("strips legacy send-time context blocks and the ultrathink prefix", () => {
     const sent =
       "Ultrathink:\nInvestigate this\n\n<terminal_context>\n- Terminal 1 lines 12-13:\n  12 | git status\n  13 | On branch main\n</terminal_context>\n\n<element_context>\n- <button>:\n  url: https://example.com\n</element_context>";
