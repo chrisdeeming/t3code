@@ -43,6 +43,15 @@ export function toComposerContextId(producerId: string): ComposerContextId {
   return `${slug || "ctx"}-${fnv1a32(producerId)}` as ComposerContextId;
 }
 
+/** Kind namespaces also survive import, where a record id becomes the new producer id. */
+export function toKindScopedComposerContextId(
+  kind: ComposerContextKind,
+  producerId: string,
+): ComposerContextId {
+  const prefix = `${kind}_`;
+  return toComposerContextId(producerId.startsWith(prefix) ? producerId : `${prefix}${producerId}`);
+}
+
 export function formatInlineContextReference(reference: ComposerContextReference): string {
   return formatComposerContextReference({
     kind: reference.kind,

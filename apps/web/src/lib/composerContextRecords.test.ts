@@ -1,4 +1,9 @@
-import { ThreadId, type PreviewAnnotationPayload } from "@t3tools/contracts";
+import {
+  OrchestrationMessageContext,
+  ThreadId,
+  type PreviewAnnotationPayload,
+} from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -44,11 +49,73 @@ const annotation: PreviewAnnotationPayload = {
 };
 
 describe("composerContextRecords", () => {
+  it("scopes colliding producer ids and links the annotation to its screenshot record", () => {
+    const id = "same.id:1";
+    const context = buildMessageContext({
+      terminalContexts: [
+        {
+          id,
+          threadId: ThreadId.make("t1"),
+          terminalId: "default",
+          terminalLabel: "Terminal",
+          lineStart: 1,
+          lineEnd: 1,
+          text: "output",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      reviewComments: [
+        {
+          id,
+          sectionId: "s",
+          sectionTitle: "Review",
+          filePath: "file.ts",
+          startIndex: 0,
+          endIndex: 0,
+          rangeLabel: "L1",
+          text: "Review",
+          diff: "",
+        },
+      ],
+      previewAnnotations: [{ ...annotation, id }],
+      attachments: [
+        {
+          attachment: {
+            type: "image",
+            id,
+            name: "shot.png",
+            mimeType: "image/png",
+            sizeBytes: 1,
+            file: new File(["x"], "shot.png"),
+            previewUrl: "blob:shot",
+          },
+          attachmentId: "uploaded-image",
+        },
+        {
+          attachment: {
+            type: "file",
+            id,
+            name: "file.txt",
+            mimeType: "text/plain",
+            sizeBytes: 1,
+            file: null,
+          },
+          attachmentId: "uploaded-file",
+        },
+      ],
+    })!;
+    expect(Schema.decodeUnknownSync(OrchestrationMessageContext)(context).records).toHaveLength(5);
+    const preview = context.records.find((record) => record.kind === "preview-annotation");
+    const image = context.records.find((record) => record.kind === "image");
+    expect(preview).toMatchObject({ screenshotContextId: image!.contextId });
+    expect(image).toMatchObject({ attachmentId: "uploaded-image" });
+  });
+
   it("builds a preview annotation record with element details and readable style changes", () => {
     expect(previewAnnotationContextLabel(annotation)).toBe("Make this bigger");
     expect(previewAnnotationContextRecord(annotation, { screenshotContextId: "ann_1" })).toEqual({
       version: 1,
-      contextId: "annotation-ann_1",
+      contextId: "preview-annotation_ann_1",
       kind: "preview-annotation",
       label: "Make this bigger",
       annotationId: "ann_1",
@@ -59,7 +126,7 @@ describe("composerContextRecords", () => {
       styleChanges: ["font-size: (unset) → 20px"],
       styleChangeDetails: annotation.styleChanges,
       elementIds: ["el_1"],
-      screenshotContextId: "ann_1",
+      screenshotContextId: "image_ann_1",
       elements: [
         {
           pageUrl: "http://localhost:3000/checkout",
@@ -122,8 +189,8 @@ describe("composerContextRecords", () => {
       previewAnnotations: [annotation],
     });
     expect(context?.records.map((record) => record.contextId)).toEqual([
-      "rc-1",
-      "annotation-ann_1",
+      "review-comment_rc-1",
+      "preview-annotation_ann_1",
     ]);
     expect(
       buildMessageContext({ terminalContexts: [], reviewComments: [], previewAnnotations: [] }),
@@ -150,7 +217,7 @@ describe("composerContextRecords", () => {
         ],
       },
     });
-    expect(structured.recordsById.get("rc-1")?.kind).toBe("review-comment");
+    expect(structured.recordsById.get("review-comment_rc-1")?.kind).toBe("review-comment");
     const legacy = resolveUserMessageContext({
       text: "hi\n\n<terminal_context>\n- T line 1:\n  1 | x\n</terminal_context>",
     });
@@ -175,7 +242,7 @@ describe("attachment context records", () => {
     });
     expect(image).toEqual({
       version: 1,
-      contextId: "img-1",
+      contextId: "image_img-1",
       kind: "image",
       label: "shot.png",
       attachmentId: "pending-abc",
@@ -195,7 +262,11 @@ describe("attachment context records", () => {
       },
       attachmentId: "pending-def",
     });
-    expect(file).toMatchObject({ kind: "file", contextId: "file-1", attachmentId: "pending-def" });
+    expect(file).toMatchObject({
+      kind: "file",
+      contextId: "file_file-1",
+      attachmentId: "pending-def",
+    });
     const context = buildMessageContext({
       terminalContexts: [],
       reviewComments: [],
@@ -231,7 +302,7 @@ describe("producer ids that do not fit the grammar", () => {
       text: "",
       diff: "",
     });
-    expect(record.contextId).toMatch(/^pull-request-finding-42-[0-9a-f]{8}$/);
+    expect(record.contextId).toMatch(/^review-comment_pull-request-finding-42-[0-9a-f]{8}$/);
     expect(
       resolveUserMessageContext({
         text: `[b.ts L1](t3-context://v1/review-comment/${record.contextId})`,
