@@ -1,7 +1,6 @@
 import type {
   ComposerContextId,
   ComposerContextRecord,
-  ElementContextDetails,
   FileContextRecord,
   ImageContextRecord,
   KnownComposerContextRecord,
