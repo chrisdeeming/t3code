@@ -49,6 +49,28 @@ const annotation: PreviewAnnotationPayload = {
 };
 
 describe("composerContextRecords", () => {
+  it("does not bind an annotation screenshot to a same-ID file", () => {
+    const context = buildMessageContext({
+      terminalContexts: [],
+      reviewComments: [],
+      previewAnnotations: [annotation],
+      attachments: [
+        {
+          attachment: {
+            type: "file",
+            id: annotation.id,
+            name: "notes.txt",
+            mimeType: "text/plain",
+            sizeBytes: 1,
+            file: null,
+          },
+          attachmentId: "uploaded-file",
+        },
+      ],
+    })!;
+    expect(context.records.map((record) => record.kind)).toEqual(["preview-annotation", "file"]);
+    expect(context.records[0]).not.toHaveProperty("screenshotContextId");
+  });
   it("builds distinct records for producer IDs that differ by a kind prefix", () => {
     const context = buildMessageContext({
       terminalContexts: [],
