@@ -9,6 +9,17 @@ import {
 } from "./composerContextClipboard.ts";
 
 describe("composerContextClipboard", () => {
+  it("preserves rich HTML while carrying context metadata", () => {
+    const fragment = encodeComposerContextFragment({
+      version: 1,
+      source: { environmentId: "env" as never },
+      records: [],
+    })!;
+    const rich = '<p><strong>Important</strong> <a href="https://example.com">link</a></p>';
+    const html = encodeComposerContextClipboardHtml("Important link", fragment, rich);
+    expect(html).toContain(rich);
+    expect(decodeComposerContextClipboardHtml(html)).toEqual(JSON.parse(fragment));
+  });
   it("round-trips selections larger than two million characters", () => {
     const fragment = {
       version: 1 as const,
