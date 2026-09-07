@@ -20,19 +20,27 @@ describe("upgradeLegacyContextMessage", () => {
     expect(upgradeLegacyContextMessage(text)).toEqual({ text, records: [] });
   });
 
-  it.each(["email@build:7", "café@build:7", "𐐀@build:7", "@build:7foo", "@build:7st", "@build:7é"])(
-    "does not replace terminal labels embedded in %s",
-    (prompt) => {
-      const upgraded = upgradeLegacyContextMessage(
-        `${prompt}\n<terminal_context>\n- Build line 7:\n  output\n</terminal_context>`,
-      );
-      expect(upgraded.text).toBe(
-        `${prompt}\n\n[Build line 7](t3-context://v1/terminal/legacy_terminal_1)`,
-      );
-    },
-  );
+  it.each([
+    "email@build:7",
+    "café@build:7",
+    "𐐀@build:7",
+    "@build:7foo",
+    "@build:7st",
+    "@build:7é",
+    "@build:7.foo",
+    "@build:7@mention",
+    "@build:7..foo",
+    "@build:7.é",
+  ])("does not replace terminal labels embedded in %s", (prompt) => {
+    const upgraded = upgradeLegacyContextMessage(
+      `${prompt}\n<terminal_context>\n- Build line 7:\n  output\n</terminal_context>`,
+    );
+    expect(upgraded.text).toBe(
+      `${prompt}\n\n[Build line 7](t3-context://v1/terminal/legacy_terminal_1)`,
+    );
+  });
 
-  it.each([".", ",", ":", ";", "!", "?", ")"])(
+  it.each([".", ",", ":", ";", "!", "?", ")", "@", ". Next sentence", "@ next", ".)"])(
     "upgrades terminal labels before punctuation %s",
     (suffix) => {
       const result = upgradeLegacyContextMessage(
@@ -50,6 +58,25 @@ describe("upgradeLegacyContextMessage", () => {
     (tag) => {
       for (const body of ["partial output", "- Unrecognized header:\n  partial output"]) {
         const text = `message\n<${tag}>\n${body}\n</${tag}>`;
+        expect(upgradeLegacyContextMessage(text)).toEqual({ text, records: [] });
+      }
+    },
+  );
+
+  it.each(["terminal_context", "element_context"])(
+    "preserves partially parsed %s blocks",
+    (tag) => {
+      const entry =
+        tag === "terminal_context"
+          ? "- Build line 7:\n  output"
+          : "- <button>:\n  html:\n    <button>Pay</button>";
+      for (const body of [
+        `unexpected prefix\n${entry}`,
+        `${entry}\nunexpected suffix`,
+        `${entry}\nunexpected middle\n${entry}`,
+        `  orphaned body\n${entry}`,
+      ]) {
+        const text = `Prompt\n<${tag}>\n${body}\n</${tag}>`;
         expect(upgradeLegacyContextMessage(text)).toEqual({ text, records: [] });
       }
     },
