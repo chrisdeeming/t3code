@@ -45,6 +45,7 @@ export function ComposerContextAttachment(props: {
         if (controller.signal.aborted) return preview.dispose();
         dispose = preview.dispose;
         setLocalUri(preview.uri);
+        setError(null);
       })
       .catch(() => {
         if (!controller.signal.aborted) setError("The local file is unavailable. Attach it again.");

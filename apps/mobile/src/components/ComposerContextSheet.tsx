@@ -334,6 +334,12 @@ export function ComposerContextSheet(props: {
             )}
             {attachmentRecord && "attachmentId" in attachmentRecord ? (
               <ComposerContextAttachment
+                key={JSON.stringify([
+                  props.environmentId,
+                  attachmentRecord.attachmentId,
+                  props.attachments?.find((entry) => entry.id === attachmentRecord.attachmentId)
+                    ?.fileUri,
+                ])}
                 record={attachmentRecord}
                 environmentId={props.environmentId}
                 attachment={props.attachments?.find(

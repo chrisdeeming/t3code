@@ -138,7 +138,7 @@ export function ComposerEditor({
         onChangeText={changeText}
         readOnly={props.readOnly || importing}
         onSubmit={importing ? undefined : props.onSubmit}
-        clipboardFragment={clipboardFragment}
+        clipboardFragment={clipboardFragment ?? undefined}
         onPasteContext={(clipboard) => void pasteContext(clipboard)}
         context={draft.context}
         onContextPress={(selection) => {

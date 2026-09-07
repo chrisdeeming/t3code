@@ -72,7 +72,7 @@ const clipboard = {
     version: 1,
     source: { environmentId: EnvironmentId.make("source") },
     records: [image, terminal],
-  }),
+  })!,
   html: "",
 };
 

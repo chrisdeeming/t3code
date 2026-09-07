@@ -1744,11 +1744,11 @@ function LegacyUserMessageContent(props: UserMessageContentProps) {
           markdown={text}
           contextClipboardFragment={
             props.context
-              ? encodeComposerContextFragment({
+              ? (encodeComposerContextFragment({
                   version: 1,
                   source: { environmentId: props.environmentId },
                   records: props.context.records,
-                })
+                }) ?? undefined)
               : undefined
           }
           skills={props.skills}

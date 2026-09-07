@@ -2362,7 +2362,9 @@ function useChatMarkdownState({
     const fragment = event.clipboardData.getData(COMPOSER_CONTEXT_CLIPBOARD_MIME);
     event.clipboardData.setData(
       "text/html",
-      fragment ? encodeComposerContextClipboardHtml(payload.text, fragment) : payload.html,
+      fragment
+        ? encodeComposerContextClipboardHtml(payload.text, fragment, payload.html)
+        : payload.html,
     );
   }, []);
   const openChangeRequestLink = useOpenChangeRequestLink(threadRef, pullRequestPanelRef);
