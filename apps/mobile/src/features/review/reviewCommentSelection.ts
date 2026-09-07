@@ -291,11 +291,8 @@ export function parseReviewCommentMessageSegments(
   const masked = replaceComposerContextReferences(value, (reference) =>
     " ".repeat(reference.source.length),
   );
-  for (const maskedMatch of masked.matchAll(REVIEW_COMMENT_BLOCK_PATTERN)) {
-    const match = new RegExp(REVIEW_COMMENT_BLOCK_PATTERN.source).exec(
-      value.slice(maskedMatch.index, maskedMatch.index + maskedMatch[0].length),
-    )!;
-    const matchIndex = maskedMatch.index;
+  for (const match of masked.matchAll(REVIEW_COMMENT_BLOCK_PATTERN)) {
+    const matchIndex = match.index;
     const beforeText = value.slice(cursor, matchIndex);
     if (beforeText.length > 0) {
       segments.push({
@@ -305,7 +302,16 @@ export function parseReviewCommentMessageSegments(
       });
     }
 
-    const comment = parseReviewInlineComment(match[1] ?? "", match[2] ?? "", parsedCommentIndex);
+    // Use the masked delimiters but read the original payload. Re-parsing raw text could
+    // mistake a closing tag inside a chip label for the end of the review.
+    const raw = value.slice(matchIndex, matchIndex + match[0].length);
+    const attributeStart = "<review_comment".length;
+    const attributeEnd = attributeStart + (match[1]?.length ?? 0);
+    const comment = parseReviewInlineComment(
+      raw.slice(attributeStart, attributeEnd),
+      raw.slice(attributeEnd + 1, -"</review_comment>".length),
+      parsedCommentIndex,
+    );
     if (comment) {
       segments.push({ kind: "review-comment", comment });
       parsedCommentIndex += 1;
@@ -313,7 +319,7 @@ export function parseReviewCommentMessageSegments(
       segments.push({
         kind: "text",
         id: `review-comment-invalid:${matchIndex}`,
-        text: match[0],
+        text: value.slice(matchIndex, matchIndex + match[0].length),
       });
     }
 
