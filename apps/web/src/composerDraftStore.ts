@@ -3396,7 +3396,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             if (accepted.length === 0 && replacements.size === 0) {
               return state;
             }
-            acceptedIds = accepted.map((file) => file.id);
+            acceptedIds = [...accepted, ...replacements.values()].map((file) => file.id);
             const retained = existing.files.map((file) => replacements.get(file.id) ?? file);
             // A replaced marker's chip follows the file to its new id.
             const prompt =
