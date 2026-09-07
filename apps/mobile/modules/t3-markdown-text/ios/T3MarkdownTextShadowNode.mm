@@ -1,5 +1,6 @@
 #include "T3MarkdownTextShadowNode.h"
 #include "T3MarkdownTextRunShadowNode.h"
+#import "T3ContextChip.h"
 #include <react/renderer/components/view/ViewShadowNode.h>
 #import <react/renderer/textlayoutmanager/RCTAttributedTextUtils.h>
 
@@ -64,6 +65,9 @@ static void applyAttachments(
         T3MarkdownTextAttachmentBaselineOffset(attachmentRange),
         attachmentSize,
         attachmentSize);
+    if (attachmentRange.chipWidth > 0) {
+      attachment.bounds = CGRectMake(0, -3, attachmentRange.chipWidth, attachmentRange.chipHeight);
+    }
     const NSRange range = NSMakeRange(
         attachmentRange.location,
         MIN(attachmentRange.length, attributedString.length - attachmentRange.location));
@@ -188,7 +192,17 @@ Size T3MarkdownTextShadowNode::measureContent(
               props.shadowRadius - ParagraphStyleEncodingOffset,
           });
         }
-        if (props.nativeId.rfind(FileAttachmentNativeIdPrefix, 0) == 0 && fragmentLength > 0) {
+        if (props.nativeId.rfind("t3-chip:", 0) == 0 && fragmentLength > 0) {
+          const std::string uri = props.nativeId.substr(3);
+          NSDictionary *payload = T3ContextChipPayload([NSString stringWithUTF8String:uri.c_str()]);
+          const CGFloat maxWidth = std::isfinite(layoutConstraints.maximumSize.width)
+              ? layoutConstraints.maximumSize.width : 320;
+          const CGSize size = T3ContextChipSize(payload, maxWidth);
+          attachmentRanges.push_back(T3MarkdownTextAttachmentRange{
+              utf16Offset, 1, uri, false,
+              static_cast<Float>(size.width), static_cast<Float>(size.height),
+          });
+        } else if (props.nativeId.rfind(FileAttachmentNativeIdPrefix, 0) == 0 && fragmentLength > 0) {
           attachmentRanges.push_back(T3MarkdownTextAttachmentRange{
               utf16Offset,
               1,

@@ -2,6 +2,9 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   EnvironmentId as EnvironmentIdSchema,
   ModelSelection as ModelSelectionSchema,
+  ComposerContextId,
+  COMPOSER_CONTEXT_MAX_RECORDS,
+  OrchestrationMessageContext,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   ProjectId as ProjectIdSchema,
   ProviderInteractionMode as ProviderInteractionModeSchema,
@@ -17,6 +20,11 @@ import { useEffect } from "react";
 import { Atom } from "effect/unstable/reactivity";
 
 import { writeFileAtomically } from "../lib/atomic-file";
+import { referencedComposerContext } from "../lib/composerContext";
+import {
+  formatComposerContextReference,
+  replaceComposerContextReferences,
+} from "@t3tools/shared/composerContextReferences";
 import { DraftComposerAttachmentSchema } from "../lib/composer-image-schema";
 import {
   composerAttachmentFileReferenceKey,
@@ -45,6 +53,72 @@ const COMPOSER_DRAFTS_DIRECTORY = "composer-drafts";
 const COMPOSER_DRAFTS_FILE = "drafts.json";
 const PERSIST_DEBOUNCE_MS = 200;
 
+export const composerContextImportsAtom = Atom.make<Record<string, boolean>>({}).pipe(
+  Atom.keepAlive,
+);
+
+export function setComposerContextImporting(draftKey: string, importing: boolean): void {
+  const next = { ...appAtomRegistry.get(composerContextImportsAtom) };
+  if (importing) next[draftKey] = true;
+  else delete next[draftKey];
+  appAtomRegistry.set(composerContextImportsAtom, next);
+}
+
+let lastComposerSelection: { draftKey: string; text: string; start: number; end: number } | null =
+  null;
+
+/** Retain the last focused caret while a picker or review sheet is open. */
+export function rememberComposerDraftSelection(
+  draftKey: string,
+  text: string,
+  selection: { start: number; end: number },
+): void {
+  lastComposerSelection = { draftKey, text, ...selection };
+}
+
+export function setComposerDraftContext(
+  draftKey: string,
+  context: OrchestrationMessageContext | undefined,
+): void {
+  updateComposerDrafts((current) => ({
+    ...current,
+    [draftKey]: { ...normalizeDraft(current[draftKey]), context },
+  }));
+}
+
+export function insertComposerDraftContext(
+  draftKey: string,
+  content: { text: string; context: OrchestrationMessageContext },
+): boolean {
+  let inserted = false;
+  updateComposerDrafts((current) => {
+    const draft = normalizeDraft(current[draftKey]);
+    const selection =
+      lastComposerSelection?.draftKey === draftKey && lastComposerSelection.text === draft.text
+        ? lastComposerSelection
+        : null;
+    const start = Math.max(0, Math.min(selection?.start ?? draft.text.length, draft.text.length));
+    const end = Math.max(start, Math.min(selection?.end ?? start, draft.text.length));
+    const before = draft.text.slice(0, start);
+    const after = draft.text.slice(end);
+    const insertion = `${before.length > 0 && !/\s$/.test(before) && !/^\s/.test(content.text) ? " " : ""}${content.text}${!/\s$/.test(content.text) && (after.length === 0 || !/^\s/.test(after)) ? " " : ""}`;
+    const text = before + insertion + after;
+    const records = new Map(draft.context?.records.map((record) => [record.contextId, record]));
+    for (const record of content.context.records) records.set(record.contextId, record);
+    const context = referencedComposerContext(text, { version: 1, records: [...records.values()] });
+    if ((context?.records.length ?? 0) > COMPOSER_CONTEXT_MAX_RECORDS) return current;
+    inserted = true;
+    lastComposerSelection = {
+      draftKey,
+      text,
+      start: start + insertion.length,
+      end: start + insertion.length,
+    };
+    return { ...current, [draftKey]: { ...draft, text, context } };
+  });
+  return inserted;
+}
+
 export class ComposerDraftPersistenceError extends Schema.TaggedError<ComposerDraftPersistenceError>()(
   "ComposerDraftPersistenceError",
   {
@@ -61,6 +135,7 @@ export class ComposerDraftPersistenceError extends Schema.TaggedError<ComposerDr
 
 export interface ComposerDraft {
   readonly text: string;
+  readonly context?: OrchestrationMessageContext;
   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
   readonly importedShareIds?: ReadonlyArray<string>;
   readonly modelSelection?: ModelSelection;
@@ -83,6 +158,7 @@ export interface ComposerDraftProject {
 
 export interface ComposerDraftContent {
   readonly text: string;
+  readonly context?: OrchestrationMessageContext;
   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
   readonly sourceShareId?: string;
 }
@@ -114,6 +190,7 @@ const ComposerDraftProjectSchema = Schema.Struct({
 
 const ComposerDraftSchema = Schema.Struct({
   text: Schema.String,
+  context: Schema.optional(OrchestrationMessageContext),
   attachments: Schema.Array(DraftComposerAttachmentSchema),
   importedShareIds: Schema.optional(Schema.Array(Schema.String)),
   modelSelection: Schema.optional(ModelSelectionSchema),
@@ -448,6 +525,23 @@ function signedOutAttachmentOwners() {
     ...Object.values(saved.drafts),
     ...saved.queuedMessages,
   ]);
+}
+
+/** Clipboard fragments can refer to a local file that has not finished uploading yet. */
+export function findLocalComposerClipboardAttachment(
+  environmentId: EnvironmentId,
+  id: string,
+): DraftComposerAttachment | undefined {
+  for (const [key, draft] of Object.entries(appAtomRegistry.get(composerDraftsAtom))) {
+    if (composerDraftEnvironmentId(key, []) !== environmentId) continue;
+    const attachment = draft.attachments.find((entry) => entry.id === id);
+    if (attachment) return attachment;
+  }
+  return Object.values(appAtomRegistry.get(threadOutboxManager.queuedMessagesByThreadKeyAtom))
+    .flat()
+    .filter((message) => message.environmentId === environmentId)
+    .flatMap((message) => message.attachments)
+    .find((attachment) => attachment.id === id);
 }
 
 function isComposerAttachmentFileReferenced(fileUri: string): boolean {
@@ -851,6 +945,20 @@ export async function restoreCloudComposerDrafts(accountId: string): Promise<voi
               ...draft,
               ...existing,
               text: mergeComposerDraftText(existing.text, draft.text),
+              context:
+                draft.context || existing.context
+                  ? {
+                      version: 1,
+                      records: [
+                        ...new Map(
+                          [
+                            ...(draft.context?.records ?? []),
+                            ...(existing.context?.records ?? []),
+                          ].map((record) => [record.contextId, record]),
+                        ).values(),
+                      ],
+                    }
+                  : undefined,
               // A concurrent import must not lose files, even above the send limit.
               attachments: [
                 ...existing.attachments,
@@ -897,6 +1005,7 @@ export function setComposerDraftText(draftKey: string, value: string): void {
     const draft = {
       ...normalizeDraft(current[draftKey]),
       text: value,
+      context: referencedComposerContext(value, current[draftKey]?.context),
     };
     return withComposerDraft(current, draftKey, draft);
   });
@@ -925,7 +1034,11 @@ export function appendComposerDraftText(draftKey: string, value: string): void {
 export function appendComposerDraftAttachments(
   draftKey: string,
   attachments: ReadonlyArray<DraftComposerAttachment>,
-  options?: { readonly allowOverflow?: boolean; readonly maxAttachments?: number },
+  options?: {
+    readonly allowOverflow?: boolean;
+    readonly appendReference?: boolean;
+    readonly maxAttachments?: number;
+  },
 ): number {
   if (attachments.length === 0) {
     return 0;
@@ -956,6 +1069,27 @@ export function appendComposerDraftAttachments(
     };
   });
   scheduleUnusedComposerAttachmentCleanup(rejected);
+  if (options?.appendReference) {
+    const records = attachments.slice(0, attachments.length - rejected.length).map((attachment) => {
+      const common = {
+        version: 1 as const,
+        contextId: ComposerContextId.make(attachment.id),
+        label: attachment.name,
+        attachmentId: attachment.id,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+      };
+      return attachment.type === "image"
+        ? { ...common, kind: "image" as const }
+        : { ...common, kind: "file" as const };
+    });
+    if (records.length > 0)
+      insertComposerDraftContext(draftKey, {
+        text: records.map(formatComposerContextReference).join(" "),
+        context: { version: 1, records },
+      });
+  }
   return rejected.length;
 }
 
@@ -981,8 +1115,18 @@ export function removeComposerDraftAttachment(draftKey: string, imageId: string)
   const previousAttachments = getComposerDraftSnapshot(draftKey).attachments;
   updateComposerDrafts((current) => {
     const existing = normalizeDraft(current[draftKey]);
+    const removedIds = new Set(
+      existing.context?.records
+        .filter((record) => "attachmentId" in record && record.attachmentId === imageId)
+        .map((record) => record.contextId),
+    );
+    const text = replaceComposerContextReferences(existing.text, (ref) =>
+      removedIds.has(ref.contextId) ? "" : ref.source,
+    );
     const draft = {
       ...existing,
+      text,
+      context: referencedComposerContext(text, existing.context),
       attachments: existing.attachments.filter((image) => image.id !== imageId),
     };
     return withComposerDraft(current, draftKey, draft);
@@ -1057,6 +1201,7 @@ export function clearComposerDraftContentState(
   // draft leaves the store rather than lingering as a blank row.
   const {
     importedShareIds: _importedShareIds,
+    context: _context,
     modelSelection,
     workspaceSelection,
     project: _project,
@@ -1140,12 +1285,17 @@ export function mergeComposerDraftContentState(
     PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   );
   const text = mergeComposerDraftText(existing.text, content.text);
+  const records = new Map(existing.context?.records.map((record) => [record.contextId, record]));
+  for (const record of content.context?.records ?? []) records.set(record.contextId, record);
+  const context =
+    records.size > 0 ? { version: 1 as const, records: [...records.values()] } : undefined;
   const importedShareIds = content.sourceShareId
     ? [...(existing.importedShareIds ?? []), content.sourceShareId]
     : existing.importedShareIds;
   if (
     text === existing.text &&
     attachments.length === existing.attachments.length &&
+    content.context === undefined &&
     importedShareIds === existing.importedShareIds
   ) {
     return current;
@@ -1156,6 +1306,7 @@ export function mergeComposerDraftContentState(
       ...existing,
       text,
       attachments,
+      context,
       ...(importedShareIds ? { importedShareIds } : {}),
     },
   };
@@ -1229,6 +1380,7 @@ export function sameComposerDraftState(a: ComposerDraft, b: ComposerDraft): bool
   return (
     a.text === b.text &&
     a.attachments === b.attachments &&
+    a.context === b.context &&
     a.importedShareIds === b.importedShareIds &&
     a.modelSelection === b.modelSelection &&
     a.runtimeMode === b.runtimeMode &&
@@ -1279,6 +1431,7 @@ export function undoComposerDraftMergeState(
   const draft = {
     ...existing,
     text,
+    context: referencedComposerContext(text, existing.context),
     attachments: existing.attachments.filter(
       (attachment) => !insertedAttachmentIds.has(attachment.id),
     ),

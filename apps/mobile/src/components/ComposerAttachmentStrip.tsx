@@ -13,7 +13,7 @@ import {
 } from "../lib/composerImages";
 import { resolveOwnedComposerAttachmentFileUri } from "../lib/composerAttachmentFiles";
 import { VideoAttachmentTile } from "./VideoAttachmentTile";
-import type { MediaActionsSource } from "../lib/mediaActions";
+import { useMediaActions, type MediaActionsSource } from "../lib/mediaActions";
 import { PresentationSource } from "./NativePresentation";
 import type { FilePreviewSource } from "./FilePreviewModal";
 import { isPdfFile } from "../lib/filePreview";
@@ -160,7 +160,6 @@ function ComposerImageAttachment(
 
 function ComposerAttachmentContent(props: ComposerAttachmentThumbnailProps) {
   const { attachment } = props;
-  const style = { width: props.size, height: props.size, borderRadius: props.borderRadius };
   if (attachment.type === "image") {
     return <ComposerImageAttachment {...props} attachment={attachment} />;
   }
@@ -170,21 +169,37 @@ function ComposerAttachmentContent(props: ComposerAttachmentThumbnailProps) {
       <ComposerVideoAttachment {...props} attachment={attachment} onPressVideo={onPressVideo} />
     );
   }
+  return <ComposerFileAttachment {...props} attachment={attachment} />;
+}
+
+function ComposerFileAttachment(
+  props: ComposerAttachmentThumbnailProps & { readonly attachment: DraftComposerFileAttachment },
+) {
+  const { attachment } = props;
+  const style = { width: props.size, height: props.size, borderRadius: props.borderRadius };
   const canPreview = isPdfFile(attachment) && props.onPressPreview !== undefined;
   const sourceIdentifier = `draft-file:${attachment.id}`;
+  const { share, sharing } = useMediaActions({
+    name: attachment.name,
+    mimeType: attachment.mimeType,
+    sourceIdentifier,
+    attachment,
+  });
   return (
     <PresentationSource identifier={sourceIdentifier}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Open ${attachment.name}`}
-        disabled={!canPreview}
+        accessibilityLabel={`${canPreview ? "Open" : "Share"} ${attachment.name}`}
+        disabled={!props.onPressPreview || sharing}
         onPress={() =>
-          props.onPressPreview?.({
-            kind: "pdf",
-            name: attachment.name,
-            attachment,
-            sourceIdentifier,
-          })
+          canPreview
+            ? props.onPressPreview?.({
+                kind: "pdf",
+                name: attachment.name,
+                attachment,
+                sourceIdentifier,
+              })
+            : share()
         }
         className={
           props.compact

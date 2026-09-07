@@ -8,9 +8,57 @@ import {
   nativeMarkdownListItemBlocks,
   nativeMarkdownTextRuns,
   nativeMarkdownWithPreservedSoftBreaks,
+  nativeMarkdownContextCopyRanges,
+  contextChipPresentation,
 } from "@t3tools/mobile-markdown-text/markdown";
 
 describe("nativeMarkdownTextRuns", () => {
+  it("distinguishes video and pull-request context from generic file and review chips", () => {
+    expect(
+      contextChipPresentation("file", {
+        name: "recording.webm",
+        mimeType: "application/octet-stream",
+      }),
+    ).toEqual(contextChipPresentation("video"));
+    expect(contextChipPresentation("review-comment", { sectionId: "pull-request:284" })).toEqual(
+      contextChipPresentation("pull-request"),
+    );
+    expect(contextChipPresentation("review-comment", { sectionId: "git:working-tree" })).toEqual(
+      contextChipPresentation("review-comment"),
+    );
+  });
+
+  it("maps rendered selection offsets back to canonical references without losing repeated chips", () => {
+    const href = "t3-context://v1/image/screenshot";
+    expect(
+      nativeMarkdownContextCopyRanges([
+        { run: { text: "😀 " }, text: "😀 ", inlineImageLength: 0 },
+        { run: { href, text: "Checkout" }, text: "Checkout", inlineImageLength: 1 },
+        { run: { text: " then " }, text: " then ", inlineImageLength: 0 },
+        { run: { href, text: "Checkout" }, text: "\uFFFC\u00A0Checkout", inlineImageLength: 0 },
+      ]),
+    ).toEqual([
+      { start: 3, end: 12, text: "![Checkout](t3-context://v1/image/screenshot)" },
+      { start: 18, end: 28, text: "![Checkout](t3-context://v1/image/screenshot)" },
+    ]);
+  });
+  it("restores canonical skill and context text from Android's single-image chips", () => {
+    expect(
+      nativeMarkdownContextCopyRanges([
+        { run: { text: "Use " }, text: "Use ", inlineImageLength: 0 },
+        { run: { text: "Playwright", skillName: "playwright" }, text: "", inlineImageLength: 1 },
+        { run: { text: " on " }, text: " on ", inlineImageLength: 0 },
+        {
+          run: { text: "Screenshot", href: "t3-context://v1/image/screenshot" },
+          text: "",
+          inlineImageLength: 1,
+        },
+      ]),
+    ).toEqual([
+      { start: 4, end: 5, text: "$playwright" },
+      { start: 9, end: 10, text: "![Screenshot](t3-context://v1/image/screenshot)" },
+    ]);
+  });
   it("links a path-shaped code span without changing the same path in prose", () => {
     expect(
       nativeMarkdownTextRuns({
@@ -203,6 +251,53 @@ describe("nativeMarkdownTextRuns", () => {
 });
 
 describe("nativeMarkdownDocumentRuns", () => {
+  it("renders a file mention without swallowing sentence punctuation or changing package references", () => {
+    const runs = nativeMarkdownDocumentRuns({
+      type: "document",
+      children: [
+        {
+          type: "paragraph",
+          children: [
+            { type: "text", content: "Inspect @src/Checkout.tsx. Use @t3tools/contracts." },
+          ],
+        },
+      ],
+    });
+    expect(runs).toEqual([
+      { text: "Inspect ", role: "body" },
+      {
+        text: "Checkout.tsx",
+        role: "body",
+        href: "src/Checkout.tsx",
+        fileIcon: "react",
+        sourceText: "@src/Checkout.tsx",
+      },
+      { text: ". Use @t3tools/contracts.", role: "body" },
+    ]);
+  });
+
+  it("copies collapsed skill and file chips back to their original references", () => {
+    expect(
+      nativeMarkdownContextCopyRanges([
+        { run: { text: "$ui", skillName: "ui" }, text: "\uFFFC", inlineImageLength: 0 },
+        { run: { text: " and " }, text: " and ", inlineImageLength: 0 },
+        {
+          run: {
+            text: "Checkout.tsx",
+            href: "src/Checkout.tsx",
+            fileIcon: "react",
+            sourceText: "@src/Checkout.tsx",
+          },
+          text: "\uFFFC",
+          inlineImageLength: 0,
+        },
+      ]),
+    ).toEqual([
+      { start: 0, end: 1, text: "$ui" },
+      { start: 6, end: 7, text: "@src/Checkout.tsx" },
+    ]);
+  });
+
   it("decorates known skill references as selectable skill links", () => {
     const node: MarkdownNode = {
       type: "document",
