@@ -2692,10 +2692,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         promptHistoryPositionRef.current = null;
       }
       const referenced = new Set(contextIds);
-      if (composerTerminalContexts.some((context) => !referenced.has(context.id))) {
+      if (
+        composerTerminalContexts.some(
+          (context) => !referenced.has(terminalContextReference(context).contextId),
+        )
+      ) {
         setComposerDraftTerminalContexts(
           composerDraftTarget,
-          composerTerminalContexts.filter((context) => referenced.has(context.id)),
+          composerTerminalContexts.filter((context) =>
+            referenced.has(terminalContextReference(context).contextId),
+          ),
         );
       }
       for (const comment of composerReviewComments) {
@@ -2711,7 +2717,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       // Files live only as chips; images stay on the shelf when their chip goes.
       for (const file of composerFiles) {
-        if (!referenced.has(file.id)) {
+        if (!referenced.has(fileContextReference(file).contextId)) {
           removeComposerFileFromDraft(file.id);
         }
       }
