@@ -125,7 +125,7 @@ its brief details. Select a terminal excerpt to open its captured output, or sel
 comment, picked element, or preview annotation to open its full details. Chips read as "Terminal
 excerpt, Terminal 1 lines 3-4" and similar to screen readers.
 
-A pull request appears as its icon and number. Its colour reflects whether it was open, draft,
+A pull request appears as its icon and number. Its color reflects whether it was open, draft,
 merged, or closed when it was attached. Hover it to see the title and branches, or select it to
 open that pull request beside the current thread.
 
