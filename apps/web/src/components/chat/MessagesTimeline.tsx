@@ -1449,18 +1449,16 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     );
     const records = resolvedContext.records.filter((record) => selectedIds.has(record.contextId));
     if (records.length === 0) return;
-    event.clipboardData.setData(
-      COMPOSER_CONTEXT_CLIPBOARD_MIME,
-      encodeComposerContextFragment({
-        version: 1,
-        source: {
-          environmentId: ctx.activeThreadEnvironmentId,
-          ...(ctx.threadRef ? { threadId: ctx.threadRef.threadId } : {}),
-          messageId: row.message.id,
-        },
-        records,
-      }),
-    );
+    const fragment = encodeComposerContextFragment({
+      version: 1,
+      source: {
+        environmentId: ctx.activeThreadEnvironmentId,
+        ...(ctx.threadRef ? { threadId: ctx.threadRef.threadId } : {}),
+        messageId: row.message.id,
+      },
+      records,
+    });
+    if (fragment) event.clipboardData.setData(COMPOSER_CONTEXT_CLIPBOARD_MIME, fragment);
   };
   const renderContextReference = (reference: ChatMarkdownContextReference) => {
     const record = asKnownContextRecord(resolvedContext.recordsById.get(reference.contextId));
