@@ -10,6 +10,7 @@ import {
   type TimelineMinimapItem,
 } from "./timelineMinimapItems";
 import {
+  COMPOSER_CONTEXT_KINDS,
   type AssistantCitation,
   type EnvironmentId,
   type MessageId,
@@ -144,6 +145,7 @@ import {
 } from "./timelineScrollAnchoring";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { PierreEntryIcon } from "./PierreEntryIcon";
+import { inferEntryKindFromPath } from "../../pierre-icons";
 import { AssistantSelectionToolbar } from "./AssistantSelectionToolbar";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import {
@@ -208,6 +210,7 @@ import {
   CHAT_INLINE_CHIP_CLASS_NAME,
   CHAT_INLINE_CHIP_LABEL_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
+  SKILL_CHIP_ICON_SVG,
   CONTEXT_INLINE_CHIP_ICON_TONE_CLASS_NAMES,
   CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES,
   PULL_REQUEST_INLINE_CHIP_TONE_CLASS_NAMES,
@@ -2641,7 +2644,7 @@ function UserMessagePreviewAnnotationDetails(props: {
                       <span className="ml-auto shrink-0 text-secondary-label">{sourceLabel}</span>
                     ) : null}
                   </div>
-                  {element.htmlPreview.trim() ? (
+                  {element.htmlPreview?.trim() ? (
                     <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded bg-muted/60 px-2 py-1.5 text-[10px] leading-relaxed">
                       {element.htmlPreview.trim()}
                     </pre>
@@ -2687,12 +2690,12 @@ function UserMessageElementDetails({
             <span className="ml-auto shrink-0 text-secondary-label">{sourceLabel}</span>
           ) : null}
         </div>
-        {record.htmlPreview.trim() ? (
+        {record.htmlPreview?.trim() ? (
           <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-muted/60 px-2 py-1.5 text-[10px] leading-relaxed">
             {record.htmlPreview.trim()}
           </pre>
         ) : null}
-        {record.styles.trim() ? (
+        {record.styles?.trim() ? (
           <pre className="max-h-32 overflow-auto whitespace-pre-wrap border-border/60 border-t pt-2 text-secondary-label text-[10px] leading-relaxed">
             {record.styles.trim()}
           </pre>
@@ -2731,8 +2734,55 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
   UserMessageContextRenderContext,
   ReactNode
 >({
-  requiredKinds: ["image", "file", "terminal", "element", "review-comment", "preview-annotation"],
+  requiredKinds: COMPOSER_CONTEXT_KINDS,
   handlers: [
+    {
+      kind: "mention",
+      canRender: (record) => record.kind === "mention",
+      render: (record, context) =>
+        record.kind === "mention" ? (
+          <UserMessageContextChip
+            icon={
+              <PierreEntryIcon
+                pathValue={record.path}
+                kind={inferEntryKindFromPath(record.path)}
+                theme={context.resolvedTheme}
+                className={COMPOSER_INLINE_CHIP_ICON_CLASS_NAME}
+              />
+            }
+            label={record.label}
+            kindLabel="File mention"
+            tooltip={record.path}
+            copyMarkdown={context.copyMarkdown}
+            toneClassName={CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.mention}
+          />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
+      kind: "skill",
+      canRender: (record) => record.kind === "skill",
+      render: (record, context) =>
+        record.kind === "skill" ? (
+          <UserMessageContextChip
+            icon={
+              <span
+                aria-hidden="true"
+                className={COMPOSER_INLINE_CHIP_ICON_CLASS_NAME}
+                dangerouslySetInnerHTML={{ __html: SKILL_CHIP_ICON_SVG }}
+              />
+            }
+            label={record.label || record.name}
+            kindLabel="Skill"
+            tooltip={`$${record.name}`}
+            copyMarkdown={context.copyMarkdown}
+            toneClassName={CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.skill}
+          />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
     {
       kind: "image",
       canRender: (record, context) =>
