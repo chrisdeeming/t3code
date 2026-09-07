@@ -19,8 +19,10 @@ import {
   previewAnnotationFromRecord,
   resolveUserMessageContext,
   reviewCommentContextRecord,
+  reviewCommentFromRecord,
   terminalContextRecord,
   terminalContextReference,
+  terminalContextDraftFromRecord,
 } from "./composerContextRecords";
 
 const decodeMessageContext = Schema.decodeUnknownSync(OrchestrationMessageContext);
@@ -80,6 +82,52 @@ describe("composerContextRecords", () => {
     expect(context.records.map((record) => record.kind)).toEqual(["preview-annotation", "file"]);
     expect(context.records[0]).not.toHaveProperty("screenshotContextId");
   });
+  it.each(["x", "terminal_x"])(
+    "preserves canonical terminal IDs across repeated imports: %s",
+    (id) => {
+      const threadId = ThreadId.make("t1");
+      const record = terminalContextRecord({
+        id,
+        threadId,
+        terminalId: "default",
+        terminalLabel: "Terminal",
+        lineStart: 1,
+        lineEnd: 1,
+        text: "output",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      const restored = terminalContextRecord(terminalContextDraftFromRecord(record, threadId));
+      expect(restored).toEqual(record);
+      expect(terminalContextRecord(terminalContextDraftFromRecord(restored, threadId))).toEqual(
+        record,
+      );
+    },
+  );
+
+  it.each(["x", "review-comment_x"])("preserves canonical review IDs across imports: %s", (id) => {
+    const record = reviewCommentContextRecord({
+      id,
+      sectionId: "s",
+      sectionTitle: "Review",
+      filePath: "a.ts",
+      startIndex: 0,
+      endIndex: 0,
+      rangeLabel: "L1",
+      text: "Review",
+      diff: "",
+    });
+    expect(reviewCommentContextRecord(reviewCommentFromRecord(record))).toEqual(record);
+  });
+
+  it.each(["x", "preview-annotation_x"])(
+    "preserves canonical annotation IDs across imports: %s",
+    (id) => {
+      const record = previewAnnotationContextRecord({ ...annotation, id });
+      expect(previewAnnotationContextRecord(previewAnnotationFromRecord(record)).contextId).toBe(
+        record.contextId,
+      );
+    },
+  );
   it("builds distinct records for producer IDs that differ by a kind prefix", () => {
     const context = buildMessageContext({
       terminalContexts: [],
