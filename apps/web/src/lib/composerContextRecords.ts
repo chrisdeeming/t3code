@@ -24,6 +24,7 @@ import {
   toKindScopedComposerContextId,
 } from "./composerContextReferences";
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
+import type { AttachmentUploadState } from "./attachmentUploadState";
 import { normalizeElementContextSelection } from "./elementContext";
 import {
   formatTerminalContextLabel,
@@ -209,6 +210,20 @@ export function fileContextReference(file: ComposerFileAttachment): ComposerCont
 export interface BoundComposerAttachment {
   attachment: ComposerImageAttachment | ComposerFileAttachment;
   attachmentId: string;
+}
+
+/** Clipboard payloads may only point at attachments that already exist on the server. */
+export function uploadedAttachmentContextRecord(
+  attachment: ComposerImageAttachment | ComposerFileAttachment,
+  upload: AttachmentUploadState | undefined,
+): ImageContextRecord | FileContextRecord | null {
+  const attachmentId =
+    attachment.type === "file" && attachment.uploadedAttachmentId !== undefined
+      ? attachment.uploadedAttachmentId
+      : upload?.status === "ready"
+        ? upload.attachmentId
+        : undefined;
+  return attachmentId === undefined ? null : attachmentContextRecord({ attachment, attachmentId });
 }
 
 export function attachmentContextRecord(

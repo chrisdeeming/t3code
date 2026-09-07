@@ -187,7 +187,7 @@ import {
 } from "~/lib/composerContextReferences";
 import {
   asKnownContextRecord,
-  attachmentContextRecord,
+  uploadedAttachmentContextRecord,
   fileContextReference,
   imageContextReference,
   previewAnnotationContextId,
@@ -2453,16 +2453,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           .filter((attachment) =>
             wanted.has(toKindScopedComposerContextId(attachment.type, attachment.id)),
           )
-          .map((attachment) => {
-            // A hydrated file already lives on the server under its upload id.
-            const upload = uploadsByImageId[attachment.id];
-            const uploadId =
-              attachment.type === "file" && attachment.uploadedAttachmentId !== undefined
-                ? attachment.uploadedAttachmentId
-                : upload?.status === "ready"
-                  ? upload.attachmentId
-                  : undefined;
-            return attachmentContextRecord({ attachment, attachmentId: uploadId ?? attachment.id });
+          .flatMap((attachment) => {
+            const record = uploadedAttachmentContextRecord(
+              attachment,
+              uploadsByImageId[attachment.id],
+            );
+            return record ? [record] : [];
           }),
       ];
       if (records.length === 0) return null;
@@ -3679,7 +3675,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           : currentPrompt.trim().length
             ? `${currentPrompt.replace(/\s+$/, "")}\n\n${restoredPrompt}`
             : restoredPrompt;
-      const promptChanged = nextPrompt !== currentPrompt;
+      let promptChanged = nextPrompt !== currentPrompt;
       if (promptChanged) {
         promptRef.current = nextPrompt;
         setComposerDraftPrompt(composerDraftTarget, nextPrompt);
@@ -3791,7 +3787,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }
         const restoredFiles = [...markerReplacements, ...filesToAppend];
         if (restoredFiles.length > 0) {
-          addComposerDraftFiles(composerDraftTarget, restoredFiles);
+          addComposerDraftFiles(composerDraftTarget, restoredFiles, { appendReference: true });
+          const restoredFilePrompt = getComposerDraft(composerDraftTarget)?.prompt;
+          if (restoredFilePrompt !== undefined && restoredFilePrompt !== promptRef.current) {
+            promptRef.current = restoredFilePrompt;
+            setComposerCursor(
+              collapseExpandedComposerCursor(restoredFilePrompt, restoredFilePrompt.length),
+            );
+            setComposerTrigger(null);
+            promptChanged = true;
+          }
           restoredFileCount = filesToAppend.length;
         }
       }
