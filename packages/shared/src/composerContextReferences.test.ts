@@ -40,6 +40,17 @@ describe("href codec", () => {
 });
 
 describe("labels and reference links", () => {
+  it("normalizes manually entered labels while preserving the original source", () => {
+    const text = "[](t3-context://v1/file/ctx_1)";
+    expect(collectComposerContextReferences(text)[0]).toMatchObject({
+      label: "file",
+      source: text,
+    });
+    expect(
+      collectComposerContextReferences(`[${"x".repeat(300)}](t3-context://v1/file/ctx_1)`)[0]
+        ?.label,
+    ).toHaveLength(200);
+  });
   it("sanitizes labels without touching identity", () => {
     expect(sanitizeComposerContextLabel("a ] b\nc  [d", "file")).toBe("a b c d");
     expect(sanitizeComposerContextLabel("   ", "terminal")).toBe("terminal");
