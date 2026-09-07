@@ -49,7 +49,11 @@ export function previewAnnotationContextLabel(annotation: PreviewAnnotationPaylo
 }
 
 export function terminalContextReference(context: TerminalContextDraft): ComposerContextReference {
-  return { kind: "terminal", contextId: context.id, label: formatTerminalContextLabel(context) };
+  return {
+    kind: "terminal",
+    contextId: toComposerContextId(context.id),
+    label: formatTerminalContextLabel(context),
+  };
 }
 
 /** Review producers mint ids in their own grammars; the context id is a folded form of them. */
@@ -85,7 +89,7 @@ export function previewAnnotationContextReference(
 export function terminalContextRecord(context: TerminalContextDraft): TerminalContextRecord {
   return {
     version: 1,
-    contextId: context.id as ComposerContextId,
+    contextId: toComposerContextId(context.id),
     kind: "terminal",
     label: sanitizeComposerContextLabel(formatTerminalContextLabel(context), "terminal"),
     terminalId: context.terminalId,

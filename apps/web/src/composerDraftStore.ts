@@ -53,6 +53,7 @@ import {
   ensureInlineContextReferences,
   formatInlineContextReference,
   removeInlineContextReference,
+  toComposerContextId,
 } from "./lib/composerContextReferences";
 import {
   fileContextReference,
@@ -837,6 +838,7 @@ function normalizeTerminalContextForThread(
   const lineEnd = Math.max(lineStart, Math.floor(context.lineEnd));
   return {
     ...context,
+    id: toComposerContextId(context.id),
     threadId,
     terminalId,
     terminalLabel,
@@ -1322,7 +1324,7 @@ function normalizePersistedTerminalContextDraft(
   const normalizedLineStart = Math.max(1, Math.floor(lineStart));
   const normalizedLineEnd = Math.max(normalizedLineStart, Math.floor(lineEnd));
   return {
-    id,
+    id: toComposerContextId(id),
     threadId: threadId as ThreadId,
     createdAt,
     terminalId,
