@@ -173,7 +173,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         bottomStickOnMobile={false}
         backdropClassName="z-[60]"
         viewportClassName="z-[60] grid-rows-1 place-items-center px-4 py-6 [-webkit-app-region:no-drag]"
-        className="row-start-1 max-h-[92vh] w-auto max-w-[92vw] overflow-visible"
+        className="row-start-1"
         initialFocus={closeButtonRef}
         finalFocus={() => returnFocusTarget}
       >
@@ -182,8 +182,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           <Button
             type="button"
             size="icon"
-            variant="ghost"
-            className="absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6"
+            variant="media-navigation"
+            className="left-2 sm:left-6"
             aria-label="Previous media"
             onClick={() => navigateImage(-1)}
           >
@@ -196,8 +196,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
               type="button"
               ref={closeButtonRef}
               size="icon-xs"
-              variant="ghost"
-              className="absolute right-2 top-2 z-20 bg-black/65 text-white shadow-sm ring-1 ring-white/20 hover:bg-black/80 hover:text-white focus-visible:ring-white"
+              variant="media-close"
+              className="absolute right-2 top-2 z-20"
               onClick={onClose}
               aria-label={`Close ${mediaLabel} preview`}
             >
@@ -252,8 +252,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           <Button
             type="button"
             size="icon"
-            variant="ghost"
-            className="absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6"
+            variant="media-navigation"
+            className="right-2 sm:right-6"
             aria-label="Next media"
             onClick={() => navigateImage(1)}
           >
