@@ -43,6 +43,7 @@ describe("labels and reference links", () => {
   it("sanitizes labels without touching identity", () => {
     expect(sanitizeComposerContextLabel("a ] b\nc  [d", "file")).toBe("a b c d");
     expect(sanitizeComposerContextLabel("   ", "terminal")).toBe("terminal");
+    expect(sanitizeComposerContextLabel("folder\\", "file")).toBe("folder");
     expect(sanitizeComposerContextLabel("x".repeat(500), "file")).toHaveLength(200);
   });
 
