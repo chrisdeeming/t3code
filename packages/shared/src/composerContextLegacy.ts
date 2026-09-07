@@ -1,6 +1,6 @@
 import {
   type ComposerContextId,
-  type ComposerContextRecord,
+  ComposerContextRecord,
   type ElementContextRecord,
   type PreviewAnnotationContextRecord,
   ReviewCommentContextRecord,
@@ -35,6 +35,9 @@ const REVIEW_TOKEN = "\uE000";
 const LEGACY_MARKERS =
   /<(?:terminal_context|element_context|preview_annotation|review_comment)\b|￼/;
 const isReviewCommentContextRecord = Schema.is(ReviewCommentContextRecord);
+const isLegacyContextRecords = Schema.is(
+  Schema.Array(ComposerContextRecord).check(Schema.isMaxLength(200)),
+);
 
 interface ParsedEntry {
   header: string;
@@ -336,7 +339,10 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
     if (placedTerminals.has(record)) continue;
     const label = inlineTerminalLabel(record);
     let at = body.indexOf(label);
-    while (at !== -1 && /[\d-]/.test(body[at + label.length] ?? "")) {
+    while (
+      at !== -1 &&
+      (/[\w@.-]/.test(body[at - 1] ?? "") || /[\d-]/.test(body[at + label.length] ?? ""))
+    ) {
       at = body.indexOf(label, at + 1);
     }
     if (at === -1) continue;
@@ -358,8 +364,11 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
         ? `${body}\n\n${appended.join(" ")}`
         : appended.join(" ");
 
+  const records = [...terminals, ...elements, ...previews, ...reviews];
+  // Conversion is atomic: keep the source if any record would be dropped on the wire.
+  if (!isLegacyContextRecords(records)) return { text, records: [] };
   return {
     text: upgradedText,
-    records: [...terminals, ...elements, ...previews, ...reviews],
+    records,
   };
 }
