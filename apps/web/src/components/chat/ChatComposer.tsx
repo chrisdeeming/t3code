@@ -1563,6 +1563,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const addComposerDraftFiles = useComposerDraftStore((store) => store.addFiles);
   const removeComposerDraftFile = useComposerDraftStore((store) => store.removeFile);
   const setComposerDraftFileUpload = useComposerDraftStore((store) => store.setFileUpload);
+  const addComposerDraftReviewComment = useComposerDraftStore((store) => store.addReviewComment);
+  const addComposerDraftPreviewAnnotation = useComposerDraftStore(
+    (store) => store.addPreviewAnnotation,
+  );
   const insertComposerDraftTerminalContext = useComposerDraftStore(
     (store) => store.insertTerminalContext,
   );
@@ -2633,6 +2637,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setIsComposerScrollCollapsed(false);
   }, [setIsComposerScrollCollapsed]);
 
+  /**
+   * Payloads for chips the prompt no longer references. Lexical's history restores the
+   * reference text but knows nothing about the draft records behind it, so a delete keeps its
+   * payload here and an undo puts it back rather than leaving a dangling chip.
+   */
+  const removedContextPayloadsRef = useRef<{
+    terminals: Map<string, TerminalContextDraft>;
+    reviewComments: Map<string, ReviewCommentContext>;
+    previewAnnotations: Map<string, PreviewAnnotationPayload>;
+  }>({ terminals: new Map(), reviewComments: new Map(), previewAnnotations: new Map() });
+
   const onPromptChange = useCallback(
     (
       nextPrompt: string,
@@ -2666,27 +2681,70 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         promptHistoryPositionRef.current = null;
       }
       const referenced = new Set(contextIds);
-      if (
-        composerTerminalContexts.some(
-          (context) => !referenced.has(terminalContextReference(context).contextId),
-        )
-      ) {
-        setComposerDraftTerminalContexts(
-          composerDraftTarget,
-          composerTerminalContexts.filter((context) =>
-            referenced.has(terminalContextReference(context).contextId),
-          ),
-        );
+      const retained = removedContextPayloadsRef.current;
+
+      // An undone delete brings the reference back; restore the payload it points at.
+      const liveTerminalIds = new Set<string>(
+        composerTerminalContexts.map((context) => terminalContextReference(context).contextId),
+      );
+      const restoredTerminals = [...referenced].flatMap((contextId) => {
+        if (liveTerminalIds.has(contextId)) return [];
+        const context = retained.terminals.get(contextId);
+        return context ? [context] : [];
+      });
+      const nextTerminals = [
+        ...composerTerminalContexts.filter((context) =>
+          referenced.has(terminalContextReference(context).contextId),
+        ),
+        ...restoredTerminals,
+      ];
+      for (const context of composerTerminalContexts) {
+        const contextId = terminalContextReference(context).contextId;
+        if (!referenced.has(contextId)) retained.terminals.set(contextId, context);
       }
+      if (
+        nextTerminals.length !== composerTerminalContexts.length ||
+        restoredTerminals.length > 0
+      ) {
+        setComposerDraftTerminalContexts(composerDraftTarget, nextTerminals);
+      }
+
       for (const comment of composerReviewComments) {
-        if (!referenced.has(reviewCommentContextId(comment.id))) {
+        const contextId = reviewCommentContextId(comment.id);
+        if (!referenced.has(contextId)) {
+          retained.reviewComments.set(contextId, comment);
           removeComposerDraftReviewComment(composerDraftTarget, comment.id);
         }
       }
+      const liveReviewIds = new Set<string>(
+        composerReviewComments.map((comment) => reviewCommentContextId(comment.id)),
+      );
+      for (const contextId of referenced) {
+        if (liveReviewIds.has(contextId)) continue;
+        const comment = retained.reviewComments.get(contextId);
+        if (comment) {
+          addComposerDraftReviewComment(composerDraftTarget, comment, { appendReference: false });
+        }
+      }
+
       for (const annotation of composerPreviewAnnotations) {
-        if (!referenced.has(previewAnnotationContextId(annotation.id))) {
+        const contextId = previewAnnotationContextId(annotation.id);
+        if (!referenced.has(contextId)) {
+          retained.previewAnnotations.set(contextId, annotation);
           releaseAttachmentUpload(annotation.id);
           removeComposerDraftPreviewAnnotation(composerDraftTarget, annotation.id);
+        }
+      }
+      const liveAnnotationIds = new Set<string>(
+        composerPreviewAnnotations.map((annotation) => previewAnnotationContextId(annotation.id)),
+      );
+      for (const contextId of referenced) {
+        if (liveAnnotationIds.has(contextId)) continue;
+        const annotation = retained.previewAnnotations.get(contextId);
+        if (annotation) {
+          addComposerDraftPreviewAnnotation(composerDraftTarget, annotation, {
+            appendReference: false,
+          });
         }
       }
       // Files live only as chips; images stay on the shelf when their chip goes.
@@ -2716,6 +2774,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       removeComposerDraftReviewComment,
       removeComposerDraftPreviewAnnotation,
       removeComposerFileFromDraft,
+      addComposerDraftReviewComment,
+      addComposerDraftPreviewAnnotation,
     ],
   );
 
