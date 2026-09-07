@@ -59,9 +59,9 @@ function parseEntries(block: string): ParsedEntry[] {
       current = { header: headerMatch[1]!, bodyLines: [] };
       continue;
     }
-    if (!current) continue;
-    if (line.startsWith("  ")) current.bodyLines.push(line.slice(2));
-    else if (line.length === 0) current.bodyLines.push("");
+    if (current && line.startsWith("  ")) current.bodyLines.push(line.slice(2));
+    else if (line.trim().length > 0) return [];
+    else if (current) current.bodyLines.push("");
   }
   commit();
   return entries;
@@ -342,7 +342,7 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
     while (
       at !== -1 &&
       (/[\p{L}\p{N}\p{M}_@.-]$/u.test(body.slice(0, at)) ||
-        /^[\p{L}\p{N}\p{M}_-]/u.test(body.slice(at + label.length)))
+        /^(?:[\p{L}\p{N}\p{M}_-]|[.@]+[\p{L}\p{N}\p{M}_-])/u.test(body.slice(at + label.length)))
     ) {
       at = body.indexOf(label, at + 1);
     }
