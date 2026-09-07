@@ -21,7 +21,7 @@ import {
 } from "@t3tools/client-runtime/state/threads";
 import { deriveActiveWorkStartedAt } from "@t3tools/shared/orchestrationTiming";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
-import { reidentifyComposerContext } from "../lib/composerContext";
+import { composerContextSendBlockReason, reidentifyComposerContext } from "../lib/composerContext";
 import { uuidv4 } from "../lib/uuid";
 
 import { makeQueuedMessageMetadata } from "../lib/commandMetadata";
@@ -338,6 +338,12 @@ export function useThreadComposerState() {
         "Too many attachments",
         `Remove attachments until there are at most ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}.`,
       );
+      return null;
+    }
+
+    const contextBlockReason = composerContextSendBlockReason(draft.context);
+    if (contextBlockReason) {
+      Alert.alert("Too much context", contextBlockReason);
       return null;
     }
 

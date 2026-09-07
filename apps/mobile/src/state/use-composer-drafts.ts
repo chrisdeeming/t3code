@@ -3,7 +3,9 @@ import {
   EnvironmentId as EnvironmentIdSchema,
   ModelSelection as ModelSelectionSchema,
   ComposerContextId,
+  ComposerContextRecord,
   COMPOSER_CONTEXT_MAX_RECORDS,
+  ForwardCompatibleArray,
   OrchestrationMessageContext,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   ProjectId as ProjectIdSchema,
@@ -198,9 +200,16 @@ const ComposerDraftProjectSchema = Schema.Struct({
   createdAt: Schema.String,
 });
 
+// Recovery can merge two individually valid drafts beyond the send limit, just like
+// attachments. Keep every payload reloadable; send guards ask the user to trim the draft.
+const PersistedComposerContextSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  records: ForwardCompatibleArray(ComposerContextRecord),
+});
+
 const ComposerDraftSchema = Schema.Struct({
   text: Schema.String,
-  context: Schema.optional(OrchestrationMessageContext),
+  context: Schema.optional(PersistedComposerContextSchema),
   attachments: Schema.Array(DraftComposerAttachmentSchema),
   importedShareIds: Schema.optional(Schema.Array(Schema.String)),
   modelSelection: Schema.optional(ModelSelectionSchema),
@@ -542,13 +551,15 @@ export function findLocalComposerClipboardAttachment(
   environmentId: EnvironmentId,
   id: string,
 ): DraftComposerAttachment | undefined {
+  const queuedMessages = Object.values(
+    appAtomRegistry.get(threadOutboxManager.queuedMessagesByThreadKeyAtom),
+  ).flat();
   for (const [key, draft] of Object.entries(appAtomRegistry.get(composerDraftsAtom))) {
-    if (composerDraftEnvironmentId(key, []) !== environmentId) continue;
+    if (composerDraftEnvironmentId(key, queuedMessages, draft) !== environmentId) continue;
     const attachment = draft.attachments.find((entry) => entry.id === id);
     if (attachment) return attachment;
   }
-  return Object.values(appAtomRegistry.get(threadOutboxManager.queuedMessagesByThreadKeyAtom))
-    .flat()
+  return queuedMessages
     .filter((message) => message.environmentId === environmentId)
     .flatMap((message) => message.attachments)
     .find((attachment) => attachment.id === id);
@@ -955,20 +966,11 @@ export async function restoreCloudComposerDrafts(accountId: string): Promise<voi
               ...draft,
               ...existing,
               text: mergeComposerDraftText(existing.text, draft.text),
-              context:
-                draft.context || existing.context
-                  ? {
-                      version: 1,
-                      records: [
-                        ...new Map(
-                          [
-                            ...(draft.context?.records ?? []),
-                            ...(existing.context?.records ?? []),
-                          ].map((record) => [record.contextId, record]),
-                        ).values(),
-                      ],
-                    }
-                  : undefined,
+              context: mergeReferencedComposerContext(
+                mergeComposerDraftText(existing.text, draft.text),
+                draft.context,
+                existing.context,
+              ),
               // A concurrent import must not lose files, even above the send limit.
               attachments: [
                 ...existing.attachments,
@@ -1294,6 +1296,17 @@ function mergeComposerDraftText(existing: string, incoming: string): string {
   return `${existing}\n\n${incoming}`;
 }
 
+function mergeReferencedComposerContext(
+  text: string,
+  first?: OrchestrationMessageContext,
+  second?: OrchestrationMessageContext,
+) {
+  const records = new Map((first?.records ?? []).map((record) => [record.contextId, record]));
+  for (const record of second?.records ?? []) records.set(record.contextId, record);
+  if (records.size === 0) return undefined;
+  return referencedComposerContext(text, { version: 1, records: [...records.values()] });
+}
+
 export function mergeComposerDraftContentState(
   current: Record<string, ComposerDraft>,
   draftKey: string,
@@ -1316,10 +1329,7 @@ export function mergeComposerDraftContentState(
     PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   );
   const text = mergeComposerDraftText(existing.text, content.text);
-  const records = new Map(existing.context?.records.map((record) => [record.contextId, record]));
-  for (const record of content.context?.records ?? []) records.set(record.contextId, record);
-  const context =
-    records.size > 0 ? { version: 1 as const, records: [...records.values()] } : undefined;
+  const context = mergeReferencedComposerContext(text, existing.context, content.context);
   const importedShareIds = content.sourceShareId
     ? [...(existing.importedShareIds ?? []), content.sourceShareId]
     : existing.importedShareIds;
