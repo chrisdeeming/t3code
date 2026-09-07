@@ -159,6 +159,7 @@ import {
   type TerminalContextSelection,
 } from "../../lib/terminalContext";
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
+import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import {
   COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX,
   COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX,
@@ -2433,7 +2434,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     (contextIds: ReadonlyArray<string>): string | null => {
       const wanted = new Set(contextIds);
       const records: ComposerContextRecord[] = [
-        ...composerTerminalContexts.filter((c) => wanted.has(c.id)).map(terminalContextRecord),
+        ...composerTerminalContexts
+          .filter((c) => wanted.has(terminalContextReference(c).contextId))
+          .map(terminalContextRecord),
         ...composerReviewComments
           .filter((c) => wanted.has(reviewCommentContextId(c.id)))
           .map(reviewCommentContextRecord),
@@ -2447,7 +2450,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             }),
           ),
         ...[...composerImages, ...composerFiles]
-          .filter((attachment) => wanted.has(attachment.id))
+          .filter((attachment) =>
+            wanted.has(toKindScopedComposerContextId(attachment.type, attachment.id)),
+          )
           .map((attachment) => {
             // A hydrated file already lives on the server under its upload id.
             const upload = uploadsByImageId[attachment.id];
@@ -2526,7 +2531,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       const file = new File([blob], record.name, { type: record.mimeType || blob.type });
       if (record.kind === "image") {
-        addComposerImage({
+        const accepted = addComposerImage({
           type: "image",
           id: localId,
           name: record.name,
@@ -2535,8 +2540,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           previewUrl: URL.createObjectURL(file),
           file,
         });
+        if (!accepted.includes(localId))
+          fail("The draft rejected this attachment (duplicate or attachment limit reached).");
       } else {
-        addComposerFilesToDraft([
+        const accepted = addComposerFilesToDraft([
           {
             type: "file",
             id: localId,
@@ -2546,6 +2553,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             file,
           },
         ]);
+        if (!accepted.includes(localId))
+          fail("The draft rejected this attachment (duplicate or attachment limit reached).");
       }
     },
     [addComposerFilesToDraft, addComposerImage, createAssetUrl],
@@ -2560,23 +2569,30 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       sourceEnvironmentId: EnvironmentId | null,
     ): ReadonlyMap<string, string> => {
       const rewritten = new Map<string, string>();
-      if (!activeThread) return rewritten;
       for (const candidate of records) {
         if (composerContextRecords.has(candidate.contextId)) continue;
         const record = asKnownContextRecord(candidate);
         if (!record) continue;
         switch (record.kind) {
-          case "terminal":
+          case "terminal": {
+            const threadId = activeThread?.id ?? activeThreadId;
+            if (!threadId) break;
             addComposerDraftTerminalContexts(
               composerDraftTarget,
-              [terminalContextDraftFromRecord(record, activeThread.id)],
+              [terminalContextDraftFromRecord(record, threadId)],
               { appendReference: false },
             );
+            rewritten.set(
+              record.contextId,
+              toKindScopedComposerContextId("terminal", record.contextId),
+            );
             break;
+          }
           case "review-comment":
             addComposerDraftReviewComment(composerDraftTarget, reviewCommentFromRecord(record), {
               appendReference: false,
             });
+            rewritten.set(record.contextId, reviewCommentContextId(record.contextId));
             break;
           case "preview-annotation":
             addComposerDraftPreviewAnnotation(
@@ -2584,12 +2600,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               previewAnnotationFromRecord(record),
               { appendReference: false },
             );
+            rewritten.set(
+              record.contextId,
+              previewAnnotationContextId(record.annotationId || record.contextId),
+            );
             break;
           case "image":
           case "file": {
-            if (sourceEnvironmentId === null) break;
+            if (sourceEnvironmentId === null) {
+              rewritten.set(
+                record.contextId,
+                toKindScopedComposerContextId(record.kind, record.contextId),
+              );
+              break;
+            }
             const localId = randomUUID();
-            rewritten.set(record.contextId, localId);
+            rewritten.set(record.contextId, toKindScopedComposerContextId(record.kind, localId));
             void importAttachmentRecord(record, localId, sourceEnvironmentId);
             break;
           }
@@ -2601,6 +2627,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     },
     [
       activeThread,
+      activeThreadId,
       addComposerDraftPreviewAnnotation,
       addComposerDraftReviewComment,
       addComposerDraftTerminalContexts,
@@ -3638,24 +3665,30 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
       }
 
+      const rewrittenContextIds = entry.records
+        ? importContextRecords(entry.records, null)
+        : new Map<string, string>();
+      const restoredPrompt = replaceComposerContextReferences(entry.prompt, (reference) => {
+        const contextId = rewrittenContextIds.get(reference.contextId);
+        return contextId
+          ? formatInlineContextReference({ ...reference, contextId })
+          : reference.source;
+      });
       const currentPrompt = promptRef.current;
       // An image-only stash must not append blank lines to whatever is
       // already in the composer.
       const nextPrompt =
-        entry.prompt.length === 0
+        restoredPrompt.length === 0
           ? currentPrompt
           : currentPrompt.trim().length
-            ? `${currentPrompt.replace(/\s+$/, "")}\n\n${entry.prompt}`
-            : entry.prompt;
+            ? `${currentPrompt.replace(/\s+$/, "")}\n\n${restoredPrompt}`
+            : restoredPrompt;
       const promptChanged = nextPrompt !== currentPrompt;
       if (promptChanged) {
         promptRef.current = nextPrompt;
         setComposerDraftPrompt(composerDraftTarget, nextPrompt);
         setComposerCursor(collapseExpandedComposerCursor(nextPrompt, nextPrompt.length));
         setComposerTrigger(null);
-      }
-      if (entry.records && entry.records.length > 0) {
-        importContextRecords(entry.records, null);
       }
 
       let unrestoredFileNames: string[] = [];
