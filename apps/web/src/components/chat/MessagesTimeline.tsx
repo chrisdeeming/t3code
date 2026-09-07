@@ -2403,6 +2403,7 @@ function UserMessageContextChip(props: {
         props.unresolved && "border-dashed text-muted-foreground",
       )}
       data-context-unresolved={props.unresolved ? "true" : undefined}
+      tabIndex={props.tooltip ? 0 : undefined}
     >
       {props.icon}
       <span className={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}>{props.label}</span>
