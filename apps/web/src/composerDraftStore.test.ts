@@ -2974,7 +2974,7 @@ describe("composerDraftStore attachment references", () => {
         file: null,
       },
     ]);
-    store.addFiles(threadRef, [
+    const acceptedIds = store.addFiles(threadRef, [
       {
         type: "file",
         id: "fresh-1",
@@ -2985,6 +2985,7 @@ describe("composerDraftStore attachment references", () => {
       },
     ]);
     const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
+    expect(acceptedIds).toEqual(["fresh-1"]);
     expect(draft?.files.map((file) => file.id)).toEqual(["fresh-1"]);
     expect(draft?.prompt).toBe("see [notes.txt](t3-context://v1/file/file_fresh-1) ok");
   });
