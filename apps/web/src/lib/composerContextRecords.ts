@@ -132,9 +132,9 @@ export function previewAnnotationContextRecord(
   annotation: PreviewAnnotationPayload,
   options?: { screenshotContextId?: string | undefined },
 ): PreviewAnnotationContextRecord {
-  const elements = annotation.elements.flatMap((target): ElementContextDetails[] => {
+  const targets = annotation.elements.flatMap((target) => {
     const element = normalizeElementContextSelection(target.element);
-    return element ? [element] : [];
+    return element ? [{ id: target.id, element }] : [];
   });
   return {
     version: 1,
@@ -152,7 +152,13 @@ export function previewAnnotationContextRecord(
     styleChanges: annotation.styleChanges.map(
       (change) => `${change.property}: ${change.previousValue || "(unset)"} → ${change.value}`,
     ),
-    ...(elements.length > 0 ? { elements } : {}),
+    ...(targets.length > 0
+      ? {
+          elements: targets.map((target) => target.element),
+          elementIds: targets.map((target) => target.id),
+        }
+      : {}),
+    styleChangeDetails: annotation.styleChanges.map((change) => ({ ...change })),
     ...(options?.screenshotContextId !== undefined
       ? { screenshotContextId: options.screenshotContextId as ComposerContextId }
       : {}),
