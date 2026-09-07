@@ -17,7 +17,11 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.KeyEvent
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputConnectionWrapper
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import expo.modules.kotlin.AppContext
@@ -69,9 +73,11 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
     editor.setTextColor(Color.BLACK)
     editor.setHintTextColor(Color.GRAY)
     editor.setPadding(0, 0, 0, 0)
-    editor.filters = arrayOf(InputFilter { _, _, _, dest, start, end ->
-      if (editor.readOnly && !applyingNativeValue) dest.subSequence(start, end) else null
-    })
+    editor.filters = arrayOf(
+      InputFilter { _, _, _, dest, start, end ->
+        if (editor.readOnly && !applyingNativeValue) dest.subSequence(start, end) else null
+      }
+    )
     editor.selectionListener = { start, end ->
       if (!applyingNativeValue) {
         emitSelectionChange(start, end)
@@ -81,16 +87,34 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
       onComposerPasteImages(mapOf("uris" to uris))
     }
     editor.pasteContextListener = { payload -> onComposerPasteContext(payload) }
-    val contextGestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
-      override fun onDown(event: MotionEvent) = true
-      override fun onSingleTapUp(event: MotionEvent): Boolean {
-        val offset = editor.getOffsetForPosition(event.x, event.y)
-        val token = tokens.firstOrNull { (it.type == "context" || it.type == "mention") && offset >= it.start && offset < it.end } ?: return false
-        if (token.end > editor.length() || editor.text.substring(token.start, token.end) != token.source) return false
-        onComposerContextPress(mapOf("source" to token.source, "start" to token.start, "end" to token.end))
-        return false
-      }
-    })
+    val contextGestures =
+      GestureDetector(
+        context,
+        object : GestureDetector.SimpleOnGestureListener() {
+          override fun onDown(event: MotionEvent) = true
+          override fun onSingleTapUp(event: MotionEvent): Boolean {
+            val offset = editor.getOffsetForPosition(event.x, event.y)
+            val token =
+              tokens.firstOrNull {
+                (it.type == "context" || it.type == "mention") && offset >= it.start &&
+                  offset < it.end
+              }
+                ?: return false
+            if (token.end <= editor.length() &&
+              editor.text.substring(token.start, token.end) == token.source
+            ) {
+              onComposerContextPress(
+                mapOf(
+                  "source" to token.source,
+                  "start" to token.start,
+                  "end" to token.end
+                )
+              )
+            }
+            return false
+          }
+        }
+      )
     editor.setOnTouchListener { _, event ->
       contextGestures.onTouchEvent(event)
       false
@@ -387,10 +411,16 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
             label = token.label,
             symbol = token.symbol,
             fontSize = editor.textSize * 0.8f,
-            accent = T3ContextChip.color(token.accent, chipTheme.chipText),
-            foreground = chipTheme.chipText,
-            border = chipTheme.chipBorder,
-            maximumWidth = (editor.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels).toFloat(),
+            colors = T3ContextChip.Colors(
+              accent = T3ContextChip.color(token.accent, chipTheme.chipText),
+              foreground = chipTheme.chipText,
+              border = chipTheme.chipBorder
+            ),
+            maximumWidth = (
+              editor.width.takeIf {
+                it > 0
+              } ?: resources.displayMetrics.widthPixels
+              ).toFloat(),
             density = resources.displayMetrics.density,
           )
         ),
@@ -453,7 +483,7 @@ private data class ComposerChipTheme(
 }
 
 private class ComposerChipSpan(
-  private val chip: T3ContextChip,
+  private val chip: T3ContextChip
 ) : ReplacementSpan() {
   override fun getSize(
     paint: Paint,
@@ -514,40 +544,54 @@ private class SelectionAwareEditText(context: Context) : EditText(context) {
   var clipboardFragment = ""
 
   private fun deleteChip(backwards: Boolean): Boolean {
-    val content = text ?: return false
+    val content = text
     val start = minOf(selectionStart, selectionEnd)
     val end = maxOf(selectionStart, selectionEnd)
-    if (start < 0 || end < 0) return false
+    if (content == null || start < 0 || end < 0) return false
     val from = if (start == end && backwards) (start - 1).coerceAtLeast(0) else start
     val to = if (start == end && !backwards) (end + 1).coerceAtMost(content.length) else end
-    val spans = content.getSpans(from, to, ComposerChipSpan::class.java).filter { content.getSpanStart(it) < to && content.getSpanEnd(it) > from }
-    if (spans.isEmpty()) return false
-    val first = minOf(from, spans.minOf { content.getSpanStart(it) })
-    val last = maxOf(to, spans.maxOf { content.getSpanEnd(it) })
-    content.delete(first, last)
-    setSelection(first)
-    return true
+    val spans = content.getSpans(from, to, ComposerChipSpan::class.java).filter {
+      content.getSpanStart(it) <
+        to &&
+        content.getSpanEnd(it) > from
+    }
+    if (spans.isNotEmpty()) {
+      val first = minOf(from, spans.minOf { content.getSpanStart(it) })
+      val last = maxOf(to, spans.maxOf { content.getSpanEnd(it) })
+      content.delete(first, last)
+      setSelection(first)
+    }
+    return spans.isNotEmpty()
   }
 
-  override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
-    if (keyCode == android.view.KeyEvent.KEYCODE_DEL && deleteChip(true)) return true
-    if (keyCode == android.view.KeyEvent.KEYCODE_FORWARD_DEL && deleteChip(false)) return true
-    return super.onKeyDown(keyCode, event)
+  override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+    val handled = when (keyCode) {
+      KeyEvent.KEYCODE_DEL -> deleteChip(true)
+      KeyEvent.KEYCODE_FORWARD_DEL -> deleteChip(false)
+      else -> false
+    }
+    return handled || super.onKeyDown(keyCode, event)
   }
 
-  override fun onCreateInputConnection(outAttrs: android.view.inputmethod.EditorInfo): android.view.inputmethod.InputConnection? {
+  private fun deleteAdjacentChip(beforeLength: Int, afterLength: Int): Boolean = when {
+    beforeLength == 1 && afterLength == 0 -> deleteChip(true)
+    beforeLength == 0 && afterLength == 1 -> deleteChip(false)
+    else -> false
+  }
+
+  override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
     val connection = super.onCreateInputConnection(outAttrs) ?: return null
-    return object : android.view.inputmethod.InputConnectionWrapper(connection, false) {
-      override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
-        if (beforeLength == 1 && afterLength == 0 && deleteChip(true)) return true
-        if (beforeLength == 0 && afterLength == 1 && deleteChip(false)) return true
-        return super.deleteSurroundingText(beforeLength, afterLength)
-      }
-      override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean {
-        if (beforeLength == 1 && afterLength == 0 && deleteChip(true)) return true
-        if (beforeLength == 0 && afterLength == 1 && deleteChip(false)) return true
-        return super.deleteSurroundingTextInCodePoints(beforeLength, afterLength)
-      }
+    return object : InputConnectionWrapper(connection, false) {
+      override fun deleteSurroundingText(
+        beforeLength: Int,
+        afterLength: Int
+      ): Boolean = deleteAdjacentChip(beforeLength, afterLength) ||
+        super.deleteSurroundingText(beforeLength, afterLength)
+      override fun deleteSurroundingTextInCodePoints(
+        beforeLength: Int,
+        afterLength: Int
+      ): Boolean = deleteAdjacentChip(beforeLength, afterLength) ||
+        super.deleteSurroundingTextInCodePoints(beforeLength, afterLength)
     }
   }
 
@@ -557,39 +601,46 @@ private class SelectionAwareEditText(context: Context) : EditText(context) {
   }
 
   override fun onTextContextMenuItem(id: Int): Boolean {
-    if (readOnly && (id == android.R.id.cut || id == android.R.id.paste || id == android.R.id.pasteAsPlainText)) return false
-    if (id == android.R.id.copy || id == android.R.id.cut) {
-      val start = minOf(selectionStart, selectionEnd).coerceAtLeast(0)
-      val end = maxOf(selectionStart, selectionEnd).coerceAtMost(length())
-      if (end > start && clipboardFragment.isNotEmpty()) {
-        T3ComposerClipboard.write(context, text.substring(start, end), clipboardFragment)
-        if (id == android.R.id.cut) text.delete(start, end)
-        return true
-      }
+    val pasting = id == android.R.id.paste || id == android.R.id.pasteAsPlainText
+    if (readOnly && (id == android.R.id.cut || pasting)) {
+      return false
     }
-    if (id == android.R.id.paste || id == android.R.id.pasteAsPlainText) {
-      val payload = T3ComposerClipboard.read(context)
-      if (payload["html"]?.contains("data-t3-context-fragment=") == true) {
-        pasteContextListener?.invoke(payload)
-        return true
-      }
-      val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-      val clip = clipboard?.primaryClip
-      val imageUris = buildList {
-        if (clip != null) {
-          for (index in 0 until clip.itemCount) {
-            clip.getItemAt(index).uri?.let { uri ->
-              val mimeType = context.contentResolver.getType(uri)
-              if (mimeType?.startsWith("image/") == true) add(uri.toString())
-            }
+    val handled = when {
+      id == android.R.id.copy || id == android.R.id.cut -> copyContext(id == android.R.id.cut)
+      pasting -> pasteContextOrImages()
+      else -> false
+    }
+    return handled || super.onTextContextMenuItem(id)
+  }
+
+  private fun copyContext(cut: Boolean): Boolean {
+    val start = minOf(selectionStart, selectionEnd).coerceAtLeast(0)
+    val end = maxOf(selectionStart, selectionEnd).coerceAtMost(length())
+    if (end <= start || clipboardFragment.isEmpty()) return false
+    T3ComposerClipboard.write(context, text.substring(start, end), clipboardFragment)
+    if (cut) text.delete(start, end)
+    return true
+  }
+
+  private fun pasteContextOrImages(): Boolean {
+    val payload = T3ComposerClipboard.read(context)
+    if (payload["html"]?.contains("data-t3-context-fragment=") == true) {
+      pasteContextListener?.invoke(payload)
+      return true
+    }
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+    val clip = clipboard?.primaryClip
+    val imageUris = buildList {
+      if (clip != null) {
+        for (index in 0 until clip.itemCount) {
+          clip.getItemAt(index).uri?.let { uri ->
+            val mimeType = context.contentResolver.getType(uri)
+            if (mimeType?.startsWith("image/") == true) add(uri.toString())
           }
         }
       }
-      if (imageUris.isNotEmpty()) {
-        pasteImagesListener?.invoke(imageUris)
-        return true
-      }
     }
-    return super.onTextContextMenuItem(id)
+    if (imageUris.isNotEmpty()) pasteImagesListener?.invoke(imageUris)
+    return imageUris.isNotEmpty()
   }
 }

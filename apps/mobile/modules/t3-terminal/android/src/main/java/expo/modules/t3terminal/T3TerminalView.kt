@@ -28,10 +28,21 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
     set(value) {
       if (field == value || value <= 0) return
       field = value
-      val frame = if (terminalHandle != 0L) TerminalFrame.decode(GhosttyBridge.nativeSnapshot(terminalHandle)) else null
+      val frame = if (terminalHandle !=
+        0L
+      ) {
+        TerminalFrame.decode(GhosttyBridge.nativeSnapshot(terminalHandle))
+      } else {
+        null
+      }
       val text = frame?.let { snapshot ->
         (0 until snapshot.rows).joinToString("\n") { row ->
-          (0 until snapshot.cols).joinToString("") { col -> snapshot.cellText[row * snapshot.cols + col] }.trimEnd()
+          (0 until snapshot.cols).joinToString("") { col ->
+            snapshot.cellText[
+              row * snapshot.cols +
+                col
+            ]
+          }.trimEnd()
         }
       } ?: ""
       onCapture(mapOf("text" to text))

@@ -16,12 +16,12 @@ class T3ContextChip(
   label: String,
   private val symbol: String,
   fontSize: Float,
-  accent: Int,
-  foreground: Int,
-  border: Int,
+  colors: Colors,
   maximumWidth: Float,
-  private val density: Float,
+  private val density: Float
 ) {
+  data class Colors(val accent: Int, val foreground: Int, val border: Int)
+
   private val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
     textSize = fontSize
     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
@@ -29,10 +29,20 @@ class T3ContextChip(
   private val em = fontSize
   val width = ceil(min(maximumWidth.coerceAtLeast(em * 3), paint.measureText(label) + em * 2.5f))
   val height = ceil(em * 1.41f)
-  private val text = TextUtils.ellipsize(label, paint, (width - em * 2.5f).coerceAtLeast(0f), TextUtils.TruncateAt.MIDDLE).toString()
-  private val fill = Color.argb(28, Color.red(accent), Color.green(accent), Color.blue(accent))
-  private val textColor = blend(accent, foreground, 0.22f)
-  private val borderColor = blend(accent, border, 0.34f)
+  private val text = TextUtils.ellipsize(
+    label,
+    paint,
+    (width - em * 2.5f).coerceAtLeast(0f),
+    TextUtils.TruncateAt.MIDDLE
+  ).toString()
+  private val fill = Color.argb(
+    28,
+    Color.red(colors.accent),
+    Color.green(colors.accent),
+    Color.blue(colors.accent)
+  )
+  private val textColor = blend(colors.accent, colors.foreground, 0.22f)
+  private val borderColor = blend(colors.accent, colors.border, 0.34f)
   private val shape = RectF(density / 2, density / 2, width - density / 2, height - density / 2)
   private val icon = iconPath(symbol)
 
@@ -63,7 +73,10 @@ class T3ContextChip(
   }
 
   companion object {
-    fun color(value: String, fallback: Int): Int = runCatching { Color.parseColor(value) }.getOrDefault(fallback)
+    fun color(
+      value: String,
+      fallback: Int
+    ): Int = runCatching { Color.parseColor(value) }.getOrDefault(fallback)
 
     private fun blend(accent: Int, base: Int, weight: Float): Int = Color.rgb(
       (Color.red(accent) * weight + Color.red(base) * (1 - weight)).toInt(),
@@ -87,7 +100,8 @@ class T3ContextChip(
           addCircle(6f, 20f, 2f, Path.Direction.CW)
           addCircle(18f, 4f, 2f, Path.Direction.CW)
           line(6f, 6f, 6f, 18f)
-          moveTo(18f, 6f); cubicTo(18f, 13f, 6f, 10f, 6f, 16f)
+          moveTo(18f, 6f)
+          cubicTo(18f, 13f, 6f, 10f, 6f, 16f)
         }
         "cursorarrow.click" -> {
           line(4f, 3f, 19f, 12f, 12f, 14f, 9f, 21f, 4f, 3f)
@@ -95,14 +109,21 @@ class T3ContextChip(
         }
         "text.bubble" -> {
           line(3f, 4f, 21f, 4f, 21f, 17f, 10f, 17f, 5f, 21f, 5f, 17f, 3f, 17f, 3f, 4f)
-          line(7f, 8f, 17f, 8f); line(7f, 12f, 14f, 12f)
+          line(7f, 8f, 17f, 8f)
+          line(7f, 12f, 14f, 12f)
         }
         "terminal", "play.rectangle", "photo" -> {
           addRoundRect(2f, 4f, 22f, 20f, 2f, 2f, Path.Direction.CW)
           when (symbol) {
-            "terminal" -> { line(6f, 8f, 10f, 12f, 6f, 16f); line(13f, 16f, 18f, 16f) }
+            "terminal" -> {
+              line(6f, 8f, 10f, 12f, 6f, 16f)
+              line(13f, 16f, 18f, 16f)
+            }
             "play.rectangle" -> line(9f, 8f, 16f, 12f, 9f, 16f, 9f, 8f)
-            else -> { addCircle(8f, 9f, 1.5f, Path.Direction.CW); line(3f, 18f, 11f, 12f, 15f, 15f, 18f, 12f, 21f, 16f) }
+            else -> {
+              addCircle(8f, 9f, 1.5f, Path.Direction.CW)
+              line(3f, 18f, 11f, 12f, 15f, 15f, 18f, 12f, 21f, 16f)
+            }
           }
         }
         else -> {

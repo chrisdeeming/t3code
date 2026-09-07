@@ -227,7 +227,7 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
       var captured = ghostty_text_s()
       guard ghostty_surface_read_text(surface, selection, &captured) else { onCapture(["text": ""]); return }
       defer { ghostty_surface_free_text(surface, &captured) }
-      let text = captured.text.map { String(decoding: UnsafeBufferPointer(start: UnsafeRawPointer($0).assumingMemoryBound(to: UInt8.self), count: Int(captured.text_len)), as: UTF8.self) } ?? ""
+      let text = captured.text.flatMap { String(bytes: UnsafeBufferPointer(start: UnsafeRawPointer($0).assumingMemoryBound(to: UInt8.self), count: Int(captured.text_len)), encoding: .utf8) } ?? ""
       onCapture(["text": text])
     }
   }

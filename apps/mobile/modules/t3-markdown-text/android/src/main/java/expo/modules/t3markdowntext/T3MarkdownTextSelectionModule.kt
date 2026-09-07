@@ -58,6 +58,61 @@ internal fun copyTextWithoutInlineImages(
   }
 }
 
+private fun canonicalSelection(
+  originalText: String,
+  start: Int,
+  end: Int,
+  ranges: JSONArray?
+): String? {
+  if (ranges == null) return null
+  val canonical = StringBuilder(originalText)
+  var hasContext = false
+  for (index in ranges.length() - 1 downTo 0) {
+    val range = ranges.optJSONObject(index) ?: continue
+    val first = max(start, range.optInt("start"))
+    val last = min(end, range.optInt("end"))
+    if (last > first) {
+      canonical.replace(first - start, last - start, range.optString("text"))
+      hasContext = true
+    }
+  }
+  return if (hasContext) canonical.toString().replace(OBJECT_REPLACEMENT_CHARACTER, "") else null
+}
+
+private fun selectedContextRecords(records: JSONArray, selectedText: String): JSONArray {
+  val ids = mutableSetOf<String>()
+  for (index in 0 until records.length()) {
+    val record = records.getJSONObject(index)
+    if (selectedText.contains("/${record.optString("contextId")})")) {
+      ids.add(record.optString("contextId"))
+      if (record.has("screenshotContextId")) ids.add(record.getString("screenshotContextId"))
+    }
+  }
+  val copied = JSONArray()
+  for (index in 0 until records.length()) {
+    val record = records.getJSONObject(index)
+    if (ids.contains(record.optString("contextId"))) copied.put(record)
+  }
+  return copied
+}
+
+private fun contextClipData(selectedText: String, fragment: String): ClipData {
+  val payload = runCatching { JSONObject(fragment) }.getOrNull()
+  val records = payload?.optJSONArray("records")
+  val copied = records?.let { selectedContextRecords(it, selectedText) }
+  if (payload == null || copied == null || copied.length() == 0) {
+    return ClipData.newPlainText(null, selectedText)
+  }
+  payload.put("records", copied)
+  val attribute = URLEncoder.encode(payload.toString(), "UTF-8").replace("+", "%20")
+  val escaped = selectedText.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+  return ClipData.newHtmlText(
+    null,
+    selectedText,
+    "<pre data-t3-context-fragment=\"$attribute\">$escaped</pre>"
+  )
+}
+
 private class SanitizingSelectionActionModeCallback(
   private val textView: TextView,
   private val delegate: ActionMode.Callback?,
@@ -70,54 +125,33 @@ private class SanitizingSelectionActionModeCallback(
     delegate?.onPrepareActionMode(mode, menu) ?: false
 
   override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
-    if (item.itemId == android.R.id.copy) {
-      val start = min(textView.selectionStart, textView.selectionEnd)
-      val end = max(textView.selectionStart, textView.selectionEnd)
-      if (start >= 0 && end > start) {
-        val originalText = textView.text.subSequence(start, end).toString()
-        val config = runCatching { JSONObject(contextClipboardConfig) }.getOrNull()
-        val ranges = config?.optJSONArray("ranges")
-        val canonical = StringBuilder(originalText)
-        var hasContext = false
-        if (ranges != null) for (index in ranges.length() - 1 downTo 0) {
-          val range = ranges.optJSONObject(index) ?: continue
-          val first = max(start, range.optInt("start"))
-          val last = min(end, range.optInt("end"))
-          if (last > first) {
-            canonical.replace(first - start, last - start, range.optString("text"))
-            hasContext = true
-          }
-        }
-        val selectedText = if (hasContext) canonical.toString().replace(OBJECT_REPLACEMENT_CHARACTER, "") else copyTextWithoutInlineImages(textView.text, start, end)
-        if (hasContext || selectedText != originalText) {
-          val clipboard =
-            textView.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-          val payload = runCatching { JSONObject(config?.optString("fragment") ?: "") }.getOrNull()
-          val records = payload?.optJSONArray("records")
-          val copied = JSONArray()
-          val ids = mutableSetOf<String>()
-          if (records != null) {
-            for (index in 0 until records.length()) {
-              val record = records.getJSONObject(index)
-              if (selectedText.contains("/${record.optString("contextId")})")) {
-                ids.add(record.optString("contextId"))
-                if (record.has("screenshotContextId")) ids.add(record.getString("screenshotContextId"))
-              }
-            }
-            for (index in 0 until records.length()) if (ids.contains(records.getJSONObject(index).optString("contextId"))) copied.put(records.getJSONObject(index))
-          }
-          if (hasContext && payload != null && copied.length() > 0) {
-            payload.put("records", copied)
-            val attribute = URLEncoder.encode(payload.toString(), "UTF-8").replace("+", "%20")
-            val escaped = selectedText.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            clipboard.setPrimaryClip(ClipData.newHtmlText(null, selectedText, "<pre data-t3-context-fragment=\"$attribute\">$escaped</pre>"))
-          } else clipboard.setPrimaryClip(ClipData.newPlainText(null, selectedText))
-          mode.finish()
-          return true
-        }
-      }
+    if (item.itemId == android.R.id.copy && copySelection()) {
+      mode.finish()
+      return true
     }
     return delegate?.onActionItemClicked(mode, item) ?: false
+  }
+
+  private fun copySelection(): Boolean {
+    val start = min(textView.selectionStart, textView.selectionEnd)
+    val end = max(textView.selectionStart, textView.selectionEnd)
+    if (start < 0 || end <= start) return false
+    val originalText = textView.text.subSequence(start, end).toString()
+    val config = runCatching { JSONObject(contextClipboardConfig) }.getOrNull()
+    val canonical = canonicalSelection(originalText, start, end, config?.optJSONArray("ranges"))
+    val selectedText = canonical ?: copyTextWithoutInlineImages(textView.text, start, end)
+    val handled = canonical != null || selectedText != originalText
+    if (handled) {
+      val clipboard =
+        textView.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+      val clip = if (canonical != null) {
+        contextClipData(selectedText, config?.optString("fragment") ?: "")
+      } else {
+        ClipData.newPlainText(null, selectedText)
+      }
+      clipboard.setPrimaryClip(clip)
+    }
+    return handled
   }
 
   override fun onDestroyActionMode(mode: ActionMode) {
@@ -139,20 +173,28 @@ class T3MarkdownTextSelectionModule : Module() {
       val chip = T3ContextChip(
         label = payload.optString("label").take(4096),
         symbol = payload.optString("symbol", "doc"),
-        fontSize = payload.optDouble("fontSize", 12.0).toFloat().coerceIn(10f, 40f) * metrics.density,
-        accent = T3ContextChip.color(payload.optString("accent"), Color.GRAY),
-        foreground = T3ContextChip.color(payload.optString("foreground"), Color.BLACK),
-        border = T3ContextChip.color(payload.optString("border"), Color.GRAY),
+        fontSize =
+          payload.optDouble("fontSize", 12.0).toFloat().coerceIn(10f, 40f) * metrics.density,
+        colors = T3ContextChip.Colors(
+          accent = T3ContextChip.color(payload.optString("accent"), Color.GRAY),
+          foreground = T3ContextChip.color(payload.optString("foreground"), Color.BLACK),
+          border = T3ContextChip.color(payload.optString("border"), Color.GRAY)
+        ),
         maximumWidth = (metrics.widthPixels - 80 * metrics.density).coerceAtLeast(100f),
         density = metrics.density,
       )
-      val bitmap = Bitmap.createBitmap(chip.width.toInt(), chip.height.toInt(), Bitmap.Config.ARGB_8888)
+      val bitmap = Bitmap.createBitmap(
+        chip.width.toInt(),
+        chip.height.toInt(),
+        Bitmap.Config.ARGB_8888
+      )
       chip.draw(Canvas(bitmap), 0f, 0f)
       val bytes = ByteArrayOutputStream()
       bitmap.compress(Bitmap.CompressFormat.PNG, 100, bytes)
       bitmap.recycle()
       val result = mapOf<String, Any>(
-        "uri" to "data:image/png;base64,${Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)}",
+        "uri" to
+          "data:image/png;base64,${Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)}",
         "width" to chip.width / metrics.density,
         "height" to chip.height / metrics.density,
       )
