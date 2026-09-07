@@ -28,7 +28,7 @@ const TRAILING_TERMINAL = /\n*<terminal_context>\n([\s\S]*?)\n<\/terminal_contex
 const TRAILING_ELEMENT = /\n*<element_context>\n([\s\S]*?)\n<\/element_context>\s*$/;
 const TRAILING_PREVIEW =
   /\n*<preview_annotation>\n((?:(?!\n<\/preview_annotation>)[\s\S])*)\n<\/preview_annotation>\s*$/;
-const INLINE_REVIEW = /<review_comment\b([^>]*)>\s*([\s\S]*?)<\/review_comment>/g;
+const REVIEW_OPEN = /<review_comment\b([^>]*)>/g;
 const REVIEW_ATTRIBUTE = /([a-zA-Z][a-zA-Z0-9_-]*)="([^"]*)"/g;
 const REVIEW_FENCE = /(`{3,})([^\s`]*)[^\n]*\n([\s\S]*?)\n\1/g;
 const REVIEW_TOKEN = "\uE000";
@@ -44,7 +44,7 @@ interface ParsedEntry {
   body: string;
 }
 
-function parseEntries(block: string): ParsedEntry[] {
+function parseEntries(block: string): ParsedEntry[] | null {
   const entries: ParsedEntry[] = [];
   let current: { header: string; bodyLines: string[] } | null = null;
   const commit = () => {
@@ -60,7 +60,7 @@ function parseEntries(block: string): ParsedEntry[] {
       continue;
     }
     if (current && line.startsWith("  ")) current.bodyLines.push(line.slice(2));
-    else if (line.trim().length > 0) return [];
+    else if (line.trim().length > 0) return null;
     else if (current) current.bodyLines.push("");
   }
   commit();
@@ -156,7 +156,7 @@ function elementRecord(entry: ParsedEntry, index: number): ElementContextRecord 
   };
 }
 
-function previewRecord(body: string, index: number): PreviewAnnotationContextRecord {
+function previewRecord(body: string, index: number): PreviewAnnotationContextRecord | null {
   const lines = body.split("\n");
   const read = (prefix: string) =>
     lines
@@ -173,14 +173,23 @@ function previewRecord(body: string, index: number): PreviewAnnotationContextRec
   }
   const page = read("Page: ");
   const pageIsUrl = /^https?:\/\//i.test(page);
-  const elements = Array.from(body.matchAll(/<element_context>\n([\s\S]*?)\n<\/element_context>/g))
-    .flatMap((match) => parseEntries(match[1] ?? ""))
-    .map((entry, elementIndex) => elementRecord(entry, elementIndex + 1))
-    .filter((record) => record !== null)
-    .map(
-      ({ version: _version, contextId: _contextId, kind: _kind, label: _label, ...details }) =>
-        details,
-    );
+  const elements: NonNullable<PreviewAnnotationContextRecord["elements"]>[number][] = [];
+  for (const match of body.matchAll(/<element_context>\n([\s\S]*?)\n<\/element_context>/g)) {
+    const entries = parseEntries(match[1] ?? "");
+    if (entries === null) return null;
+    for (const entry of entries) {
+      const record = elementRecord(entry, elements.length + 1);
+      if (record === null) return null;
+      const {
+        version: _version,
+        contextId: _contextId,
+        kind: _kind,
+        label: _label,
+        ...details
+      } = record;
+      elements.push(details);
+    }
+  }
   return {
     version: 1,
     contextId: legacyId("preview-annotation", index),
@@ -250,6 +259,43 @@ function stripTrailing(
   return { text: text.slice(0, match.index).replace(/\n+$/, ""), match };
 }
 
+/** Review source can contain literal closing tags inside its dynamically sized code fence. */
+function replaceReviewBlocks(
+  text: string,
+  replace: (whole: string, attributes: string, body: string) => string,
+): string {
+  const parts: string[] = [];
+  const openings = new RegExp(REVIEW_OPEN);
+  let consumed = 0;
+  for (let opening = openings.exec(text); opening; opening = openings.exec(text)) {
+    const bodyStart = openings.lastIndex;
+    const boundaries = /^(`{3,})([^\n]*)$|<\/review_comment>/gm;
+    boundaries.lastIndex = bodyStart;
+    let fenceLength = 0;
+    for (let boundary = boundaries.exec(text); boundary; boundary = boundaries.exec(text)) {
+      if (boundary[1]) {
+        if (fenceLength === 0) fenceLength = boundary[1].length;
+        else if (boundary[1].length >= fenceLength && !boundary[2]?.trim()) fenceLength = 0;
+      } else if (fenceLength === 0) {
+        parts.push(text.slice(consumed, opening.index));
+        consumed = boundaries.lastIndex;
+        parts.push(
+          replace(
+            text.slice(opening.index, consumed),
+            opening[1]!,
+            text.slice(bodyStart, boundary.index),
+          ),
+        );
+        openings.lastIndex = consumed;
+        break;
+      }
+    }
+    if (consumed < bodyStart) break;
+  }
+  parts.push(text.slice(consumed));
+  return parts.join("");
+}
+
 export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext {
   if (!LEGACY_MARKERS.test(text)) return { text, records: [] };
 
@@ -266,7 +312,7 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
 
   // Review blocks become tokens in place first so they neither hide the trailing blocks
   // behind them nor lose their position. Unparseable blocks stay as text.
-  let rest = text.replace(INLINE_REVIEW, (whole, attributes: string, rawBody: string) => {
+  let rest = replaceReviewBlocks(text, (whole, attributes, rawBody) => {
     const record = reviewRecord(attributes, rawBody, reviews.length + 1);
     // Keep the original prose if converting it would produce a record the wire drops.
     if (!record || !isReviewCommentContextRecord(record)) return whole;
@@ -296,7 +342,8 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
     const element = stripTrailing(rest, TRAILING_ELEMENT);
     if (element) {
       const entries = parseEntries(element.match[1] ?? "");
-      if (entries.length === 0 || entries.some((entry) => elementRecord(entry, 1) === null)) break;
+      if (!entries?.length || entries.some((entry) => elementRecord(entry, 1) === null))
+        return { text, records: [] };
       rest = element.text;
       elementEntries.unshift(...entries);
       continue;
@@ -304,7 +351,8 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
     const terminal = stripTrailing(rest, TRAILING_TERMINAL);
     if (terminal) {
       const entries = parseEntries(terminal.match[1] ?? "");
-      if (entries.length === 0 || entries.some((entry) => terminalRecord(entry, 1) === null)) break;
+      if (!entries?.length || entries.some((entry) => terminalRecord(entry, 1) === null))
+        return { text, records: [] };
       rest = terminal.text;
       terminalEntries.unshift(...entries);
       continue;
@@ -318,7 +366,12 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
   const elements = elementEntries
     .map((entry, index) => elementRecord(entry, index + 1))
     .filter((record) => record !== null);
-  const previews = previewBodies.map((body, index) => previewRecord(body, index + 1));
+  const previews: PreviewAnnotationContextRecord[] = [];
+  for (const [index, previewBody] of previewBodies.entries()) {
+    const record = previewRecord(previewBody, index + 1);
+    if (record === null) return { text, records: [] };
+    previews.push(record);
+  }
   const appendedReviews = trailingReviewTokens.map((index) => reviews[index]!);
 
   let body = rest.replace(reviewTokenPattern, (_whole, index: string) =>
