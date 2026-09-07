@@ -110,6 +110,7 @@ function ContextChip(props: {
         render={
           <span
             className={COMPOSER_INLINE_CHIP_CLASS_NAME}
+            tabIndex={props.tooltip ? 0 : undefined}
             aria-label={`${props.kindLabel}, ${props.label}`}
           >
             {props.icon}

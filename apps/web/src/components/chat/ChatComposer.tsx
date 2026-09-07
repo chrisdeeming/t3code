@@ -2551,22 +2551,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           case "terminal": {
             const threadId = activeThread?.id ?? activeThreadId;
             if (!threadId) break;
-            addComposerDraftTerminalContexts(
-              composerDraftTarget,
-              [terminalContextDraftFromRecord(record, threadId)],
-              { appendReference: false },
-            );
-            rewritten.set(
-              record.contextId,
-              toKindScopedComposerContextId("terminal", record.contextId),
-            );
+            const draft = terminalContextDraftFromRecord(record, threadId);
+            addComposerDraftTerminalContexts(composerDraftTarget, [draft], {
+              appendReference: false,
+            });
+            rewritten.set(record.contextId, terminalContextReference(draft).contextId);
             break;
           }
           case "review-comment":
             addComposerDraftReviewComment(composerDraftTarget, reviewCommentFromRecord(record), {
               appendReference: false,
             });
-            rewritten.set(record.contextId, reviewCommentContextId(record.contextId));
+            rewritten.set(
+              record.contextId,
+              reviewCommentContextId(reviewCommentFromRecord(record).id),
+            );
             break;
           case "preview-annotation":
             addComposerDraftPreviewAnnotation(
@@ -2576,16 +2575,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             );
             rewritten.set(
               record.contextId,
-              previewAnnotationContextId(record.annotationId || record.contextId),
+              previewAnnotationContextId(previewAnnotationFromRecord(record).id),
             );
             break;
           case "image":
           case "file": {
             if (sourceEnvironmentId === null) {
-              rewritten.set(
-                record.contextId,
-                toKindScopedComposerContextId(record.kind, record.contextId),
-              );
+              rewritten.set(record.contextId, record.contextId);
               break;
             }
             const localId = randomUUID();
