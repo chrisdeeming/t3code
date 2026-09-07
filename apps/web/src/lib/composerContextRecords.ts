@@ -20,6 +20,7 @@ import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextRef
 
 import {
   type ComposerContextReference,
+  producerIdFromComposerContextId,
   toKindScopedComposerContextId,
 } from "./composerContextReferences";
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
@@ -292,7 +293,7 @@ export function terminalContextDraftFromRecord(
   threadId: ThreadId,
 ): TerminalContextDraft {
   return {
-    id: record.contextId,
+    id: producerIdFromComposerContextId("terminal", record.contextId),
     threadId,
     createdAt: new Date().toISOString(),
     terminalId: record.terminalId,
@@ -305,8 +306,7 @@ export function terminalContextDraftFromRecord(
 
 export function reviewCommentFromRecord(record: ReviewCommentContextRecord): ReviewCommentContext {
   return {
-    // The folded id is itself a valid producer id, so it folds to itself again.
-    id: record.contextId,
+    id: producerIdFromComposerContextId("review-comment", record.contextId),
     sectionId: record.sectionId,
     sectionTitle: record.sectionTitle,
     filePath: record.filePath,
@@ -325,7 +325,9 @@ export function previewAnnotationFromRecord(
   record: PreviewAnnotationContextRecord,
 ): PreviewAnnotationPayload {
   return {
-    id: record.annotationId || record.contextId,
+    id:
+      record.annotationId ||
+      producerIdFromComposerContextId("preview-annotation", record.contextId),
     pageUrl: record.pageUrl,
     pageTitle: record.pageTitle,
     comment: record.comment,
