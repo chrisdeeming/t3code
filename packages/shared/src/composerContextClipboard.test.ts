@@ -7,6 +7,35 @@ import {
 } from "./composerContextClipboard.ts";
 
 describe("composerContextClipboard", () => {
+  it("round-trips selections larger than two million characters", () => {
+    const fragment = {
+      version: 1 as const,
+      source: { environmentId: "env" as never },
+      records: Array.from({ length: 32 }, (_, index) => ({
+        version: 1 as const,
+        contextId: `terminal-${index}` as never,
+        kind: "terminal" as const,
+        label: "Build",
+        terminalId: "build",
+        terminalLabel: "Build",
+        lineStart: 1,
+        lineEnd: 1,
+        text: "x".repeat(64_000),
+      })),
+    };
+    const encoded = encodeComposerContextFragment(fragment);
+    expect(encoded?.length).toBeGreaterThan(2_000_000);
+    expect(decodeComposerContextFragment(encoded)).toEqual(fragment);
+    expect(
+      encodeComposerContextFragment({
+        ...fragment,
+        records: Array.from({ length: 200 }, () => ({
+          ...fragment.records[0]!,
+          text: "\u0000".repeat(64_000),
+        })),
+      }),
+    ).toBeNull();
+  });
   it("round-trips a fragment and drops records it cannot decode", () => {
     const encoded = encodeComposerContextFragment({
       version: 1,
