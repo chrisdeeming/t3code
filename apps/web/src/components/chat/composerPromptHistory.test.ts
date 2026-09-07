@@ -25,10 +25,14 @@ function forward(position: ComposerPromptHistoryPosition | null, currentPrompt: 
 }
 
 describe("recallableComposerPrompt", () => {
-  it("strips an annotation whose comment contains a literal opening tag", () => {
+  it.each([
+    "Render <preview_annotation>",
+    "Render\n<preview_annotation>\nhere",
+    "Render &lt;preview_annotation&gt;",
+  ])("strips an annotation whose comment contains a literal opening tag: %s", (comment) => {
     expect(
       recallableComposerPrompt(
-        "Prompt\n<preview_annotation>\nComment: Render <preview_annotation>\n</preview_annotation>",
+        `Prompt\n<preview_annotation>\nComment: ${comment}\n</preview_annotation>`,
       ),
     ).toBe("Prompt");
   });
