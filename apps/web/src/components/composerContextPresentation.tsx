@@ -289,7 +289,7 @@ function ComposerPreviewAnnotationDetails({
   const summary = previewAnnotationTooltip(annotation);
   return (
     <div className="overflow-hidden rounded-lg border border-border/70 bg-background/70">
-      {annotation.screenshot ? (
+      {annotation.screenshot?.dataUrl ? (
         <img
           src={annotation.screenshot.dataUrl}
           alt="Annotated preview crop"
