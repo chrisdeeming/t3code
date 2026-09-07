@@ -161,6 +161,19 @@ export const PreviewAnnotationContextRecord = Schema.Struct({
   styleChanges: Schema.Array(ShortString).check(Schema.isMaxLength(200)),
   /** Picked elements inside the annotation, with the detail the agent needs to find them. */
   elements: Schema.optional(Schema.Array(ElementContextDetails).check(Schema.isMaxLength(50))),
+  /** Original target ids and edits allow pasted annotations to retain exact style changes. */
+  elementIds: Schema.optional(Schema.Array(ShortString).check(Schema.isMaxLength(50))),
+  styleChangeDetails: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        targetId: ShortString,
+        selector: NullableShortString,
+        property: ShortString,
+        previousValue: BoundedString(COMPOSER_CONTEXT_ELEMENT_STYLES_MAX_CHARS),
+        value: BoundedString(COMPOSER_CONTEXT_ELEMENT_STYLES_MAX_CHARS),
+      }),
+    ).check(Schema.isMaxLength(200)),
+  ),
   /** The screenshot travels as its own image record; this links the two. */
   screenshotContextId: Schema.optional(ComposerContextId),
 });
