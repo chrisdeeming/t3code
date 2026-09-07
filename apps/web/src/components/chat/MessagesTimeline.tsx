@@ -1392,15 +1392,24 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   }, [previewUrls, projectPreviews, resources, row.message]);
   // The attachment union has an open member, so guards (not literal type
   // comparisons) split it. Unknown types render as inert rows below the files.
-  const userImages = (messageWithPreviews.attachments ?? []).filter(isImageAttachment);
-  const userFiles = (row.message.attachments ?? []).filter(isFileAttachment);
+  const userImages = useMemo(
+    () => (messageWithPreviews.attachments ?? []).filter(isImageAttachment),
+    [messageWithPreviews.attachments],
+  );
+  const userFiles = useMemo(
+    () => (row.message.attachments ?? []).filter(isFileAttachment),
+    [row.message.attachments],
+  );
   const userVideos = userFiles.filter(isVideoAttachment);
   const otherUserFiles = userFiles.filter((file) => !isVideoAttachment(file));
   const unknownAttachments = (row.message.attachments ?? []).filter(
     (attachment) => !isImageAttachment(attachment) && !isFileAttachment(attachment),
   );
-  const resolvedContext = resolveUserMessageContext(row.message);
-  const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
+  const resolvedContext = useMemo(() => resolveUserMessageContext(row.message), [row.message]);
+  const previewImages = useMemo(
+    () => userImages.filter((image) => image.name.startsWith("preview-annotation-")),
+    [userImages],
+  );
   const revertTurnCount = row.revertTurnCount;
   // Attachments with a chip in the prose need no standalone row; older messages keep theirs.
   const chippedAttachmentIds = new Set(
@@ -1413,9 +1422,13 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     (image) => !image.name.startsWith("preview-annotation-") && !chippedAttachmentIds.has(image.id),
   );
   const unchippedFiles = otherUserFiles.filter((file) => !chippedAttachmentIds.has(file.id));
-  const annotationRecordIds = resolvedContext.records
-    .filter((record) => record.kind === "preview-annotation")
-    .map((record) => record.contextId);
+  const annotationRecordIds = useMemo(
+    () =>
+      resolvedContext.records
+        .filter((record) => record.kind === "preview-annotation")
+        .map((record) => record.contextId),
+    [resolvedContext.records],
+  );
   const contextClipboardFragment =
     resolvedContext.records.length === 0
       ? null
@@ -1460,40 +1473,51 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     });
     if (fragment) event.clipboardData.setData(COMPOSER_CONTEXT_CLIPBOARD_MIME, fragment);
   };
-  const renderContextReference = (reference: ChatMarkdownContextReference) => {
-    const record = asKnownContextRecord(resolvedContext.recordsById.get(reference.contextId));
-    // Structured annotations point at the image record, which in turn points at the persisted
-    // attachment. Filename and order are compatibility fallbacks for legacy messages only.
-    const annotationImage =
-      record?.kind === "preview-annotation"
-        ? resolvePreviewAnnotationImage({
-            record,
-            recordsById: resolvedContext.recordsById,
-            userImages,
-            previewImages,
-            annotationRecordIds,
-          })
-        : null;
-    const attachment =
-      record?.kind === "image"
-        ? (userImages.find((image) => image.id === record.attachmentId) ?? null)
-        : record?.kind === "file"
-          ? (userFiles.find((file) => file.id === record.attachmentId) ?? null)
+  const renderContextReference = useCallback(
+    (reference: ChatMarkdownContextReference) => {
+      const record = asKnownContextRecord(resolvedContext.recordsById.get(reference.contextId));
+      // Structured annotations point at the image record, which in turn points at the persisted
+      // attachment. Filename and order are compatibility fallbacks for legacy messages only.
+      const annotationImage =
+        record?.kind === "preview-annotation"
+          ? resolvePreviewAnnotationImage({
+              record,
+              recordsById: resolvedContext.recordsById,
+              userImages,
+              previewImages,
+              annotationRecordIds,
+            })
           : null;
-    return (
-      <UserMessageContextReferenceChip
-        reference={reference}
-        record={record}
-        annotationImage={annotationImage}
-        attachment={attachment}
-        onExpandImage={(image) => {
-          const preview = buildExpandedImagePreview(userImages, image.id);
-          if (preview) ctx.onImageExpand(preview);
-        }}
-        onOpenFile={(file) => ctx.onFileOpen(file)}
-      />
-    );
-  };
+      const attachment =
+        record?.kind === "image"
+          ? (userImages.find((image) => image.id === record.attachmentId) ?? null)
+          : record?.kind === "file"
+            ? (userFiles.find((file) => file.id === record.attachmentId) ?? null)
+            : null;
+      return (
+        <UserMessageContextReferenceChip
+          reference={reference}
+          record={record}
+          annotationImage={annotationImage}
+          attachment={attachment}
+          onExpandImage={(image) => {
+            const preview = buildExpandedImagePreview(userImages, image.id);
+            if (preview) ctx.onImageExpand(preview);
+          }}
+          onOpenFile={(file) => ctx.onFileOpen(file)}
+        />
+      );
+    },
+    [
+      resolvedContext.recordsById,
+      userImages,
+      userFiles,
+      previewImages,
+      annotationRecordIds,
+      ctx.onImageExpand,
+      ctx.onFileOpen,
+    ],
+  );
 
   return (
     <div className="group flex flex-col items-end gap-1">
