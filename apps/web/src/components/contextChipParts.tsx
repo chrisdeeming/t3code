@@ -215,7 +215,7 @@ export function FileChip(props: {
   const content = <FileChipContent {...props} />;
   const attributes = {
     className,
-    "aria-label": props.accessibleLabel,
+    "aria-label": [props.accessibleLabel, props.suffix].filter(Boolean).join(", "),
     "data-markdown-copy": props.copyMarkdown,
     "data-context-unresolved": props.unresolved ? "true" : undefined,
   };
@@ -228,7 +228,9 @@ export function FileChip(props: {
               {content}
             </button>
           ) : (
-            <span {...attributes}>{content}</span>
+            <span tabIndex={0} {...attributes}>
+              {content}
+            </span>
           )
         }
       />
