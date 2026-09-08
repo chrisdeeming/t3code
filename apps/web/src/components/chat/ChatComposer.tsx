@@ -187,6 +187,7 @@ import {
 } from "~/lib/composerContextReferences";
 import {
   asKnownContextRecord,
+  composerContextImportLookupIds,
   isSameComposerContextPayload,
   uploadedAttachmentContextRecord,
   fileContextReference,
@@ -2572,11 +2573,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       sourceEnvironmentId: EnvironmentId | null,
     ): ReadonlyMap<string, string> => {
       const rewritten = new Map<string, string>();
-      for (const candidate of records) {
+      const dependentAttachmentLocalIds = new Map<string, string>();
+      const skippedDependentAttachmentIds = new Set<string>();
+      // Resolve annotations before their dependent screenshot records even if a foreign
+      // clipboard producer emitted the records in a different order.
+      const orderedRecords = records.toSorted((left, right) =>
+        left.kind === "preview-annotation" && right.kind !== "preview-annotation"
+          ? -1
+          : right.kind === "preview-annotation" && left.kind !== "preview-annotation"
+            ? 1
+            : 0,
+      );
+      for (const candidate of orderedRecords) {
         // Producer ids fold into context ids, so two different excerpts can collide. Only skip
         // when the draft already holds the same payload; a colliding but different record is
         // re-minted under a fresh id so both survive the paste.
-        const existing = composerContextRecords.get(candidate.contextId);
+        const record = asKnownContextRecord(candidate);
+        if (!record) continue;
+        const existing = composerContextImportLookupIds(record).flatMap((contextId) => {
+          const found = composerContextRecords.get(contextId);
+          return found ? [found] : [];
+        })[0];
         const existingRecord =
           existing?.kind === "terminal"
             ? terminalContextRecord(existing.record)
@@ -2585,9 +2602,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               : existing?.kind === "preview-annotation"
                 ? previewAnnotationContextRecord(existing.record)
                 : undefined;
-        if (existingRecord && isSameComposerContextPayload(existingRecord, candidate)) continue;
-        const record = asKnownContextRecord(candidate);
-        if (!record) continue;
+        if (existingRecord && isSameComposerContextPayload(existingRecord, record)) {
+          if (record.kind === "preview-annotation" && record.screenshotContextId) {
+            skippedDependentAttachmentIds.add(record.screenshotContextId);
+          }
+          continue;
+        }
         const conflicts = existing !== undefined;
         switch (record.kind) {
           case "terminal": {
@@ -2613,6 +2633,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           case "preview-annotation": {
             const imported = previewAnnotationFromRecord(record);
             const annotation = conflicts ? { ...imported, id: randomUUID() } : imported;
+            if (record.screenshotContextId) {
+              dependentAttachmentLocalIds.set(record.screenshotContextId, annotation.id);
+            }
             addComposerDraftPreviewAnnotation(composerDraftTarget, annotation, {
               appendReference: false,
             });
@@ -2621,12 +2644,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           }
           case "image":
           case "file": {
+            if (skippedDependentAttachmentIds.has(record.contextId)) break;
             if (sourceEnvironmentId === null && !conflicts) {
               rewritten.set(record.contextId, record.contextId);
               break;
             }
             if (sourceEnvironmentId === null) break;
-            const localId = randomUUID();
+            const localId = dependentAttachmentLocalIds.get(record.contextId) ?? randomUUID();
             rewritten.set(record.contextId, toKindScopedComposerContextId(record.kind, localId));
             void importAttachmentRecord(record, localId, sourceEnvironmentId);
             break;
