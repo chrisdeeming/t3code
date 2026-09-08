@@ -1,14 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS } from "@t3tools/contracts";
 
-const files = new Map<string, { base64: string; deleted: boolean }>();
+const files = new Map<string, { base64: string; deleted: boolean; text?: string }>();
 
 vi.mock("expo-file-system", () => ({
   File: class {
     readonly uri: string;
+    readonly name: string;
+    readonly parentDirectory: { readonly uri: string };
 
-    constructor(uri: string) {
-      this.uri = uri;
+    constructor(parent: string | { readonly uri: string }, name?: string) {
+      const parentUri = typeof parent === "string" ? parent : parent.uri;
+      this.uri = name ? `${parentUri}/${name}` : parentUri;
+      this.name = name ?? this.uri.split("/").at(-1) ?? "file";
+      this.parentDirectory = { uri: this.uri.slice(0, -(this.name.length + 1)) };
     }
 
     get exists(): boolean {
@@ -29,14 +34,43 @@ vi.mock("expo-file-system", () => ({
         entry.deleted = true;
       }
     }
+
+    create(): void {
+      files.set(this.uri, { base64: "", deleted: false });
+    }
+
+    write(text: string): void {
+      files.set(this.uri, { base64: "", deleted: false, text });
+    }
+
+    moveSync(destination: { readonly uri: string }): void {
+      const entry = files.get(this.uri);
+      if (!entry) throw new Error("missing staged file");
+      files.set(destination.uri, entry);
+      files.delete(this.uri);
+    }
   },
+  Directory: class {
+    readonly uri: string;
+
+    constructor(parent: string, name: string) {
+      this.uri = `${parent}/${name}`;
+    }
+
+    create(): void {}
+  },
+  Paths: { document: "file:///documents" },
 }));
 
 vi.mock("./uuid", () => ({
   uuidv4: () => "attachment-id",
 }));
 
-import { convertPastedImagesToAttachments, isOwnedPastedImageUri } from "./composerImages";
+import {
+  convertPastedImagesToAttachments,
+  createPastedTextComposerAttachment,
+  isOwnedPastedImageUri,
+} from "./composerImages";
 
 describe("native pasted image cleanup", () => {
   beforeEach(() => {
@@ -90,5 +124,25 @@ describe("native pasted image cleanup", () => {
     expect(files.get(rejected)?.deleted).toBe(true);
     expect(files.get(overflow)?.deleted).toBe(true);
     expect(files.get(userOwned)?.deleted).toBe(false);
+  });
+
+  it("persists folded text unchanged in the app-owned attachment directory", async () => {
+    const text = "first line\nUnicode: 🙂\n";
+    const attachment = await createPastedTextComposerAttachment({
+      text,
+      name: "pasted-text.txt",
+      maxBytes: 1024,
+    });
+
+    expect(attachment).toEqual({
+      id: "attachment-id",
+      type: "file",
+      name: "pasted-text.txt",
+      mimeType: "text/plain;charset=utf-8",
+      sizeBytes: new TextEncoder().encode(text).byteLength,
+      fileUri: "file:///documents/t3-composer-attachments/attachment-id-pasted-text.txt",
+      source: { _tag: "pasted-text" },
+    });
+    expect(files.get(attachment.fileUri)?.text).toBe(text);
   });
 });

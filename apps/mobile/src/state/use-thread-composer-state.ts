@@ -7,6 +7,7 @@ import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   MessageId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   type EnvironmentId,
   type ModelSelection,
   type ProviderInteractionMode,
@@ -14,6 +15,8 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
+import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
+import { nextPastedTextFileName, pastedTextDisposition } from "@t3tools/client-runtime/text-paste";
 import {
   parseCodexFeedbackCommand,
   submitCodexFeedback,
@@ -26,9 +29,11 @@ import { isModelSelectionUnavailable } from "../lib/modelOptions";
 import { resolveProviderInteractionMode } from "../features/threads/legacy-plan-mode";
 import {
   convertPastedImagesToAttachments,
+  createPastedTextComposerAttachment,
   pasteComposerClipboard,
   pickComposerFiles,
   pickComposerMedia,
+  removePersistedComposerAttachmentFile,
 } from "../lib/composerImages";
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
 import { scopedThreadKey } from "../lib/scopedEntities";
@@ -516,7 +521,47 @@ export function useThreadComposerState() {
     });
     const rejectedPasteCount = appendComposerDraftAttachments(threadKey, result.images);
     if (result.text) {
-      appendComposerDraftText(threadKey, result.text);
+      const currentAttachments = composerDrafts[threadKey]?.attachments ?? [];
+      const advertisedMax =
+        selectedEnvironmentRuntime?.serverConfig?.environment.capabilities.fileAttachments
+          ?.maxUploadBytes;
+      const maxBytes =
+        advertisedMax === undefined ? null : clampFileAttachmentUploadBytes(advertisedMax);
+      const wouldExceedInputLimit =
+        (composerDrafts[threadKey]?.text.length ?? 0) + result.text.length >
+        PROVIDER_SEND_TURN_MAX_INPUT_CHARS;
+      const shouldFold =
+        pastedTextDisposition({
+          text: result.text,
+          wouldExceedInputLimit,
+          canAttach: true,
+        }) === "attachment";
+      const canAttach =
+        maxBytes !== null &&
+        currentAttachments.length < PROVIDER_SEND_TURN_MAX_ATTACHMENTS &&
+        new TextEncoder().encode(result.text).byteLength <= maxBytes;
+      if (shouldFold && canAttach && maxBytes !== null) {
+        try {
+          const attachment = await createPastedTextComposerAttachment({
+            text: result.text,
+            name: nextPastedTextFileName(currentAttachments.map((item) => item.name)),
+            maxBytes,
+          });
+          if (appendComposerDraftAttachments(threadKey, [attachment]) > 0) {
+            await removePersistedComposerAttachmentFile(attachment.fileUri);
+          }
+        } catch (error) {
+          setPendingConnectionError(
+            error instanceof Error ? error.message : "Could not attach pasted text.",
+          );
+        }
+      } else if (shouldFold && wouldExceedInputLimit) {
+        setPendingConnectionError(
+          "Pasted text is too large for this message. Remove some text or an attachment, then paste again.",
+        );
+      } else {
+        appendComposerDraftText(threadKey, result.text);
+      }
     }
     if (result.error) {
       setPendingConnectionError(result.error);
@@ -525,7 +570,7 @@ export function useThreadComposerState() {
         `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} files per message.`,
       );
     }
-  }, [composerDrafts, selectedThreadShell]);
+  }, [composerDrafts, selectedEnvironmentRuntime?.serverConfig, selectedThreadShell]);
 
   const onNativePasteImages = useCallback(
     async (uris: ReadonlyArray<string>) => {
@@ -552,6 +597,38 @@ export function useThreadComposerState() {
       }
     },
     [composerDrafts, selectedThreadShell],
+  );
+
+  const onNativePasteText = useCallback(
+    async (text: string) => {
+      if (!selectedThreadShell) return;
+      const advertisedMax =
+        selectedEnvironmentRuntime?.serverConfig?.environment.capabilities.fileAttachments
+          ?.maxUploadBytes;
+      if (advertisedMax === undefined) return;
+
+      const threadKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
+      const currentAttachments = composerDrafts[threadKey]?.attachments ?? [];
+      try {
+        const attachment = await createPastedTextComposerAttachment({
+          text,
+          name: nextPastedTextFileName(currentAttachments.map((item) => item.name)),
+          maxBytes: clampFileAttachmentUploadBytes(advertisedMax),
+        });
+        const rejectedCount = appendComposerDraftAttachments(threadKey, [attachment]);
+        if (rejectedCount > 0) {
+          await removePersistedComposerAttachmentFile(attachment.fileUri);
+          setPendingConnectionError(
+            `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} files per message.`,
+          );
+        }
+      } catch (error) {
+        setPendingConnectionError(
+          error instanceof Error ? error.message : "Could not attach pasted text.",
+        );
+      }
+    },
+    [composerDrafts, selectedEnvironmentRuntime?.serverConfig, selectedThreadShell],
   );
 
   const onRemoveDraftImage = useCallback(
@@ -631,6 +708,7 @@ export function useThreadComposerState() {
     onPickDraftFiles,
     onPasteIntoDraft,
     onNativePasteImages,
+    onNativePasteText,
     onRemoveDraftImage,
     onSendMessage,
     onUpdateModelSelection,

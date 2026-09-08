@@ -15,6 +15,7 @@ import android.text.TextWatcher
 import android.text.style.ReplacementSpan
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -39,6 +40,7 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
   private val onComposerFocus by EventDispatcher()
   private val onComposerBlur by EventDispatcher()
   private val onComposerPasteImages by EventDispatcher()
+  private val onComposerPasteText by EventDispatcher()
   private val onComposerContentSizeChange by EventDispatcher()
   private var applyingNativeValue = false
   private var desiredLineHeightPx = 0
@@ -71,6 +73,14 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
     }
     editor.pasteImagesListener = { uris ->
       onComposerPasteImages(mapOf("uris" to uris))
+    }
+    editor.pasteTextListener = { text, start, end ->
+      onComposerPasteText(
+        mapOf(
+          "text" to text,
+          "selection" to mapOf("start" to start, "end" to end),
+        ),
+      )
     }
     editor.setOnFocusChangeListener { _, hasFocus ->
       if (hasFocus) {
@@ -242,6 +252,10 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
   fun setSpellCheck(spellCheck: Boolean) {
     this.spellCheck = spellCheck
     updateInputFlags()
+  }
+
+  fun setInterceptTextPastes(intercept: Boolean) {
+    editor.interceptTextPastes = intercept
   }
 
   fun focusEditor() {
@@ -496,6 +510,8 @@ private fun parseTokens(value: String): List<ComposerToken> = try {
 private class SelectionAwareEditText(context: Context) : EditText(context) {
   var selectionListener: ((Int, Int) -> Unit)? = null
   var pasteImagesListener: ((List<String>) -> Unit)? = null
+  var pasteTextListener: ((String, Int, Int) -> Unit)? = null
+  var interceptTextPastes = false
 
   override fun onSelectionChanged(selStart: Int, selEnd: Int) {
     super.onSelectionChanged(selStart, selEnd)
@@ -520,7 +536,25 @@ private class SelectionAwareEditText(context: Context) : EditText(context) {
         pasteImagesListener?.invoke(imageUris)
         return true
       }
+      if (interceptTextPastes && clip != null && clip.itemCount > 0) {
+        val text = clip.getItemAt(0).coerceToText(context).toString()
+        if (text.isNotEmpty()) {
+          pasteTextListener?.invoke(
+            text,
+            selectionStart.coerceAtLeast(0),
+            selectionEnd.coerceAtLeast(0),
+          )
+          return true
+        }
+      }
     }
     return super.onTextContextMenuItem(id)
+  }
+
+  override fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean {
+    if (keyCode == KeyEvent.KEYCODE_V && event.isCtrlPressed && event.isShiftPressed) {
+      return super.onTextContextMenuItem(android.R.id.pasteAsPlainText)
+    }
+    return super.onKeyShortcut(keyCode, event)
   }
 }

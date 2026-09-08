@@ -13,6 +13,7 @@ import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import {
   getLocalEnvironmentBootstraps,
   getWindowFullscreenState,
+  pasteAsText,
   pickProjectFavicon,
 } from "./window.ts";
 
@@ -147,6 +148,29 @@ describe("getWindowFullscreenState", () => {
       Effect.provide(
         Layer.mock(ElectronWindow.ElectronWindow)({
           currentMainOrFirst: Effect.succeed(Option.some(window)),
+        }),
+      ),
+    );
+  });
+});
+
+describe("pasteAsText", () => {
+  it.effect("pastes only after the main renderer acknowledges the menu action", () => {
+    const paste = vi.fn();
+    const window = {
+      webContents: { id: 42, paste },
+    } as unknown as Electron.BrowserWindow;
+
+    return Effect.gen(function* () {
+      yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
+      assert.equal(paste.mock.calls.length, 1);
+
+      yield* pasteAsText.handler(undefined, { sender: { id: 99 } });
+      assert.equal(paste.mock.calls.length, 1);
+    }).pipe(
+      Effect.provide(
+        Layer.mock(ElectronWindow.ElectronWindow)({
+          main: Effect.succeed(Option.some(window)),
         }),
       ),
     );

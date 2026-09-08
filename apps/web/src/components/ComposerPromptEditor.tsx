@@ -2025,7 +2025,7 @@ function ComposerPromptEditorInner({
                 }}
                 onKeyUp={(event) => onPageScrollKeyUp?.(event.key)}
                 onBlur={onPageScrollRelease}
-                onPaste={onPaste}
+                onPasteCapture={onPaste}
               />
             }
             placeholder={

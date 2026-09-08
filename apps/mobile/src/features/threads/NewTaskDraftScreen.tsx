@@ -1,4 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
+import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
+import {
+  nextPastedTextFileName,
+  pastedTextDisposition,
+  replaceTextSelection,
+} from "@t3tools/client-runtime/text-paste";
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
 import {
   CommonActions,
@@ -22,10 +28,15 @@ import { useFontFamily } from "../../lib/useFontFamily";
 
 import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
 
-import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
+import {
+  ComposerEditor,
+  type ComposerEditorHandle,
+  type ComposerTextPaste,
+} from "../../components/ComposerEditor";
 import {
   ComposerActionButton,
   ComposerInlineControl,
@@ -66,8 +77,10 @@ import {
 import { makeTurnCommandMetadata } from "../../lib/commandMetadata";
 import {
   convertPastedImagesToAttachments,
+  createPastedTextComposerAttachment,
   pickComposerFiles,
   pickComposerMedia,
+  removePersistedComposerAttachmentFile,
   type DraftComposerFileAttachment,
 } from "../../lib/composerImages";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
@@ -939,6 +952,71 @@ export function NewTaskDraftScreen(props: {
     [flow],
   );
 
+  const handleNativePasteText = useCallback(
+    async (paste: ComposerTextPaste) => {
+      const insertPaste = () => {
+        const insertion = replaceTextSelection({
+          value: flow.prompt,
+          selection: paste.selection,
+          text: paste.text,
+        });
+        const selection = { start: insertion.cursor, end: insertion.cursor };
+        flow.setPrompt(insertion.value);
+        composerMenu.onSelectionChange(selection);
+        requestAnimationFrame(() => promptInputRef.current?.setSelection(selection));
+      };
+      const advertisedMax =
+        selectedEnvironmentServerConfig?.environment.capabilities.fileAttachments?.maxUploadBytes;
+      const maxBytes =
+        advertisedMax === undefined ? null : clampFileAttachmentUploadBytes(advertisedMax);
+      const wouldExceedInputLimit =
+        flow.prompt.length -
+          Math.max(0, paste.selection.end - paste.selection.start) +
+          paste.text.length >
+        PROVIDER_SEND_TURN_MAX_INPUT_CHARS;
+      const canAttach =
+        maxBytes !== null &&
+        flow.attachments.length < PROVIDER_SEND_TURN_MAX_ATTACHMENTS &&
+        new TextEncoder().encode(paste.text).byteLength <= maxBytes;
+      if (
+        pastedTextDisposition({
+          text: paste.text,
+          wouldExceedInputLimit,
+          canAttach: true,
+        }) === "attachment"
+      ) {
+        if (canAttach && maxBytes !== null) {
+          try {
+            const attachment = await createPastedTextComposerAttachment({
+              text: paste.text,
+              name: nextPastedTextFileName(flow.attachments.map((item) => item.name)),
+              maxBytes,
+            });
+            if (flow.appendAttachments([attachment]) > 0) {
+              await removePersistedComposerAttachmentFile(attachment.fileUri);
+            }
+          } catch (error) {
+            Alert.alert(
+              "Could not attach pasted text",
+              error instanceof Error ? error.message : "Try again.",
+            );
+          }
+        } else if (wouldExceedInputLimit) {
+          Alert.alert(
+            "Pasted text is too large for this message",
+            "Remove some text or an attachment, then paste again.",
+          );
+        } else {
+          insertPaste();
+        }
+        return;
+      }
+
+      insertPaste();
+    },
+    [composerMenu, flow, selectedEnvironmentServerConfig],
+  );
+
   async function handleStart(): Promise<void> {
     if (voiceInput.blocksSubmission) return;
     const selectedProject = flow.selectedProject;
@@ -1122,6 +1200,7 @@ export function NewTaskDraftScreen(props: {
       onFocus={() => setIsComposerFocused(true)}
       onBlur={() => setIsComposerFocused(false)}
       onPasteImages={(uris) => void handleNativePasteImages(uris)}
+      onPasteText={(paste) => void handleNativePasteText(paste)}
       placeholder="Ask anything…"
       singleLineCentered={false}
       contentInsetVertical={0}

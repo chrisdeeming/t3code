@@ -25,8 +25,14 @@ import {
   ProviderInstanceId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
 } from "@t3tools/contracts";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
+import {
+  isPasteAsTextShortcut,
+  nextPastedTextFileName,
+  pastedTextDisposition,
+} from "@t3tools/client-runtime/text-paste";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
@@ -222,7 +228,7 @@ import {
 } from "../../lib/snapShotAnimation";
 import { resizeSnapShotSource } from "../../lib/snapShotSource";
 import { basenameOfPath } from "../../pierre-icons";
-import { cn, randomUUID } from "~/lib/utils";
+import { cn, isMacPlatform, randomUUID } from "~/lib/utils";
 import {
   getComposerPromptLengthValidationMessage,
   getComposerSubmissionValidationMessage,
@@ -1178,6 +1184,8 @@ export interface ChatComposerHandle {
   collapseForTimelineScrollKey: (key: string) => void;
   addDroppedFiles: (files: File[]) => void;
   insertTextAtEnd: (text: string, options?: { ensureLeadingBoundary?: boolean }) => boolean;
+  /** Apply large-paste folding for text redirected from a blurred composer. */
+  pasteTextAtEnd: (text: string) => boolean;
   citeAssistantText: (
     citation: AssistantCitation,
     sourceAnchor: AssistantCitationSourceAnchor,
@@ -1937,6 +1945,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Refs
   // ------------------------------------------------------------------
   const composerEditorRef = useRef<ComposerPromptEditorHandle>(null);
+  const pasteAsTextShortcutUntilRef = useRef(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
   const composerFooterControlsRef = useRef<HTMLDivElement>(null);
@@ -1969,6 +1978,38 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    * the next draft.
    */
   const pendingImageCompressionsRef = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    const armPasteAsTextShortcut = () => {
+      // Electron can deliver its native menu action just before the paste
+      // event, while browsers normally deliver keydown first. A short deadline
+      // bridges both event paths without leaving later pastes in bypass mode.
+      pasteAsTextShortcutUntilRef.current = Date.now() + 1_000;
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isPasteAsTextShortcut(event, isMacPlatform(navigator.platform))) {
+        armPasteAsTextShortcut();
+      }
+    };
+    const onBlur = () => {
+      pasteAsTextShortcutUntilRef.current = 0;
+    };
+    const unsubscribeMenuAction = window.desktopBridge?.onMenuAction?.((action) => {
+      if (action === "paste-as-text") {
+        armPasteAsTextShortcut();
+        // The native menu owns Cmd+Shift+V in Desktop. Calling back only after
+        // the bypass is armed guarantees its paste event cannot be folded.
+        void window.desktopBridge?.pasteAsText?.();
+      }
+    });
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      unsubscribeMenuAction?.();
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
 
   // ------------------------------------------------------------------
   // Derived: composer send state
@@ -3380,6 +3421,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             mimeType: file.mimeType,
             sizeBytes: file.sizeBytes,
             file: null,
+            ...(file.source ? { source: file.source } : {}),
             // An expired upload carries no ids, so it hydrates as a
             // needs-reattach row and the "Attach again" flow takes over.
             ...(expired
@@ -3627,6 +3669,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         sizeBytes: file.sizeBytes,
         attachmentId: upload.attachmentId,
         environmentId,
+        ...(file.source ? { source: file.source } : {}),
       });
     }
     // A repeat ⌘S on the *same* still-unencoded snapshot would stash it
@@ -4314,7 +4357,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Callbacks: attachments
   // ------------------------------------------------------------------
-  const addComposerAttachments = async (files: File[]) => {
+  const addComposerAttachments = async (
+    files: File[],
+    options?: { readonly source?: ChatFileAttachment["source"] },
+  ) => {
     if (!activeThreadId || files.length === 0) return;
     if (
       pendingUserInputs.length > 0 &&
@@ -4427,6 +4473,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           mimeType: fileMimeType,
           sizeBytes: attachmentFile.size,
           file: attachmentFile,
+          ...(options?.source ? { source: options.source } : {}),
         });
       }
       if (!matchingReattachMarker) {
@@ -4436,6 +4483,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setThreadError(threadId, error);
     if (acceptedFiles.length > 0) {
       addComposerFilesToDraft(acceptedFiles);
+      if (options?.source?._tag === "pasted-text") {
+        const attached = acceptedFiles[0]!;
+        toastManager.add({
+          type: "info",
+          title: `Large paste attached as ${attached.name}`,
+          description: `${formatAttachmentSize(attached.sizeBytes)} · Use ${
+            isMacPlatform(navigator.platform) ? "⌘⇧V" : "Ctrl+Shift+V"
+          } to keep a large paste inline.`,
+          data: { hideCopyButton: true },
+        });
+      }
     }
     if (acceptedImages.length === 0) return;
 
@@ -4513,24 +4571,93 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Callbacks: paste / drag
   // ------------------------------------------------------------------
+  const foldPastedText = (plainText: string, bypassAutoAttachment: boolean): boolean => {
+    const questionCanAttach =
+      !activePendingProgress ||
+      (supportsQuestionAttachments &&
+        activePendingProgress.activeQuestion?.allowCustomAnswer !== false &&
+        !activePendingIsResponding);
+    const hasAttachmentSlot =
+      composerImagesRef.current.length +
+        composerFilesRef.current.length +
+        (pendingImageCompressionsRef.current.get(attachmentTargetKey) ?? 0) <
+      PROVIDER_SEND_TURN_MAX_ATTACHMENTS;
+    const wouldExceedInputLimit =
+      promptRef.current.length + plainText.length > PROVIDER_SEND_TURN_MAX_INPUT_CHARS;
+    const shouldFold =
+      pastedTextDisposition({
+        text: plainText,
+        bypassAutoAttachment,
+        wouldExceedInputLimit,
+        canAttach: true,
+      }) === "attachment";
+    if (!shouldFold) {
+      return false;
+    }
+
+    const canStageAttachment =
+      Boolean(activeThreadId) &&
+      questionCanAttach &&
+      hasAttachmentSlot &&
+      fileStagingLimit !== null;
+    if (!canStageAttachment) {
+      if (!wouldExceedInputLimit) {
+        return false;
+      }
+      toastManager.add({
+        type: "error",
+        title: "Pasted text is too large for this message",
+        description: "Remove some text or an attachment, then paste again.",
+        data: { hideCopyButton: true },
+      });
+      return true;
+    }
+
+    const foldedFile = new File(
+      [plainText],
+      nextPastedTextFileName(composerFilesRef.current.map((file) => file.name)),
+      { type: "text/plain;charset=utf-8" },
+    );
+    if (foldedFile.size > fileStagingLimit) {
+      toastManager.add({
+        type: "error",
+        title: "Pasted text is too large to attach",
+        description: "Reduce the clipboard contents or save a smaller excerpt as a file.",
+        data: { hideCopyButton: true },
+      });
+      return true;
+    }
+
+    void addComposerAttachments([foldedFile], { source: { _tag: "pasted-text" } });
+    return true;
+  };
+
   const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
     const files = Array.from(event.clipboardData.files);
+    const plainText = event.clipboardData.getData("text/plain");
+    const bypassAutoAttachment = Date.now() <= pasteAsTextShortcutUntilRef.current;
+    pasteAsTextShortcutUntilRef.current = 0;
     // Claimable pastes go through even when agent questions are pending or the
     // composer is at its attachment limit: `addComposerAttachments` surfaces
     // those as a toast and a thread error. An early return here would swallow
     // the paste with no feedback.
     if (
-      files.length === 0 ||
-      !activeThreadId ||
-      !shouldHandleComposerAttachmentPaste({
-        files,
-        plainText: event.clipboardData.getData("text/plain"),
-      })
+      files.length > 0 &&
+      activeThreadId &&
+      shouldHandleComposerAttachmentPaste({ files, plainText })
     ) {
+      event.preventDefault();
+      event.stopPropagation();
+      void addComposerAttachments(files);
       return;
     }
+
+    if (!foldPastedText(plainText, bypassAutoAttachment)) {
+      return;
+    }
+
     event.preventDefault();
-    void addComposerAttachments(files);
+    event.stopPropagation();
   };
 
   const insertComposerText = useCallback(
@@ -4731,6 +4858,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         focusComposer();
       },
       insertTextAtEnd: insertComposerTextAtEnd,
+      pasteTextAtEnd: (text: string) => {
+        const bypassAutoAttachment = Date.now() <= pasteAsTextShortcutUntilRef.current;
+        pasteAsTextShortcutUntilRef.current = 0;
+        if (!foldPastedText(text, bypassAutoAttachment)) {
+          return false;
+        }
+        focusComposer();
+        return true;
+      },
       citeAssistantText: (citation, sourceAnchor) =>
         insertComposerText(
           formatAssistantCitationForComposer(citation, citation.comment),
@@ -4835,6 +4971,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       activeThread,
       addComposerAttachments,
+      foldPastedText,
       composerDraftTarget,
       composerCursor,
       composerTerminalContexts,

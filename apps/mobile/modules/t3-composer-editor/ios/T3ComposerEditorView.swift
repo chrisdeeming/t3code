@@ -72,9 +72,11 @@ private final class ComposerTextView: UITextView {
   ])
 
   var onPasteImages: (([String]) -> Void)?
+  var onPasteText: ((String, NSRange) -> Void)?
   var onAttributedMutation: (() -> Void)?
   var onSubmit: (() -> Void)?
   var isReadOnly = false
+  var interceptTextPastes = false
 
   override var keyCommands: [UIKeyCommand]? {
     var commands = super.keyCommands ?? []
@@ -86,11 +88,28 @@ private final class ComposerTextView: UITextView {
     submit.discoverabilityTitle = "Send Message"
     submit.wantsPriorityOverSystemBehavior = true
     commands.append(submit)
+    if interceptTextPastes {
+      let pasteAsText = UIKeyCommand(
+        input: "v",
+        modifierFlags: [.command, .shift],
+        action: #selector(pasteInline(_:))
+      )
+      pasteAsText.discoverabilityTitle = "Paste as Text"
+      pasteAsText.wantsPriorityOverSystemBehavior = true
+      commands.append(pasteAsText)
+    }
     return commands
   }
 
   @objc private func submitMessage(_ sender: UIKeyCommand) {
     onSubmit?()
+  }
+
+  @objc private func pasteInline(_ sender: UIKeyCommand) {
+    guard !isReadOnly else {
+      return
+    }
+    super.paste(sender)
   }
 
   override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
@@ -129,6 +148,10 @@ private final class ComposerTextView: UITextView {
         onPasteImages?(urls)
         return
       }
+    }
+    if interceptTextPastes, let text = pasteboard.string, !text.isEmpty {
+      onPasteText?(text, selectedRange)
+      return
     }
     super.paste(sender)
   }
@@ -346,6 +369,7 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
   let onComposerBlur = EventDispatcher()
   let onComposerSubmit = EventDispatcher()
   let onComposerPasteImages = EventDispatcher()
+  let onComposerPasteText = EventDispatcher()
   let onComposerContentSizeChange = EventDispatcher()
 
   public required init(appContext: AppContext? = nil) {
@@ -363,6 +387,12 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     textView.adjustsFontForContentSizeCategory = true
     textView.onPasteImages = { [weak self] urls in
       self?.onComposerPasteImages(["uris": urls])
+    }
+    textView.onPasteText = { [weak self] text, selection in
+      self?.onComposerPasteText([
+        "text": text,
+        "selection": ["start": selection.location, "end": selection.location + selection.length],
+      ])
     }
     textView.onAttributedMutation = { [weak self] in
       self?.emitTextChange()
@@ -497,6 +527,10 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
 
   func setSpellCheck(_ spellCheck: Bool) {
     textView.spellCheckingType = spellCheck ? .yes : .no
+  }
+
+  func setInterceptTextPastes(_ intercept: Bool) {
+    textView.interceptTextPastes = intercept
   }
 
   func focusEditor() {
