@@ -110,6 +110,10 @@ import {
   type ComposerTasksProgress,
 } from "./ComposerTasksBadge";
 import { ComposerActivityRow } from "./ComposerActivityStatus";
+import {
+  reconcileAttachmentContextReferences,
+  type RetainedAttachmentContextPayloads,
+} from "./composerContextUndo";
 import type { ThreadSyncPhase } from "../../threadSync";
 import { ComposerBanner } from "./ComposerBanner";
 import { ComposerSurface } from "./ComposerSurface";
@@ -183,7 +187,6 @@ import {
 import {
   fileContextReference,
   imageContextReference,
-  previewAnnotationContextId,
   reviewCommentContextId,
   terminalContextReference,
 } from "~/lib/composerContextRecords";
@@ -2651,8 +2654,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const removedContextPayloadsRef = useRef<{
     terminals: Map<string, TerminalContextDraft>;
     reviewComments: Map<string, ReviewCommentContext>;
-    previewAnnotations: Map<string, PreviewAnnotationPayload>;
-  }>({ terminals: new Map(), reviewComments: new Map(), previewAnnotations: new Map() });
+  }>({ terminals: new Map(), reviewComments: new Map() });
+  const removedAttachmentContextPayloadsRef = useRef<RetainedAttachmentContextPayloads>({
+    files: new Map(),
+    previewAnnotations: new Map(),
+  });
 
   const onPromptChange = useCallback(
     (
@@ -2733,31 +2739,29 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }
       }
 
-      for (const annotation of composerPreviewAnnotations) {
-        const contextId = previewAnnotationContextId(annotation.id);
-        if (!referenced.has(contextId)) {
-          retained.previewAnnotations.set(contextId, annotation);
-          releaseAttachmentUpload(annotation.id);
-          removeComposerDraftPreviewAnnotation(composerDraftTarget, annotation.id);
-        }
+      const attachmentChanges = reconcileAttachmentContextReferences({
+        referencedContextIds: referenced,
+        files: composerFiles,
+        images: composerImages,
+        previewAnnotations: composerPreviewAnnotations,
+        retained: removedAttachmentContextPayloadsRef.current,
+      });
+      for (const annotationId of attachmentChanges.annotationIdsToRemove) {
+        // Keep the upload queue entry alive: undo restores the image that owns it.
+        removeComposerDraftPreviewAnnotation(composerDraftTarget, annotationId);
       }
-      const liveAnnotationIds = new Set<string>(
-        composerPreviewAnnotations.map((annotation) => previewAnnotationContextId(annotation.id)),
-      );
-      for (const contextId of referenced) {
-        if (liveAnnotationIds.has(contextId)) continue;
-        const annotation = retained.previewAnnotations.get(contextId);
-        if (annotation) {
-          addComposerDraftPreviewAnnotation(composerDraftTarget, annotation, {
-            appendReference: false,
-          });
-        }
+      for (const restored of attachmentChanges.annotationsToRestore) {
+        if (restored.image) addComposerDraftImages(attachmentDraftTarget, [restored.image]);
+        addComposerDraftPreviewAnnotation(composerDraftTarget, restored.annotation, {
+          appendReference: false,
+        });
       }
-      // Files live only as chips; images stay on the shelf when their chip goes.
-      for (const file of composerFiles) {
-        if (!referenced.has(fileContextReference(file).contextId)) {
-          removeComposerFileFromDraft(file.id);
-        }
+      for (const fileId of attachmentChanges.filesToRemove) {
+        // The retained File and upload are still sendable if the editor restores the chip.
+        removeComposerDraftFile(attachmentDraftTarget, fileId);
+      }
+      if (attachmentChanges.filesToRestore.length > 0) {
+        addComposerDraftFiles(attachmentDraftTarget, attachmentChanges.filesToRestore);
       }
       setComposerCursor(nextCursor);
       setComposerTrigger(
@@ -2776,12 +2780,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       setComposerDraftTerminalContexts,
       composerReviewComments,
       composerPreviewAnnotations,
+      composerImages,
       composerFiles,
       removeComposerDraftReviewComment,
       removeComposerDraftPreviewAnnotation,
-      removeComposerFileFromDraft,
+      removeComposerDraftFile,
       addComposerDraftReviewComment,
       addComposerDraftPreviewAnnotation,
+      addComposerDraftImages,
+      addComposerDraftFiles,
+      attachmentDraftTarget,
     ],
   );
 
