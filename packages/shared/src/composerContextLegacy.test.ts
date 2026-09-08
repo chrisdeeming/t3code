@@ -233,6 +233,20 @@ describe("upgradeLegacyContextMessage", () => {
     });
   });
 
+  it("preserves Markdown hard breaks while removing legacy context", () => {
+    const text = [
+      "Line with hard break  ",
+      "next",
+      "",
+      "<terminal_context>",
+      "- Build line 7:",
+      "  7 | done",
+      "</terminal_context>",
+    ].join("\n");
+
+    expect(upgradeLegacyContextMessage(text).text).toContain("Line with hard break  \nnext");
+  });
+
   it("binds U+FFFC placeholders to trailing terminal entries in order", () => {
     const text = [
       "Look at ￼ and ￼ please",

@@ -28,7 +28,8 @@ the whole message. The field is optional on `OrchestrationMessage`, both turn-st
 
 ## Identity namespaces
 
-- `ComposerContextId` (`ctx_…`): durable payload identity. Branded.
+- `ComposerContextId`: durable payload identity. Branded. Values match `[a-z0-9_-]+` and do not
+  require a `ctx_` prefix.
 - `ComposerContextReferenceId` (`ref_…`): one document occurrence. Branded. Lives in editor state,
   not on the wire.
 - `ChatAttachmentId`: the existing server-owned attachment resource. A record's `attachmentId` is
