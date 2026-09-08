@@ -33,6 +33,36 @@ const review = {
   fenceLanguage: "ts",
 } satisfies ComposerContextRecord;
 
+const annotation = {
+  version: 1,
+  contextId: ComposerContextId.make("preview-annotation_ann1"),
+  kind: "preview-annotation",
+  label: "Fix the checkout button",
+  annotationId: "ann1",
+  pageUrl: "https://example.com/checkout",
+  pageTitle: "Checkout",
+  comment: "Make this button clearer",
+  targetSummary: "1 selected element",
+  styleChanges: ["color: red → blue"],
+  elements: [
+    {
+      pageUrl: "https://example.com/checkout",
+      pageTitle: "Checkout",
+      tagName: "button",
+      selector: "#submit-order",
+      htmlPreview: '<button id="submit-order">Buy now</button>',
+      componentName: "SubmitOrderButton",
+      source: {
+        functionName: "SubmitOrderButton",
+        fileName: "src/Checkout.tsx",
+        lineNumber: 42,
+        columnNumber: 7,
+      },
+      styles: "color: red;",
+    },
+  ],
+} satisfies ComposerContextRecord;
+
 describe("serializeLegacyContextMessage", () => {
   it("carries terminal payloads an older server would otherwise discard", () => {
     const text = `Look at ${formatComposerContextReference(terminal)} please`;
@@ -66,6 +96,29 @@ describe("serializeLegacyContextMessage", () => {
       rangeLabel: "L4",
       text: "Why this branch?",
       diff: "const x = 1;",
+    });
+  });
+
+  it("retains picked-element details for preview annotations sent through an older server", () => {
+    const text = `Update ${formatComposerContextReference(annotation)}`;
+    const upgraded = upgradeLegacyContextMessage(
+      serializeLegacyContextMessage({ text, records: [annotation] }),
+    );
+
+    expect(upgraded.records[0]).toMatchObject({
+      kind: "preview-annotation",
+      pageUrl: "https://example.com/checkout",
+      elements: [
+        {
+          selector: "#submit-order",
+          htmlPreview: '<button id="submit-order">Buy now</button>',
+          source: {
+            fileName: "src/Checkout.tsx",
+            lineNumber: 42,
+            columnNumber: 7,
+          },
+        },
+      ],
     });
   });
 
