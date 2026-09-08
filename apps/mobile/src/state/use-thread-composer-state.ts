@@ -612,6 +612,8 @@ export function useThreadComposerState() {
             error instanceof Error ? error.message : "Could not attach pasted text.",
           );
         }
+      } else if (shouldFold && maxBytes === null && !wouldExceedInputLimit) {
+        appendComposerDraftText(threadKey, result.text);
       } else if (shouldFold) {
         setPendingConnectionError(
           wouldExceedInputLimit

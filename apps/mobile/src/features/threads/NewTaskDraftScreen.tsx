@@ -1063,6 +1063,8 @@ export function NewTaskDraftScreen(props: {
             );
             setPendingPastedTextAttachmentCount(pendingPastedTextAttachmentCountRef.current);
           }
+        } else if (maxBytes === null && !wouldExceedInputLimit) {
+          insertPaste();
         } else {
           Alert.alert(
             wouldExceedInputLimit

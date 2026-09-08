@@ -809,6 +809,8 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                       void props
                         .onNativePasteText(paste.text)
                         .then(finishAttachment, finishAttachment);
+                    } else if (maxBytes === null && !wouldExceedInputLimit) {
+                      insertPaste();
                     } else {
                       Alert.alert(
                         wouldExceedInputLimit
