@@ -883,11 +883,11 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.runtimeMode).toBe("approval-required");
   });
 
-  it("projects inline context before sending the provider turn", async () => {
-    const harness = await createHarness();
+  effectIt.effect("projects inline context before sending the provider turn", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
 
-    await Effect.runPromise(
-      harness.engine.dispatch({
+      yield* harness.engine.dispatch({
         type: "thread.turn.start",
         commandId: CommandId.make("cmd-turn-start-with-context"),
         threadId: ThreadId.make("thread-1"),
@@ -916,17 +916,17 @@ describe("ProviderCommandReactor", () => {
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
         createdAt: "2026-01-01T00:00:00.000Z",
-      }),
-    );
+      });
 
-    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
-    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
-      input: expect.stringContaining("[Terminal: build; ref=terminal-1]"),
-    });
-    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
-      input: expect.stringContaining('<context kind="terminal" id="terminal-1">'),
-    });
-  });
+      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
+      expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+        input: expect.stringContaining("[Terminal: build; ref=terminal-1]"),
+      });
+      expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+        input: expect.stringContaining('<context kind="terminal" id="terminal-1">'),
+      });
+    }),
+  );
 
   effectIt.effect("retains a turn dispatched immediately after start until activation", () =>
     Effect.gen(function* () {
