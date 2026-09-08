@@ -229,4 +229,8 @@ export function ComposerEditor({
     </>
   );
 }
-export type { ComposerEditorHandle, ComposerEditorSelection } from "../native/T3ComposerEditor";
+export type {
+  ComposerEditorHandle,
+  ComposerEditorSelection,
+  ComposerTextPaste,
+} from "../native/T3ComposerEditor";

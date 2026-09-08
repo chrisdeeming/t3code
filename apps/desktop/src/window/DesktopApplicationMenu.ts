@@ -135,6 +135,9 @@ export const make = Effect.gen(function* () {
     const settingsClick = () => {
       runMenuEffect("open-settings", dispatchMenuAction("open-settings"));
     };
+    const pasteAsTextClick = () => {
+      runMenuEffect("paste-as-text", dispatchMenuAction("paste-as-text"));
+    };
     const zoomClick = (direction: DesktopWindow.MainWindowZoomDirection) => () => {
       runMenuEffect(`zoom-${direction}`, zoomMainWindow(direction));
     };
@@ -184,7 +187,34 @@ export const make = Effect.gen(function* () {
           { role: environment.platform === "darwin" ? "close" : "quit" },
         ],
       },
-      { role: "editMenu" },
+      {
+        label: "Edit",
+        submenu: [
+          { role: "undo" },
+          { role: "redo" },
+          { type: "separator" },
+          { role: "cut" },
+          { role: "copy" },
+          { role: "paste" },
+          {
+            label: "Paste as Text",
+            accelerator: "CmdOrCtrl+Shift+V",
+            click: pasteAsTextClick,
+          },
+          { role: "delete" },
+          { type: "separator" },
+          { role: "selectAll" },
+          ...(environment.platform === "darwin"
+            ? [
+                { type: "separator" as const },
+                {
+                  label: "Speech",
+                  submenu: [{ role: "startSpeaking" as const }, { role: "stopSpeaking" as const }],
+                },
+              ]
+            : []),
+        ],
+      },
       {
         label: "View",
         submenu: [

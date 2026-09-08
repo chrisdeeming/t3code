@@ -8,6 +8,7 @@ import {
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type EnvironmentId,
+  type PastedTextAttachmentSource,
   type UploadChatImageAttachment,
 } from "@t3tools/contracts";
 import type { DocumentPickerResult } from "expo-document-picker";
@@ -21,6 +22,7 @@ import { imageMimeType } from "@t3tools/shared/image";
 import { videoMimeType } from "@t3tools/shared/video";
 import { beginForegroundHandoff } from "./foreground-handoff";
 import { uuidv4 } from "./uuid";
+import { writeFileAtomically } from "./atomic-file";
 
 export interface DraftComposerImageAttachment extends Omit<UploadChatImageAttachment, "dataUrl"> {
   readonly id: string;
@@ -40,8 +42,38 @@ export interface DraftComposerFileAttachment {
   readonly mimeType: string;
   readonly sizeBytes: number;
   readonly fileUri: string;
+  readonly source?: PastedTextAttachmentSource;
   readonly uploadedAttachmentId?: string;
   readonly uploadEnvironmentId?: EnvironmentId;
+}
+
+export async function createPastedTextComposerAttachment(input: {
+  readonly text: string;
+  readonly name: string;
+  readonly maxBytes: number;
+}): Promise<DraftComposerFileAttachment> {
+  const bytes = new TextEncoder().encode(input.text).byteLength;
+  if (bytes <= 0) {
+    throw new Error("Clipboard is empty.");
+  }
+  if (bytes > input.maxBytes) {
+    throw new Error(fileAttachmentTooLargeMessage(input.name, input.maxBytes));
+  }
+
+  const { Directory, File, Paths } = await import("expo-file-system");
+  const directory = new Directory(Paths.document, COMPOSER_ATTACHMENT_DIRECTORY);
+  directory.create({ idempotent: true, intermediates: true });
+  const file = new File(directory, `${uuidv4()}-${input.name}`);
+  await writeFileAtomically(file, input.text);
+  return {
+    id: uuidv4(),
+    type: "file",
+    name: input.name,
+    mimeType: "text/plain;charset=utf-8",
+    sizeBytes: bytes,
+    fileUri: file.uri,
+    source: { _tag: "pasted-text" },
+  };
 }
 
 export type DraftComposerAttachment = DraftComposerImageAttachment | DraftComposerFileAttachment;

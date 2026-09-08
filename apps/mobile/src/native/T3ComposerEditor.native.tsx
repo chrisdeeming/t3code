@@ -55,6 +55,11 @@ type NativePasteImagesEvent = NativeSyntheticEvent<{
   readonly uris: ReadonlyArray<string>;
 }>;
 
+type NativePasteTextEvent = NativeSyntheticEvent<{
+  readonly text: string;
+  readonly selection: ComposerEditorSelection;
+}>;
+
 interface NativeComposerEditorRef {
   focus: () => Promise<void>;
   blur: () => Promise<void>;
@@ -87,6 +92,7 @@ interface NativeComposerEditorProps extends ViewProps {
   readonly onComposerPasteContext?: (
     event: NativeSyntheticEvent<{ text: string; fragment: string; html: string }>,
   ) => void;
+  readonly onComposerPasteText?: (event: NativePasteTextEvent) => void;
   readonly onComposerFocus?: () => void;
   readonly onComposerBlur?: () => void;
 }
@@ -111,6 +117,7 @@ export function ComposerEditor({
   onChangeText,
   onSelectionChange,
   onPasteImages,
+  onPasteText,
   onFocus,
   onBlur,
   contentInsetVertical = 0,
@@ -291,6 +298,7 @@ export function ComposerEditor({
         autoFocus={props.autoFocus ?? false}
         autoCorrect={props.autoCorrect ?? true}
         spellCheck={props.spellCheck ?? true}
+        interceptTextPastes={onPasteText !== undefined}
         style={{ flex: 1, minHeight: 0 }}
         onComposerChange={(event) => {
           const acknowledgedEventCount = acceptNativeEvent(
@@ -326,6 +334,7 @@ export function ComposerEditor({
         onComposerPasteImages={(event) => onPasteImages?.(event.nativeEvent.uris)}
         onComposerContextPress={(event) => props.onContextPress?.(event.nativeEvent)}
         onComposerPasteContext={(event) => props.onPasteContext?.(event.nativeEvent)}
+        onComposerPasteText={(event) => onPasteText?.(event.nativeEvent)}
         onComposerFocus={onFocus}
         onComposerBlur={onBlur}
       />
@@ -337,4 +346,5 @@ export type {
   ComposerEditorHandle,
   ComposerEditorProps,
   ComposerEditorSelection,
+  ComposerTextPaste,
 } from "./T3ComposerEditor.types";
