@@ -406,7 +406,7 @@ export function upgradeLegacyContextMessage(text: string): UpgradedLegacyContext
     body = `${body.slice(0, at)}${formatComposerContextReference(record)}${body.slice(at + label.length)}`;
     placedTerminals.add(record);
   }
-  body = body.replace(/[ \t]+$/gm, "").trimEnd();
+  body = body.trimEnd();
 
   const appended = [
     ...terminals.filter((record) => !placedTerminals.has(record)),
