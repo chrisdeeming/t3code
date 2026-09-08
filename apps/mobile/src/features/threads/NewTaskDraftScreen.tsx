@@ -1,4 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
+import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
+import {
+  nextPastedTextFileName,
+  pastedTextDisposition,
+  replaceTextSelection,
+} from "@t3tools/client-runtime/text-paste";
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
 import {
   CommonActions,
@@ -22,10 +28,15 @@ import { useFontFamily } from "../../lib/useFontFamily";
 
 import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
 
-import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
+import {
+  ComposerEditor,
+  type ComposerEditorHandle,
+  type ComposerTextPaste,
+} from "../../components/ComposerEditor";
 import {
   ComposerActionButton,
   ComposerInlineControl,
@@ -66,8 +77,10 @@ import {
 import { makeTurnCommandMetadata } from "../../lib/commandMetadata";
 import {
   convertPastedImagesToAttachments,
+  createPastedTextComposerAttachment,
   pickComposerFiles,
   pickComposerMedia,
+  removePersistedComposerAttachmentFile,
   type DraftComposerFileAttachment,
 } from "../../lib/composerImages";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
@@ -289,6 +302,12 @@ export function NewTaskDraftScreen(props: {
   const shareImportDraftBackupRef = useRef(new Map<string, ComposerDraft>());
   const activeShareImportTokenRef = useRef<symbol | null>(null);
   const shareImportMountedRef = useRef(true);
+  const pendingPastedTextAttachmentCountRef = useRef(0);
+  const [pendingPastedTextAttachmentCount, setPendingPastedTextAttachmentCount] = useState(0);
+  const pastedTextFileNamesRef = useRef<{ draftKey: string | null; names: Set<string> }>({
+    draftKey: null,
+    names: new Set(),
+  });
   const latestDraftKeyRef = useRef(flow.draftKey);
   const latestIncomingShareIdRef = useRef(props.incomingShareId);
   latestDraftKeyRef.current = flow.draftKey;
@@ -939,8 +958,102 @@ export function NewTaskDraftScreen(props: {
     [flow],
   );
 
+  const handleNativePasteText = useCallback(
+    async (paste: ComposerTextPaste) => {
+      const insertPaste = () => {
+        const insertion = replaceTextSelection({
+          value: flow.prompt,
+          selection: paste.selection,
+          text: paste.text,
+        });
+        const selection = { start: insertion.cursor, end: insertion.cursor };
+        flow.setPrompt(insertion.value);
+        composerMenu.onSelectionChange(selection);
+        requestAnimationFrame(() => promptInputRef.current?.setSelection(selection));
+      };
+      const capabilities = selectedEnvironmentServerConfig?.environment.capabilities;
+      const advertisedMax =
+        capabilities?.attachmentUploads === true
+          ? capabilities.fileAttachments?.maxUploadBytes
+          : undefined;
+      const maxBytes =
+        advertisedMax === undefined ? null : clampFileAttachmentUploadBytes(advertisedMax);
+      const wouldExceedInputLimit =
+        flow.prompt.length -
+          Math.max(0, paste.selection.end - paste.selection.start) +
+          paste.text.length >
+        PROVIDER_SEND_TURN_MAX_INPUT_CHARS;
+      const canAttach =
+        maxBytes !== null &&
+        flow.attachments.length < PROVIDER_SEND_TURN_MAX_ATTACHMENTS &&
+        new TextEncoder().encode(paste.text).byteLength <= maxBytes;
+      if (
+        pastedTextDisposition({
+          text: paste.text,
+          wouldExceedInputLimit,
+          canAttach: true,
+        }) === "attachment"
+      ) {
+        if (canAttach && maxBytes !== null) {
+          const draftKey = flow.draftKey;
+          pendingPastedTextAttachmentCountRef.current += 1;
+          setPendingPastedTextAttachmentCount(pendingPastedTextAttachmentCountRef.current);
+          try {
+            if (pastedTextFileNamesRef.current.draftKey !== draftKey) {
+              pastedTextFileNamesRef.current = { draftKey, names: new Set() };
+            }
+            const reservedNames = pastedTextFileNamesRef.current.names;
+            for (const attachment of flow.attachments) reservedNames.add(attachment.name);
+            const name = nextPastedTextFileName([...reservedNames]);
+            reservedNames.add(name);
+            const attachment = await createPastedTextComposerAttachment({
+              text: paste.text,
+              name,
+              maxBytes,
+            });
+            if (latestDraftKeyRef.current !== draftKey) {
+              await removePersistedComposerAttachmentFile(attachment.fileUri);
+              return;
+            }
+            if (flow.appendAttachments([attachment]) > 0) {
+              await removePersistedComposerAttachmentFile(attachment.fileUri);
+              Alert.alert(
+                "Could not attach pasted text",
+                `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} files per message.`,
+              );
+            }
+          } catch (error) {
+            Alert.alert(
+              "Could not attach pasted text",
+              error instanceof Error ? error.message : "Try again.",
+            );
+          } finally {
+            pendingPastedTextAttachmentCountRef.current = Math.max(
+              0,
+              pendingPastedTextAttachmentCountRef.current - 1,
+            );
+            setPendingPastedTextAttachmentCount(pendingPastedTextAttachmentCountRef.current);
+          }
+        } else {
+          Alert.alert(
+            wouldExceedInputLimit
+              ? "Pasted text is too large for this message"
+              : "Could not attach pasted text",
+            wouldExceedInputLimit
+              ? "Remove some text or an attachment, then paste again."
+              : "Remove an attachment or use a smaller paste, then try again.",
+          );
+        }
+        return;
+      }
+
+      insertPaste();
+    },
+    [composerMenu, flow, selectedEnvironmentServerConfig],
+  );
+
   async function handleStart(): Promise<void> {
-    if (voiceInput.blocksSubmission) return;
+    if (voiceInput.blocksSubmission || pendingPastedTextAttachmentCountRef.current > 0) return;
     const selectedProject = flow.selectedProject;
     const draftKey = flow.draftKey;
     if (!selectedProject || !draftKey) {
@@ -1102,6 +1215,7 @@ export function NewTaskDraftScreen(props: {
     isIncomingShareReady &&
     !isImportingShare &&
     !flow.submitting &&
+    pendingPastedTextAttachmentCount === 0 &&
     !voiceInput.blocksSubmission &&
     !(flow.workspaceMode === "worktree" && !flow.selectedBranchName);
   const promptEditor = (
@@ -1122,6 +1236,7 @@ export function NewTaskDraftScreen(props: {
       onFocus={() => setIsComposerFocused(true)}
       onBlur={() => setIsComposerFocused(false)}
       onPasteImages={(uris) => void handleNativePasteImages(uris)}
+      onPasteText={(paste) => void handleNativePasteText(paste)}
       placeholder="Ask anything…"
       singleLineCentered={false}
       contentInsetVertical={0}
@@ -1396,13 +1511,15 @@ export function NewTaskDraftScreen(props: {
                 <ComposerActionButton
                   accessibilityLabel={
                     attachmentBlockReason ??
-                    (flow.submitting
-                      ? "Starting task"
-                      : attachmentsUploading
-                        ? "Queue task, sends when uploads finish"
-                        : environmentConnected
-                          ? "Start task"
-                          : "Queue task")
+                    (pendingPastedTextAttachmentCount > 0
+                      ? "Attaching pasted text"
+                      : flow.submitting
+                        ? "Starting task"
+                        : attachmentsUploading
+                          ? "Queue task, sends when uploads finish"
+                          : environmentConnected
+                            ? "Start task"
+                            : "Queue task")
                   }
                   disabled={!canStart}
                   icon={queuesInsteadOfStarting ? "tray.and.arrow.up" : "arrow.up"}

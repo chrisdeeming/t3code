@@ -165,7 +165,13 @@ function uploadedReference(
     mimeType: attachment.mimeType,
     sizeBytes: attachment.sizeBytes,
   };
-  return attachment.type === "image" ? { type: "image", ...fields } : { type: "file", ...fields };
+  return attachment.type === "image"
+    ? { type: "image", ...fields }
+    : {
+        type: "file",
+        ...fields,
+        ...(attachment.source ? { source: attachment.source } : {}),
+      };
 }
 
 function attachmentUploadInput(attachment: DraftComposerAttachment) {

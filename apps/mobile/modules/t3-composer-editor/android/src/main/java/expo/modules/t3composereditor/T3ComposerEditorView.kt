@@ -1,7 +1,8 @@
 package expo.modules.t3composereditor
 
-import android.content.Context
+import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.Color
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -15,6 +16,7 @@ import android.text.TextWatcher
 import android.text.style.ReplacementSpan
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -39,6 +41,7 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
   private val onComposerFocus by EventDispatcher()
   private val onComposerBlur by EventDispatcher()
   private val onComposerPasteImages by EventDispatcher()
+  private val onComposerPasteText by EventDispatcher()
   private val onComposerContentSizeChange by EventDispatcher()
   private var applyingNativeValue = false
   private var desiredLineHeightPx = 0
@@ -71,6 +74,14 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
     }
     editor.pasteImagesListener = { uris ->
       onComposerPasteImages(mapOf("uris" to uris))
+    }
+    editor.pasteTextListener = { text, start, end ->
+      onComposerPasteText(
+        mapOf(
+          "text" to text,
+          "selection" to mapOf("start" to start, "end" to end),
+        ),
+      )
     }
     editor.setOnFocusChangeListener { _, hasFocus ->
       if (hasFocus) {
@@ -242,6 +253,10 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
   fun setSpellCheck(spellCheck: Boolean) {
     this.spellCheck = spellCheck
     updateInputFlags()
+  }
+
+  fun setInterceptTextPastes(intercept: Boolean) {
+    editor.interceptTextPastes = intercept
   }
 
   fun focusEditor() {
@@ -496,6 +511,8 @@ private fun parseTokens(value: String): List<ComposerToken> = try {
 private class SelectionAwareEditText(context: Context) : EditText(context) {
   var selectionListener: ((Int, Int) -> Unit)? = null
   var pasteImagesListener: ((List<String>) -> Unit)? = null
+  var pasteTextListener: ((String, Int, Int) -> Unit)? = null
+  var interceptTextPastes = false
 
   override fun onSelectionChanged(selStart: Int, selEnd: Int) {
     super.onSelectionChanged(selStart, selEnd)
@@ -503,24 +520,54 @@ private class SelectionAwareEditText(context: Context) : EditText(context) {
   }
 
   override fun onTextContextMenuItem(id: Int): Boolean {
-    if (id == android.R.id.paste || id == android.R.id.pasteAsPlainText) {
-      val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-      val clip = clipboard?.primaryClip
-      val imageUris = buildList {
-        if (clip != null) {
-          for (index in 0 until clip.itemCount) {
-            clip.getItemAt(index).uri?.let { uri ->
-              val mimeType = context.contentResolver.getType(uri)
-              if (mimeType?.startsWith("image/") == true) add(uri.toString())
-            }
+    if (id != android.R.id.paste && id != android.R.id.pasteAsPlainText) {
+      return super.onTextContextMenuItem(id)
+    }
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+    val clip = clipboard?.primaryClip
+    val imageUris = buildList {
+      if (clip != null) {
+        for (index in 0 until clip.itemCount) {
+          clip.getItemAt(index).uri?.let { uri ->
+            val mimeType = context.contentResolver.getType(uri)
+            if (mimeType?.startsWith("image/") == true) add(uri.toString())
           }
         }
       }
-      if (imageUris.isNotEmpty()) {
-        pasteImagesListener?.invoke(imageUris)
-        return true
-      }
     }
-    return super.onTextContextMenuItem(id)
+    val text = if (interceptTextPastes) clip?.plainText() else null
+    return when {
+      imageUris.isNotEmpty() -> {
+        pasteImagesListener?.invoke(imageUris)
+        true
+      }
+      !text.isNullOrEmpty() -> {
+        pasteTextListener?.invoke(
+          text,
+          selectionStart.coerceAtLeast(0),
+          selectionEnd.coerceAtLeast(0),
+        )
+        true
+      }
+      else -> super.onTextContextMenuItem(id)
+    }
+  }
+
+  // coerceToText opens content: URIs synchronously. Leave URI-backed
+  // clipboard items to Android's normal paste path so the UI thread never
+  // reads an arbitrary provider just to measure a text paste.
+  private fun ClipData.plainText(): String? =
+    takeIf { itemCount > 0 }
+      ?.getItemAt(0)
+      ?.takeIf { it.uri == null }
+      ?.coerceToText(context)
+      ?.toString()
+      ?.takeIf(String::isNotEmpty)
+
+  override fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean {
+    if (keyCode == KeyEvent.KEYCODE_V && event.isCtrlPressed && event.isShiftPressed) {
+      return super.onTextContextMenuItem(android.R.id.pasteAsPlainText)
+    }
+    return super.onKeyShortcut(keyCode, event)
   }
 }
