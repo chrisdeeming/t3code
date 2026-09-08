@@ -2990,10 +2990,9 @@ describe("composerDraftStore attachment references", () => {
     const image = makeImage({ id: "img-1", previewUrl: "blob:img-1", name: "shot.png" });
     expect(store.addImages(threadRef, [image])).toEqual(["img-1"]);
     expect(
-      store.addImage(
-        threadRef,
+      store.addImages(threadRef, [
         makeImage({ id: "img-2", previewUrl: "blob:img-2", name: "shot.png" }),
-      ),
+      ]),
     ).toEqual([]);
   });
 

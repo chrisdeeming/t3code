@@ -603,8 +603,8 @@ interface ComposerDraftStoreState {
     threadRef: ComposerThreadTarget,
     interactionMode: ProviderInteractionMode | null | undefined,
   ) => void;
+  addImage: (threadRef: ComposerThreadTarget, image: ComposerImageAttachment) => boolean;
   /** Returns the ids the draft accepted; duplicates and over-cap attachments are left out. */
-  addImage: (threadRef: ComposerThreadTarget, image: ComposerImageAttachment) => string[];
   addImages: (threadRef: ComposerThreadTarget, images: ComposerImageAttachment[]) => string[];
   removeImage: (threadRef: ComposerThreadTarget, imageId: string) => void;
   /** Returns the ids of files appended; a re-pick that replaces a marker is not listed. */
@@ -3240,12 +3240,13 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           const threadKey = resolveComposerDraftKey(get(), threadRef);
           const threadId = resolveComposerThreadId(get(), threadRef);
           if (!threadKey || !threadId) {
-            return [];
+            return false;
           }
-          return get().addImages(
+          const acceptedIds = get().addImages(
             typeof threadRef === "string" ? DraftId.make(threadKey) : threadRef,
             [image],
           );
+          return acceptedIds.includes(image.id);
         },
         addImages: (threadRef, images) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
