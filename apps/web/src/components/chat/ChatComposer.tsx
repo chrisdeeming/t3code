@@ -2308,8 +2308,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
 
   const addComposerImage = useCallback(
-    (image: ComposerImageAttachment) => addComposerDraftImage(attachmentDraftTarget, image),
-    [attachmentDraftTarget, addComposerDraftImage],
+    (image: ComposerImageAttachment) => addComposerDraftImages(attachmentDraftTarget, [image]),
+    [attachmentDraftTarget, addComposerDraftImages],
   );
 
   const addComposerImagesToDraft = useCallback(
