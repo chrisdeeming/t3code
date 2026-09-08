@@ -280,6 +280,19 @@ export function asKnownContextRecord(
   return record as KnownComposerContextRecord;
 }
 
+/** Candidate keys for finding the draft record an imported wire record would reconstruct. */
+export function composerContextImportLookupIds(
+  record: KnownComposerContextRecord,
+): ReadonlyArray<ComposerContextId> {
+  const destinationId = toKindScopedComposerContextId(
+    record.kind,
+    producerIdFromComposerContextId(record.kind, record.contextId),
+  );
+  return destinationId === record.contextId
+    ? [record.contextId]
+    : [destinationId, record.contextId];
+}
+
 export interface ResolvedUserMessageContext {
   text: string;
   records: ReadonlyArray<ComposerContextRecord>;
@@ -398,7 +411,16 @@ export function isSameComposerContextPayload(
   if (left.kind !== right.kind) return false;
   const stableKey = (record: ComposerContextRecord) => {
     const { label: _label, ...rest } = record;
-    return JSON.stringify(rest, Object.keys(rest).toSorted());
+    const sortDeep = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(sortDeep);
+      if (value === null || typeof value !== "object") return value;
+      return Object.fromEntries(
+        Object.entries(value)
+          .toSorted(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+          .map(([key, nested]) => [key, sortDeep(nested)]),
+      );
+    };
+    return JSON.stringify(sortDeep(rest));
   };
   return stableKey(left) === stableKey(right);
 }
