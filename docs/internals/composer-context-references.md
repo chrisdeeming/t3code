@@ -48,11 +48,11 @@ rejects direct `crypto.randomUUID()` there.
 ```
 
 The parser accepts exactly the `t3-context:` scheme, the `v1` host, one kind segment matching
-`[a-z][a-z0-9-]{0,39}`, and one id segment matching `[a-z0-9_-]{1,128}`. Query strings, fragments,
-credentials, and extra segments are rejected. Labels are sanitized to survive a Markdown link (no
-brackets or line breaks, at most 200 characters, never empty). Links that fail to parse are
-ordinary text. `collectComposerInlineTokens` already rejects URI schemes for file links, so a
-context link is never mistaken for a mention.
+`[a-z][a-z0-9-]{0,39}`, and one id segment matching `[a-z0-9_-]{1,128}` case-insensitively. Query
+strings, fragments, credentials, and extra segments are rejected. Labels are sanitized to survive
+a Markdown link (no brackets or line breaks, at most 200 characters, never empty). Links that fail
+to parse are ordinary text. `collectComposerInlineTokens` already rejects URI schemes for file
+links, so a context link is never mistaken for a mention.
 
 ## Provider projection
 
