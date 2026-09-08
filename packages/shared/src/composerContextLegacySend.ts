@@ -1,4 +1,4 @@
-import type { ComposerContextRecord } from "@t3tools/contracts";
+import type { ComposerContextRecord, ElementContextDetails } from "@t3tools/contracts";
 
 import { collectComposerContextReferences } from "./composerContextReferences.ts";
 
@@ -88,6 +88,10 @@ function renderTerminalEntry(record: ComposerContextRecord): string {
 
 function renderElementEntry(record: ComposerContextRecord): string {
   if (!("tagName" in record)) return "";
+  return renderElementDetailsEntry(record);
+}
+
+function renderElementDetailsEntry(record: ElementContextDetails): string {
   const lines: string[] = [];
   if (record.pageUrl) lines.push(`url: ${record.pageUrl}`);
   if (record.selector) lines.push(`selector: ${record.selector}`);
@@ -110,6 +114,13 @@ function renderPreviewBody(record: ComposerContextRecord): string {
   if (record.targetSummary) lines.push(`Targets: ${record.targetSummary}`);
   if (record.styleChanges.length > 0) {
     lines.push("Requested visual changes:", ...record.styleChanges.map((change) => `- ${change}`));
+  }
+  if (record.elements && record.elements.length > 0) {
+    lines.push(
+      "<element_context>",
+      record.elements.map(renderElementDetailsEntry).join("\n"),
+      "</element_context>",
+    );
   }
   return lines.join("\n");
 }
