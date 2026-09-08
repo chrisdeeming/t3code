@@ -5,6 +5,7 @@ import {
   type PreviewAnnotationPayload,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
 
 import {
   formatInlineContextReference,
@@ -13,8 +14,10 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  asKnownContextRecord,
   attachmentContextRecord,
   buildMessageContext,
+  composerContextImportLookupIds,
   isSameComposerContextPayload,
   previewAnnotationContextLabel,
   previewAnnotationContextRecord,
@@ -389,6 +392,57 @@ describe("composerContextRecords", () => {
     // Labels are display text, never identity.
     expect(isSameComposerContextPayload(base, { ...base, label: "different" })).toBe(true);
     expect(isSameComposerContextPayload(base, { ...base, text: "B" })).toBe(false);
+  });
+
+  it("finds the destination collision for different legacy terminal messages", () => {
+    const legacy = (text: string) =>
+      asKnownContextRecord(
+        upgradeLegacyContextMessage(
+          `Inspect this\n\n<terminal_context>\n- Terminal 1 line 1:\n  1 | ${text}\n</terminal_context>`,
+        ).records[0],
+      )!;
+    const first = legacy("A");
+    const second = legacy("B");
+    if (first.kind !== "terminal" || second.kind !== "terminal") {
+      throw new Error("Expected legacy terminal records");
+    }
+    const destinationId = terminalContextReference(
+      terminalContextDraftFromRecord(first, ThreadId.make("t")),
+    ).contextId;
+
+    expect(destinationId).toBe("terminal_legacy_terminal_1");
+    expect(composerContextImportLookupIds(second)[0]).toBe(destinationId);
+    expect(isSameComposerContextPayload(first, second)).toBe(false);
+  });
+
+  it("compares nested annotation element and source payloads", () => {
+    const base = previewAnnotationContextRecord(annotation);
+    expect(isSameComposerContextPayload(base, { ...base, label: "Different display label" })).toBe(
+      true,
+    );
+    expect(
+      isSameComposerContextPayload(base, {
+        ...base,
+        elements: base.elements?.map((element) => ({
+          ...element,
+          htmlPreview: '<button id="pay">Changed</button>',
+        })),
+      }),
+    ).toBe(false);
+    expect(
+      isSameComposerContextPayload(base, {
+        ...base,
+        elements: base.elements?.map((element) => ({
+          ...element,
+          source: {
+            functionName: "Checkout",
+            fileName: "src/Checkout.tsx",
+            lineNumber: 20,
+            columnNumber: 4,
+          },
+        })),
+      }),
+    ).toBe(false);
   });
 
   it("builds terminal and review records and a message context in draft order", () => {

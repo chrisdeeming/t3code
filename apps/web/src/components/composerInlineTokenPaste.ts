@@ -63,9 +63,21 @@ export function registerComposerInlineTokenPaste(
             event.clipboardData.getData(COMPOSER_CONTEXT_CLIPBOARD_MIME),
           )
         : null;
-      const pastedIds = new Set(
+      const pastedIds = new Set<string>(
         collectComposerContextReferences(pastedText).map((occurrence) => occurrence.contextId),
       );
+      if (decodedFragment) {
+        for (const record of decodedFragment.records) {
+          if (
+            record.kind === "preview-annotation" &&
+            !("payload" in record) &&
+            pastedIds.has(record.contextId) &&
+            record.screenshotContextId
+          ) {
+            pastedIds.add(record.screenshotContextId);
+          }
+        }
+      }
       const fragment =
         decodedFragment === null
           ? null
