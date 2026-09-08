@@ -13,6 +13,7 @@ import {
   middleTruncateAttachmentName,
 } from "./composerInlineChip";
 import { PullRequestContextDetails } from "./PullRequestContextDetails";
+import { Button } from "./ui/button";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
@@ -76,8 +77,8 @@ export function ContextChipPopover(props: {
     <Popover>
       <PopoverTrigger
         render={
-          <button
-            type="button"
+          <Button
+            variant="chip"
             className={cn(
               "inline-flex max-w-full cursor-pointer items-center rounded-[0.5em] align-middle",
               CONTEXT_INLINE_CHIP_FOCUS_CLASS_NAME,
@@ -115,8 +116,8 @@ export function PullRequestChip(props: {
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
-            type="button"
+          <Button
+            variant="chip"
             className={cn(
               props.className,
               CONTEXT_INLINE_CHIP_INTERACTIVE_CLASS_NAME,
@@ -134,7 +135,7 @@ export function PullRequestChip(props: {
               )}
             />
             <span className={props.labelClassName}>{props.label}</span>
-          </button>
+          </Button>
         }
       />
       <TooltipPopup side="top" className="max-w-96 leading-tight">
@@ -158,8 +159,8 @@ export function ImageChipButton({
   suffix?: string | null;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="chip"
       className={cn(
         className,
         CONTEXT_INLINE_CHIP_TONE_CLASS_NAMES.image,
@@ -182,7 +183,7 @@ export function ImageChipButton({
       )}
       <span className={cn(labelClassName, "max-w-72")}>{middleTruncateAttachmentName(name)}</span>
       {suffix ? <span className="text-[10px] text-current">{suffix}</span> : null}
-    </button>
+    </Button>
   );
 }
 
@@ -224,9 +225,9 @@ export function FileChip(props: {
       <TooltipTrigger
         render={
           props.onOpen ? (
-            <button type="button" disabled={props.disabled} onClick={props.onOpen} {...attributes}>
+            <Button variant="chip" disabled={props.disabled} onClick={props.onOpen} {...attributes}>
               {content}
-            </button>
+            </Button>
           ) : (
             <span tabIndex={0} {...attributes}>
               {content}
