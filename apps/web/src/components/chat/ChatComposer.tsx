@@ -1,3 +1,5 @@
+import { importPastedComposerText } from "../composerInlineTokenPaste";
+import { elementContextToPreviewAnnotation } from "../../lib/elementContext";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import {
   questionAttachmentDraftId,
@@ -1208,7 +1210,10 @@ export interface ChatComposerHandle {
   restoreAfterTimelineReachedEnd: () => void;
   collapseForTimelineScrollKey: (key: string) => void;
   addDroppedFiles: (files: File[]) => void;
-  insertTextAtEnd: (text: string, options?: { ensureLeadingBoundary?: boolean }) => boolean;
+  insertTextAtEnd: (
+    text: string,
+    options?: { ensureLeadingBoundary?: boolean; clipboardData?: DataTransfer },
+  ) => boolean;
   citeAssistantText: (
     citation: AssistantCitation,
     sourceAnchor: AssistantCitationSourceAnchor,
@@ -2633,10 +2638,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             rewritten.set(record.contextId, reviewCommentContextId(comment.id));
             break;
           }
+          case "element":
           case "preview-annotation": {
-            const imported = previewAnnotationFromRecord(record);
+            const imported =
+              record.kind === "element"
+                ? elementContextToPreviewAnnotation(record, randomUUID(), new Date().toISOString())
+                : previewAnnotationFromRecord(record);
             const annotation = conflicts ? { ...imported, id: randomUUID() } : imported;
-            if (record.screenshotContextId) {
+            if (record.kind === "preview-annotation" && record.screenshotContextId) {
               dependentAttachmentLocalIds.set(record.screenshotContextId, annotation.id);
             }
             addComposerDraftPreviewAnnotation(composerDraftTarget, annotation, {
@@ -3710,7 +3719,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       const restoredPrompt = replaceComposerContextReferences(entry.prompt, (reference) => {
         const contextId = rewrittenContextIds.get(reference.contextId);
         return contextId
-          ? formatInlineContextReference({ ...reference, contextId })
+          ? formatInlineContextReference({
+              ...reference,
+              contextId,
+              kind: reference.kind === "element" ? "preview-annotation" : reference.kind,
+            })
           : reference.source;
       });
       const currentPrompt = promptRef.current;
@@ -5012,6 +5025,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       options?: {
         ensureLeadingBoundary?: boolean;
         citationCommentAnchor?: AssistantCitationSourceAnchor;
+        clipboardData?: DataTransfer;
       },
     ): boolean => {
       if (
@@ -5023,6 +5037,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         (options?.citationCommentAnchor && !composerEditorRef.current)
       ) {
         return false;
+      }
+      if (options?.clipboardData) {
+        text = importPastedComposerText(options.clipboardData, importContextFragment);
       }
       const prompt = promptRef.current;
       const cursor = position === "cursor" ? readComposerSnapshot().expandedCursor : prompt.length;
@@ -5054,6 +5071,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       projectSelectionRequired,
       promptRef,
       readComposerSnapshot,
+      importContextFragment,
     ],
   );
 
