@@ -31,8 +31,10 @@ export function filterComposerPullRequestMatches<Entry extends ComposerPullReque
     }
   }
   const isExactMatch = (entry: Entry) => String(entry.number) === input.query;
+  // `.sort()` on a copy, not `.toSorted()`: this runs on Hermes, which has no ES2023 array
+  // methods, and reaching for one here crashed the composer as the suggestions loaded.
   return [...uniqueEntries.values()]
-    .toSorted((left, right) => {
+    .sort((left, right) => {
       const exactness = Number(isExactMatch(right)) - Number(isExactMatch(left));
       return exactness !== 0 ? exactness : right.updatedAt.localeCompare(left.updatedAt);
     })
