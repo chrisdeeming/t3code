@@ -2,18 +2,22 @@ import type { MarkdownNode } from "react-native-nitro-markdown/headless";
 import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 import { imageMimeType } from "@t3tools/shared/image";
 import { videoMimeType } from "@t3tools/shared/video";
-/** Matches the restrained kind accents used by web's composerInlineChip. */
+/**
+ * Every accent shares a lightness so no kind reads heavier than another; only hue carries
+ * identity. These are the sRGB form of the same OKLCH set web uses, so a chip looks the
+ * same on every surface. See `composerInlineChip.ts`.
+ */
 const CONTEXT_CHIP_PRESENTATIONS = {
-  image: { accent: "#f43f5e", symbol: "photo" },
-  video: { accent: "#f97316", symbol: "play.rectangle" },
-  file: { accent: "#0ea5e9", symbol: "doc" },
-  mention: { accent: "#06b6d4", symbol: "doc" },
-  terminal: { accent: "#10b981", symbol: "terminal" },
-  element: { accent: "#f59e0b", symbol: "cursorarrow.click" },
-  "preview-annotation": { accent: "#f59e0b", symbol: "cursorarrow.click" },
-  "review-comment": { accent: "#8b5cf6", symbol: "text.bubble" },
-  "pull-request": { accent: "#6366f1", symbol: "arrow.triangle.branch" },
-  skill: { accent: "#d946ef", symbol: "cube" },
+  image: { accent: "#d55665", symbol: "photo" },
+  video: { accent: "#d06217", symbol: "play.rectangle" },
+  file: { accent: "#0090cd", symbol: "doc" },
+  mention: { accent: "#0096af", symbol: "doc" },
+  terminal: { accent: "#009f6e", symbol: "terminal" },
+  element: { accent: "#b87501", symbol: "cursorarrow.click" },
+  "preview-annotation": { accent: "#b87501", symbol: "cursorarrow.click" },
+  "review-comment": { accent: "#8a70dd", symbol: "text.bubble" },
+  "pull-request": { accent: "#7079e4", symbol: "arrow.triangle.branch" },
+  skill: { accent: "#b261be", symbol: "cube" },
 } as const;
 
 /**

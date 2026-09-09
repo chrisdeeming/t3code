@@ -1082,23 +1082,23 @@ describe("contextChipPresentation image detection", () => {
     // The document picker types every pick as `file`, so the name has to carry the intent.
     expect(
       contextChipPresentation("file", { kind: "file", name: "IMG_4997.PNG", mimeType: "" }),
-    ).toEqual({ accent: "#f43f5e", symbol: "photo" });
+    ).toEqual({ accent: "#d55665", symbol: "photo" });
     expect(
       contextChipPresentation("file", {
         kind: "file",
         name: "shot",
         mimeType: "image/jpeg",
       }),
-    ).toEqual({ accent: "#f43f5e", symbol: "photo" });
+    ).toEqual({ accent: "#d55665", symbol: "photo" });
   });
 
   it("leaves genuine documents and videos alone", async () => {
     const { contextChipPresentation } = await import("@t3tools/mobile-markdown-text/markdown");
     expect(
       contextChipPresentation("file", { kind: "file", name: "notes.txt", mimeType: "text/plain" }),
-    ).toEqual({ accent: "#0ea5e9", symbol: "doc" });
+    ).toEqual({ accent: "#0090cd", symbol: "doc" });
     expect(
       contextChipPresentation("file", { kind: "file", name: "clip.mp4", mimeType: "video/mp4" }),
-    ).toEqual({ accent: "#f97316", symbol: "play.rectangle" });
+    ).toEqual({ accent: "#d06217", symbol: "play.rectangle" });
   });
 });
