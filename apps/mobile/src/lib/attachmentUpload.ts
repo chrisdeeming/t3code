@@ -77,10 +77,14 @@ export function withUploadedMobileAttachmentReferences(input: {
 }): ReadonlyArray<DraftComposerAttachment> {
   return input.attachments.map((attachment, index) => {
     const uploaded = input.uploadedAttachments[index];
+    // A picture picked through Files stays `type: "file"` in the draft while it uploads as an
+    // image, so compare against the type it was actually sent under: comparing draft types
+    // drops the id, and the next send re-uploads bytes the server already holds.
+    const uploadedAs = isComposerImageAttachment(attachment) ? "image" : attachment.type;
     if (
       !uploaded ||
       !("id" in uploaded) ||
-      attachment.type !== uploaded.type ||
+      uploadedAs !== uploaded.type ||
       (attachment.uploadedAttachmentId === uploaded.id &&
         attachment.uploadEnvironmentId === input.environmentId)
     ) {
@@ -157,6 +161,29 @@ export type PrepareTurnAttachmentsResult =
   | PreparedTurnAttachments
   | { readonly status: "abandoned" };
 
+/**
+ * The mime an attachment travels under. A picture picked through Files arrives typed as a plain
+ * file, often with no usable mime, so it is promoted to the type the provider accepts. Every
+ * place that names the attachment on the wire — the upload header, the upload input, and the
+ * message reference — has to agree on this one value, or the turn describes bytes that are not
+ * what was actually sent and `ChatImageAttachment` rejects it.
+ */
+export function composerAttachmentWireMimeType(attachment: DraftComposerAttachment): string {
+  if (!isComposerImageAttachment(attachment)) return attachment.mimeType;
+  return supportedImageWireMimeType(attachment);
+}
+
+function supportedImageWireMimeType(
+  attachment: DraftComposerAttachment,
+): (typeof PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES)[number] {
+  const inferred = imageMimeType(attachment);
+  const mimeType = PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES.find(
+    (type) => type === attachment.mimeType.toLowerCase() || type === inferred,
+  );
+  if (!mimeType) throw new Error(`Unsupported image type for '${attachment.name}'.`);
+  return mimeType;
+}
+
 function uploadedReference(
   attachment: DraftComposerAttachment,
   id: string,
@@ -164,7 +191,7 @@ function uploadedReference(
   const fields = {
     id,
     name: attachment.name,
-    mimeType: attachment.mimeType,
+    mimeType: composerAttachmentWireMimeType(attachment),
     sizeBytes: attachment.sizeBytes,
   };
   // A picture picked through Files is typed as a plain file; uploading it as one leaves the
@@ -175,20 +202,10 @@ function uploadedReference(
 }
 
 function attachmentUploadInput(attachment: DraftComposerAttachment) {
-  const fields = {
-    name: attachment.name,
-    mimeType: attachment.mimeType,
-    sizeBytes: attachment.sizeBytes,
-  };
-  if (!isComposerImageAttachment(attachment)) return { type: "file" as const, ...fields };
-  // A picture picked through Files often arrives with no usable mime, so fall back to what
-  // the attachment itself says it is; either way the wire type stays one the provider takes.
-  const inferred = imageMimeType(attachment);
-  const mimeType = PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES.find(
-    (type) => type === attachment.mimeType.toLowerCase() || type === inferred,
-  );
-  if (!mimeType) throw new Error(`Unsupported image type for '${attachment.name}'.`);
-  return { ...fields, mimeType };
+  const fields = { name: attachment.name, sizeBytes: attachment.sizeBytes };
+  return isComposerImageAttachment(attachment)
+    ? { ...fields, mimeType: supportedImageWireMimeType(attachment) }
+    : { type: "file" as const, ...fields, mimeType: attachment.mimeType };
 }
 
 /**
@@ -262,7 +279,7 @@ async function uploadFileBytes(
     const result = await file.upload(url, {
       httpMethod: "POST",
       uploadType: UploadType.BINARY_CONTENT,
-      headers: { "Content-Type": attachment.mimeType },
+      headers: { "Content-Type": composerAttachmentWireMimeType(attachment) },
       signal,
       ...(onProgress
         ? {
