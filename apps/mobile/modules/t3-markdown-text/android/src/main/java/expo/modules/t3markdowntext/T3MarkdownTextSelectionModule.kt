@@ -26,6 +26,7 @@ import org.json.JSONObject
 import org.json.JSONArray
 import java.net.URLEncoder
 import java.io.ByteArrayOutputStream
+import kotlin.math.ceil
 
 private const val OBJECT_REPLACEMENT_CHARACTER = "\uFFFC"
 
@@ -183,9 +184,11 @@ class T3MarkdownTextSelectionModule : Module() {
         maximumWidth = (metrics.widthPixels - 80 * metrics.density).coerceAtLeast(100f),
         density = metrics.density,
       )
+      // toInt() truncates, so a fractional pixel of the chip would fall outside the bitmap
+      // and take the right-hand border with it. Round up: a spare column costs nothing.
       val bitmap = Bitmap.createBitmap(
-        chip.width.toInt(),
-        chip.height.toInt(),
+        ceil(chip.width).toInt(),
+        ceil(chip.height).toInt(),
         Bitmap.Config.ARGB_8888
       )
       chip.draw(Canvas(bitmap), 0f, 0f)

@@ -501,7 +501,9 @@ private class ComposerChipSpan(
       it.descent = base.descent
       it.bottom = base.bottom
     }
-    return chip.width.toInt()
+    // toInt() truncates; a fractional pixel would leave the span narrower than the chip
+    // draws and clip its right-hand border.
+    return kotlin.math.ceil(chip.width).toInt()
   }
 
   override fun draw(
