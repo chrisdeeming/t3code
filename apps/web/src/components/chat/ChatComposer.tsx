@@ -289,6 +289,7 @@ import {
 } from "./composerSubmission";
 import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation";
 import { PierreEntryIcon } from "./PierreEntryIcon";
+import { PendingDraftWork } from "./pendingDraftWork";
 import {
   createComposerScrollGestureState,
   recordComposerScrollGestureEvent,
@@ -2083,6 +2084,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const pendingImageCompressionsRef = useRef<Map<string, number>>(new Map());
   const isRevertingCheckpointRef = useRef(isRevertingCheckpoint);
   isRevertingCheckpointRef.current = isRevertingCheckpoint;
+  /** Attachment byte transfers still in flight, counted per draft. */
+  const pendingAttachmentImportsRef = useRef(new PendingDraftWork());
 
   // ------------------------------------------------------------------
   // Derived: composer send state
@@ -2683,11 +2686,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    * attachment under a fresh id. The pasted chip is rewritten to that id and reads as
    * unresolved until the bytes land; a failed transfer says so and leaves the chip to remove.
    */
-  const importAttachmentRecord = useCallback(
+  const runAttachmentImport = useCallback(
     async (
       record: Extract<ComposerContextRecord, { kind: "image" | "file" }>,
       localId: string,
       sourceEnvironmentId: EnvironmentId,
+      importTargetKey: string,
     ) => {
       const fail = (reason: string) => {
         toastManager.add({
@@ -2723,6 +2727,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
       const file = new File([blob], record.name, { type: record.mimeType || blob.type });
+      // The draft these bytes belong to may have been sent or switched away from while they
+      // downloaded. Dropping them here keeps them out of whatever draft is open now.
+      if (attachmentTargetKey !== importTargetKey) return;
       if (record.kind === "image") {
         const accepted = addComposerImage({
           type: "image",
@@ -2750,7 +2757,26 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           fail("The draft rejected this attachment (duplicate or attachment limit reached).");
       }
     },
-    [addComposerFilesToDraft, addComposerImage, createAssetUrl],
+    [addComposerFilesToDraft, addComposerImage, attachmentTargetKey, createAssetUrl],
+  );
+  const importAttachmentRecord = useCallback(
+    async (
+      record: Extract<ComposerContextRecord, { kind: "image" | "file" }>,
+      localId: string,
+      sourceEnvironmentId: EnvironmentId,
+    ) => {
+      // The chip lands in the draft immediately while these bytes are still downloading. Count
+      // the transfer against its own draft so a send cannot snapshot a message whose chip has no
+      // attachment behind it, and so bytes for an abandoned draft never enter the next one.
+      const importTargetKey = attachmentTargetKey;
+      pendingAttachmentImportsRef.current.begin(importTargetKey);
+      try {
+        await runAttachmentImport(record, localId, sourceEnvironmentId, importTargetKey);
+      } finally {
+        pendingAttachmentImportsRef.current.end(importTargetKey);
+      }
+    },
+    [attachmentTargetKey, runAttachmentImport],
   );
   /**
    * Brings records into this draft (paste, stash restore). Binaries are transferred only
@@ -3630,6 +3656,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           type: "info",
           title: "Still compressing a pasted image.",
           description: "Send again once its thumbnail appears.",
+        });
+        return;
+      }
+      // A pasted chip's bytes arrive over the network, so the same hazard applies for longer:
+      // sending now would snapshot a chip with no attachment behind it.
+      if (pendingAttachmentImportsRef.current.has(attachmentTargetKey)) {
+        event?.preventDefault();
+        toastManager.add({
+          type: "info",
+          title: "Still bringing a pasted attachment into this message.",
+          description: "Send again once its chip resolves.",
         });
         return;
       }
