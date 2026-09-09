@@ -2,7 +2,11 @@ import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
-import type { ExpandedImageItem, ExpandedImagePreview } from "./ExpandedImagePreview";
+import {
+  wrapExpandedImageIndex,
+  type ExpandedImageItem,
+  type ExpandedImagePreview,
+} from "./ExpandedImagePreview";
 import { resolveExternalWebLinkHost } from "./externalLinkContextMenu";
 import { useAssetUrlRefresh, useAssetUrlState } from "../../assets/assetUrls";
 import { OpenMediaLink } from "../media/OpenMediaLink";
@@ -64,7 +68,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
     document.activeElement instanceof HTMLElement ? document.activeElement : null,
   );
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const index = (preview.index + imageOffset + preview.images.length) % preview.images.length;
+  const index = wrapExpandedImageIndex(preview.index + imageOffset, preview.images.length);
   const item = preview.images[index];
   const source: MediaActionSource = item?.actionsSource ?? {
     kind: item?.type === "video" ? "video" : "image",
@@ -82,9 +86,14 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
       }
     : source;
 
-  const navigateImage = useCallback((direction: -1 | 1) => {
-    setImageOffset((current) => current + direction);
-  }, []);
+  const navigateImage = useCallback(
+    (direction: -1 | 1) => {
+      setImageOffset((current) =>
+        wrapExpandedImageIndex(current + direction, preview.images.length),
+      );
+    },
+    [preview.images.length],
+  );
 
   // The element that opened the preview gets focus back on close. Without
   // this a close button click leaves focus on the unmounted dialog, and the
