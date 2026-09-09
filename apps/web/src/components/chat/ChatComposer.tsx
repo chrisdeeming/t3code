@@ -1,4 +1,5 @@
 import { runtimeModeConfig, runtimeModeOptions } from "./runtimeModeConfig";
+import { filterComposerPullRequestMatches } from "@t3tools/shared/composerPullRequestMatches";
 import { importPastedComposerText } from "../composerInlineTokenPaste";
 import { elementContextToPreviewAnnotation } from "../../lib/elementContext";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
@@ -58,7 +59,6 @@ import {
   composerSubmissionIntentForEnter,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
-  filterComposerPullRequestMatches,
   formatAssistantCitationForComposer,
   replaceTextRange,
 } from "../../composer-logic";
