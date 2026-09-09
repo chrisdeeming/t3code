@@ -159,11 +159,22 @@ function elementRecord(entry: ParsedEntry, index: number): ElementContextRecord 
 
 function previewRecord(body: string, index: number): PreviewAnnotationContextRecord | null {
   const lines = body.split("\n");
-  const read = (prefix: string) =>
-    lines
-      .find((line) => line.startsWith(prefix))
-      ?.slice(prefix.length)
-      .trim() ?? "";
+  // A legacy comment was written verbatim, so it can run over several lines. Its value is every
+  // line up to the next field or section heading; stopping at the first line would drop the rest
+  // of what the author wrote, and the original block is replaced by a chip that cannot show it.
+  const FIELD_PREFIXES = ["Preview annotation:", "Id: ", "Page: ", "Comment: ", "Targets: "];
+  const isFieldStart = (line: string) =>
+    FIELD_PREFIXES.some((candidate) => line.startsWith(candidate)) ||
+    line === "Requested visual changes:" ||
+    line.startsWith("<") ||
+    line === "The attached screenshot is the annotated preview crop.";
+  const read = (prefix: string) => {
+    const start = lines.findIndex((line) => line.startsWith(prefix));
+    if (start < 0) return "";
+    let end = start + 1;
+    while (end < lines.length && !isFieldStart(lines[end]!) && lines[end]!.trim() !== "") end += 1;
+    return [lines[start]!.slice(prefix.length), ...lines.slice(start + 1, end)].join("\n").trim();
+  };
   const styleHeading = lines.indexOf("Requested visual changes:");
   const styleChanges: string[] = [];
   if (styleHeading >= 0) {
