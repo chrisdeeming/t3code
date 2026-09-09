@@ -1075,3 +1075,30 @@ describe("composerChipSizeSuffix", () => {
     expect(composerChipSizeSuffix(undefined)).toBe("");
   });
 });
+
+describe("contextChipPresentation image detection", () => {
+  it("treats a picture attached through the file picker as an image", async () => {
+    const { contextChipPresentation } = await import("@t3tools/mobile-markdown-text/markdown");
+    // The document picker types every pick as `file`, so the name has to carry the intent.
+    expect(
+      contextChipPresentation("file", { kind: "file", name: "IMG_4997.PNG", mimeType: "" }),
+    ).toEqual({ accent: "#f43f5e", symbol: "photo" });
+    expect(
+      contextChipPresentation("file", {
+        kind: "file",
+        name: "shot",
+        mimeType: "image/jpeg",
+      }),
+    ).toEqual({ accent: "#f43f5e", symbol: "photo" });
+  });
+
+  it("leaves genuine documents and videos alone", async () => {
+    const { contextChipPresentation } = await import("@t3tools/mobile-markdown-text/markdown");
+    expect(
+      contextChipPresentation("file", { kind: "file", name: "notes.txt", mimeType: "text/plain" }),
+    ).toEqual({ accent: "#0ea5e9", symbol: "doc" });
+    expect(
+      contextChipPresentation("file", { kind: "file", name: "clip.mp4", mimeType: "video/mp4" }),
+    ).toEqual({ accent: "#f97316", symbol: "play.rectangle" });
+  });
+});

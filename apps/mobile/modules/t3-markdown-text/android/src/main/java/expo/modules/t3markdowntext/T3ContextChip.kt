@@ -14,6 +14,7 @@ import kotlin.math.min
 /** Shared by editable spans and inline chat images so their metrics and colors agree. */
 class T3ContextChip(
   label: String,
+  detail: String = "",
   private val symbol: String,
   fontSize: Float,
   colors: Colors,
@@ -27,12 +28,25 @@ class T3ContextChip(
     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
   }
   private val em = fontSize
-  val width = ceil(min(maximumWidth.coerceAtLeast(em * 3), paint.measureText(label) + em * 2.5f))
+  // The size reads as metadata beside the name, so it draws a step down from the label the
+  // way the web chip does.
+  private val detailPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+    textSize = fontSize * 0.84f
+    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+  }
+  private val detailText = if (detail.isEmpty()) "" else " $detail"
+  private val detailWidth = if (detailText.isEmpty()) 0f else detailPaint.measureText(detailText)
+  val width = ceil(
+    min(
+      maximumWidth.coerceAtLeast(em * 3),
+      paint.measureText(label) + detailWidth + em * 2.5f
+    )
+  )
   val height = ceil(em * 1.41f)
   private val text = TextUtils.ellipsize(
     label,
     paint,
-    (width - em * 2.5f).coerceAtLeast(0f),
+    (width - em * 2.5f - detailWidth).coerceAtLeast(0f),
     TextUtils.TruncateAt.MIDDLE
   ).toString()
   private val fill = Color.argb(
@@ -68,7 +82,12 @@ class T3ContextChip(
     canvas.restore()
     paint.style = Paint.Style.FILL
     val metrics = paint.fontMetrics
-    canvas.drawText(text, em * 2, (height - metrics.descent - metrics.ascent) / 2, paint)
+    val baseline = (height - metrics.descent - metrics.ascent) / 2
+    canvas.drawText(text, em * 2, baseline, paint)
+    if (detailText.isNotEmpty()) {
+      detailPaint.color = paint.color
+      canvas.drawText(detailText, em * 2 + paint.measureText(text), baseline, detailPaint)
+    }
     canvas.restore()
   }
 

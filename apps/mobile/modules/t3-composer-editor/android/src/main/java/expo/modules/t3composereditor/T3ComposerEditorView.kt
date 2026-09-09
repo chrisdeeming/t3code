@@ -409,6 +409,7 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
         ComposerChipSpan(
           T3ContextChip(
             label = token.label,
+            detail = token.detail,
             symbol = token.symbol,
             fontSize = editor.textSize * 0.8f,
             colors = T3ContextChip.Colors(
@@ -456,6 +457,7 @@ private data class ComposerToken(
   val type: String,
   val source: String,
   val label: String,
+  val detail: String,
   val accent: String,
   val symbol: String,
   val start: Int,
@@ -526,6 +528,7 @@ private fun parseTokens(value: String): List<ComposerToken> = try {
       type = token.optString("type"),
       source = token.optString("source"),
       label = token.optString("label"),
+      detail = token.optString("detail"),
       accent = token.optString("accent"),
       symbol = token.optString("symbol", "doc"),
       start = token.optInt("start"),
