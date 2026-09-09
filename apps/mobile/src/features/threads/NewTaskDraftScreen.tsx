@@ -27,7 +27,6 @@ import {
 } from "@t3tools/contracts";
 
 import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
-import { WorkspaceFilePreviewSheet } from "../files/WorkspaceFilePreviewSheet";
 import { composerContextImportsAtom } from "../../state/use-composer-drafts";
 import { composerContextSendBlockReason } from "../../lib/composerContext";
 import {
@@ -106,6 +105,7 @@ import { useIncomingShare } from "../sharing/IncomingShareProvider";
 import { selectIncomingShareAttachmentsForServer } from "../sharing/incoming-share-model";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { serverEnvironment } from "../../state/server";
+import { fileRoutePathSegments } from "../files/filePath";
 
 function NewTaskWorkspaceIcon(props: {
   readonly workspaceMode: "local" | "worktree";
@@ -158,11 +158,6 @@ export function NewTaskDraftScreen(props: {
 }) {
   const projects = useProjects();
   const flow = useNewTaskFlow();
-  const [mentionPreview, setMentionPreview] = useState<{
-    environmentId: EnvironmentId;
-    cwd: string;
-    path: string;
-  } | null>(null);
   const navigation = useNavigation();
   const {
     consumeShare,
@@ -1152,11 +1147,14 @@ export function NewTaskDraftScreen(props: {
           if (!composerWorkspaceCwd) return;
           promptInputRef.current?.blur();
           void KeyboardController.dismiss({ animated: true });
-          setMentionPreview({
-            environmentId: selectedProject.environmentId,
-            cwd: composerWorkspaceCwd,
-            path,
-          });
+          navigation.dispatch(
+            StackActions.push("NewTaskFile", {
+              environmentId: String(selectedProject.environmentId),
+              cwd: composerWorkspaceCwd,
+              projectName: selectedProject.title,
+              path: fileRoutePathSegments(path),
+            }),
+          );
         }}
         ref={promptInputRef}
         // The context-first screen intentionally opens with the keyboard closed.
@@ -1185,9 +1183,6 @@ export function NewTaskDraftScreen(props: {
         }}
         textStyle={{ ...bodyText, color: foregroundColor, fontFamily: regularFontFamily }}
       />
-      {mentionPreview ? (
-        <WorkspaceFilePreviewSheet {...mentionPreview} onClose={() => setMentionPreview(null)} />
-      ) : null}
     </>
   );
 
