@@ -28,6 +28,7 @@ import {
   sanitizeComposerContextLabel,
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
+import { imageMimeType } from "@t3tools/shared/image";
 import { DraftComposerAttachmentSchema } from "../lib/composer-image-schema";
 import {
   composerAttachmentFileReferenceKey,
@@ -1174,7 +1175,9 @@ export function appendComposerDraftAttachments(
           mimeType: attachment.mimeType,
           sizeBytes: attachment.sizeBytes,
         };
-        return attachment.type === "image"
+        // A picture picked through the document picker is typed as a plain file, but the
+        // record has to say what it is or no client will offer to open it as an image.
+        return attachment.type === "image" || imageMimeType(attachment) !== null
           ? { ...common, kind: "image" as const }
           : { ...common, kind: "file" as const };
       });

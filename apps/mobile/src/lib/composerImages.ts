@@ -17,6 +17,7 @@ import {
   isComposerAttachmentFileRetained,
   resolveOwnedComposerAttachmentFileUri,
 } from "./composerAttachmentFiles";
+import { imageMimeType } from "@t3tools/shared/image";
 import { videoMimeType } from "@t3tools/shared/video";
 import { beginForegroundHandoff } from "./foreground-handoff";
 import { uuidv4 } from "./uuid";
@@ -58,6 +59,7 @@ export function composerStripAttachments(
   return attachments.filter(
     (attachment) =>
       attachment.type === "image" ||
+      imageMimeType(attachment) !== null ||
       videoMimeType(attachment) !== null ||
       !inlineAttachmentIds.has(attachment.id),
   );

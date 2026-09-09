@@ -1,4 +1,5 @@
 import { SymbolView } from "../components/AppSymbol";
+import { imageMimeType } from "@t3tools/shared/image";
 import { videoMimeType } from "@t3tools/shared/video";
 import { useEffect, useMemo, useState } from "react";
 import { Image, Pressable, ScrollView, View } from "react-native";
@@ -160,8 +161,19 @@ function ComposerImageAttachment(
 
 function ComposerAttachmentContent(props: ComposerAttachmentThumbnailProps) {
   const { attachment } = props;
-  if (attachment.type === "image") {
-    return <ComposerImageAttachment {...props} attachment={attachment} />;
+  // The document picker types every pick as a plain file, so a picture arrives here as one.
+  // What it *is* decides how it presents, the same way videos are already recognised below.
+  if (attachment.type === "image" || imageMimeType(attachment) !== null) {
+    return (
+      <ComposerImageAttachment
+        {...props}
+        attachment={
+          attachment.type === "image"
+            ? attachment
+            : { ...attachment, type: "image", previewUri: attachment.fileUri }
+        }
+      />
+    );
   }
   const onPressVideo = props.onPressVideo;
   if (onPressVideo && videoMimeType(attachment) !== null) {
