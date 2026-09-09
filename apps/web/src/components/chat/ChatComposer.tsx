@@ -128,6 +128,7 @@ import {
 } from "@t3tools/client-runtime/state/attachments";
 import {
   attachmentsToReleaseOnUploadCapabilityLoss,
+  composerOtherFilesForPresentation,
   classifyComposerAttachmentFile,
   fileAttachmentCapabilityBlockReason,
   fileAttachmentStagingLimit,
@@ -182,6 +183,7 @@ import {
   ensureInlineContextReferences,
   formatInlineContextReference,
   insertInlineContextReference,
+  toKindScopedComposerContextId,
 } from "~/lib/composerContextReferences";
 import {
   fileContextReference,
@@ -1506,11 +1508,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const prompt = composerDraft.prompt;
   const composerImages = attachmentDraft.images;
   const composerFiles = attachmentDraft.files;
+  const inlineFileIdSet = useMemo(() => {
+    const contextIds = new Set(collectInlineContextIds(prompt));
+    return new Set(
+      composerFiles
+        .filter((file) => contextIds.has(toKindScopedComposerContextId("file", file.id)))
+        .map((file) => file.id),
+    );
+  }, [composerFiles, prompt]);
   const composerVideos = composerFiles.filter((file) =>
     isPreviewableComposerVideo(file, environmentId),
   );
-  const composerOtherFiles = composerFiles.filter(
-    (file) => !isPreviewableComposerVideo(file, environmentId),
+  const composerOtherFiles = composerOtherFilesForPresentation(
+    composerFiles,
+    environmentId,
+    inlineFileIdSet,
   );
   const composerTerminalContexts = composerDraft.terminalContexts;
   const composerPreviewAnnotations = composerDraft.previewAnnotations;
