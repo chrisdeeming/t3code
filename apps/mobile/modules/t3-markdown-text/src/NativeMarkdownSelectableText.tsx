@@ -380,6 +380,10 @@ export function NativeMarkdownSelectableText(props: {
                       }
                     : undefined
                 }
+                // The bitmap is measured in whole pixels but laid out in dp, so the box can
+                // round a hair narrower than the image. `cover` would crop that difference
+                // off the right-hand border; `contain` fits the whole chip instead.
+                resizeMode="contain"
                 source={{ uri: androidChip.uri }}
                 style={{ width: androidChip.width, height: androidChip.height }}
               />

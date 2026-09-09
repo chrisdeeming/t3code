@@ -182,20 +182,26 @@ class T3MarkdownTextSelectionModule : Module() {
       )
       // toInt() truncates, so a fractional pixel of the chip would fall outside the bitmap
       // and take the right-hand border with it. Round up: a spare column costs nothing.
+      // One spare pixel of transparency on each side. Whatever rounding happens between the
+      // bitmap's pixels and the box's dp then falls on padding instead of on the border.
+      val bleed = 1
       val bitmap = Bitmap.createBitmap(
-        ceil(chip.width).toInt(),
-        ceil(chip.height).toInt(),
+        ceil(chip.width).toInt() + bleed * 2,
+        ceil(chip.height).toInt() + bleed * 2,
         Bitmap.Config.ARGB_8888
       )
-      chip.draw(Canvas(bitmap), 0f, 0f)
+      chip.draw(Canvas(bitmap), bleed.toFloat(), bleed.toFloat())
       val bytes = ByteArrayOutputStream()
       bitmap.compress(Bitmap.CompressFormat.PNG, 100, bytes)
       bitmap.recycle()
       val result = mapOf<String, Any>(
         "uri" to
           "data:image/png;base64,${Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)}",
-        "width" to chip.width / metrics.density,
-        "height" to chip.height / metrics.density,
+        // Layout rounds dp back to whole pixels. Reporting a hair less than the bitmap lets
+        // that rounding land inside the image and crop its right-hand border, so round the
+        // box up: an extra fraction of a pixel is invisible, a missing border is not.
+        "width" to (ceil(chip.width) + bleed * 2) / metrics.density,
+        "height" to (ceil(chip.height) + bleed * 2) / metrics.density,
       )
       chipImages.put(key, result)
       result
