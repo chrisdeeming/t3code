@@ -246,3 +246,23 @@ describe("mobile themes", () => {
     }
   });
 });
+
+describe("flattenThemeColor", () => {
+  it("composites a translucent border over its surface", async () => {
+    const { flattenThemeColor } = await import("./mobileTheme");
+    // `--color-border` in the dark theme, over the surface a chip sits on. Native chip drawing
+    // parses opaque hex only, so this has to resolve before it crosses the bridge.
+    expect(flattenThemeColor("rgba(255, 255, 255, 0.06)", "#171717")).toBe("#252525");
+    expect(flattenThemeColor("rgba(0, 0, 0, 0.08)", "#ffffff")).toBe("#ebebeb");
+  });
+
+  it("leaves an already opaque colour alone", async () => {
+    const { flattenThemeColor } = await import("./mobileTheme");
+    expect(flattenThemeColor("#171717", "#ffffff")).toBe("#171717");
+  });
+
+  it("treats a colour with no alpha as fully opaque", async () => {
+    const { flattenThemeColor } = await import("./mobileTheme");
+    expect(flattenThemeColor("rgb(255, 0, 0)", "#000000")).toBe("#ff0000");
+  });
+});

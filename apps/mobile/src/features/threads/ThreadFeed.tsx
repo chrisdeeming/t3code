@@ -80,6 +80,7 @@ import {
 } from "react-native";
 import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
 import { isPdfFile } from "../../lib/filePreview";
+import { flattenThemeColor } from "../../lib/mobileTheme";
 import { PresentationSource } from "../../components/NativePresentation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn, LinearTransition, type SharedValue } from "react-native-reanimated";
@@ -928,7 +929,11 @@ function useMarkdownStyles(
   const markdownCodeText = theme["--color-md-code-text"];
   const markdownInlineCodeText = theme["--color-foreground-secondary"];
   const markdownHrColor = theme["--color-md-hr"];
-  const contextChipBorderColor = theme["--color-border"];
+  // Native chip drawing parses opaque hex only, and this role is translucent.
+  const contextChipBorderColor = flattenThemeColor(
+    theme["--color-border"],
+    theme["--color-user-bubble"],
+  );
   const markdownUserBodyColor = theme["--color-user-bubble-foreground"];
   const markdownUserCodeBg = theme["--color-md-user-code-bg"];
   const markdownUserCodeText = theme["--color-md-user-code-text"];
