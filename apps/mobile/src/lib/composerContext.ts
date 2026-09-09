@@ -1,3 +1,4 @@
+import { serializeLegacyContextMessage } from "@t3tools/shared/composerContextLegacySend";
 import {
   COMPOSER_CONTEXT_MAX_RECORDS,
   ComposerContextId,
@@ -174,4 +175,15 @@ export function reidentifyComposerContext(
       })),
     },
   };
+}
+
+/** Keep queued records canonical; choose the wire format against the host at dispatch time. */
+export function serializeComposerMessageForServer(
+  text: string,
+  context: OrchestrationMessageContext | undefined,
+  supportsInlineMessageContext: boolean,
+): { text: string; context?: OrchestrationMessageContext } {
+  return supportsInlineMessageContext
+    ? { text, ...(context ? { context } : {}) }
+    : { text: serializeLegacyContextMessage({ text, records: context?.records ?? [] }) };
 }
