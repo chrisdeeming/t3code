@@ -6,7 +6,7 @@
  * Counted rather than flagged: two pastes can be in flight at once, and the first to finish must
  * not clear the second's claim.
  */
-export class PendingDraftWork {
+class PendingDraftWork {
   private readonly counts = new Map<string, number>();
 
   begin(draftKey: string): void {
@@ -23,3 +23,10 @@ export class PendingDraftWork {
     return (this.counts.get(draftKey) ?? 0) > 0;
   }
 }
+
+/**
+ * Module-scoped, so a transfer keeps its claim on a draft across a remount of the composer.
+ * Ownership belongs to the draft, which outlives any one mounted component; a per-instance
+ * counter would come back empty while the download it was tracking was still running.
+ */
+export const pendingDraftWork = new PendingDraftWork();

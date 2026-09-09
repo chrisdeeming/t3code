@@ -288,7 +288,7 @@ import {
 } from "./composerSubmission";
 import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation";
 import { PierreEntryIcon } from "./PierreEntryIcon";
-import { PendingDraftWork } from "./pendingDraftWork";
+import { pendingDraftWork } from "./pendingDraftWork";
 import {
   createComposerScrollGestureState,
   recordComposerScrollGestureEvent,
@@ -1556,6 +1556,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const attachmentDraftTarget = questionAttachmentTarget ?? composerDraftTarget;
   const attachmentDraft = useComposerThreadDraft(attachmentDraftTarget);
   const attachmentTargetKey = composerTargetKey(attachmentDraftTarget);
+  // An import that finishes after a draft change must compare against the draft open *now*, not
+  // the one captured in the closure that started it.
+  const attachmentTargetKeyRef = useRef(attachmentTargetKey);
+  attachmentTargetKeyRef.current = attachmentTargetKey;
   const questionPreparations = useQuestionAttachmentPreparation((state) => state.counts);
   const prompt = composerDraft.prompt;
   const composerImages = attachmentDraft.images;
@@ -2110,8 +2114,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    * the next draft.
    */
   const pendingImageCompressionsRef = useRef<Map<string, number>>(new Map());
-  /** Attachment byte transfers still in flight, counted per draft. */
-  const pendingAttachmentImportsRef = useRef(new PendingDraftWork());
 
   // ------------------------------------------------------------------
   // Derived: composer send state
@@ -2755,7 +2757,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       const file = new File([blob], record.name, { type: record.mimeType || blob.type });
       // The draft these bytes belong to may have been sent or switched away from while they
       // downloaded. Dropping them here keeps them out of whatever draft is open now.
-      if (attachmentTargetKey !== importTargetKey) return;
+      if (attachmentTargetKeyRef.current !== importTargetKey) return;
       if (record.kind === "image") {
         const accepted = addComposerImage({
           type: "image",
@@ -2795,11 +2797,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       // the transfer against its own draft so a send cannot snapshot a message whose chip has no
       // attachment behind it, and so bytes for an abandoned draft never enter the next one.
       const importTargetKey = attachmentTargetKey;
-      pendingAttachmentImportsRef.current.begin(importTargetKey);
+      pendingDraftWork.begin(importTargetKey);
       try {
         await runAttachmentImport(record, localId, sourceEnvironmentId, importTargetKey);
       } finally {
-        pendingAttachmentImportsRef.current.end(importTargetKey);
+        pendingDraftWork.end(importTargetKey);
       }
     },
     [attachmentTargetKey, runAttachmentImport],
@@ -3687,7 +3689,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       // A pasted chip's bytes arrive over the network, so the same hazard applies for longer:
       // sending now would snapshot a chip with no attachment behind it.
-      if (pendingAttachmentImportsRef.current.has(attachmentTargetKey)) {
+      if (pendingDraftWork.has(attachmentTargetKey)) {
         event?.preventDefault();
         toastManager.add({
           type: "info",
@@ -4267,6 +4269,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
 
   const stashCurrentPrompt = useCallback(async () => {
+    // Stashing clears the draft. A pasted attachment still downloading would then land in the
+    // emptied composer instead of travelling with the entry it belongs to.
+    if (pendingDraftWork.has(attachmentTargetKeyRef.current)) {
+      toastManager.add({
+        type: "info",
+        title: "Still bringing a pasted attachment into this message.",
+        description: "Stash again once its chip resolves.",
+      });
+      return;
+    }
     const prompt = promptRef.current.trim();
     const images = [...composerImagesRef.current];
     const files = [...composerFilesRef.current];
