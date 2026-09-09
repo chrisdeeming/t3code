@@ -84,6 +84,19 @@ export function isFileBackedComposerAttachment(
   return attachment.fileUri !== undefined;
 }
 
+/**
+ * The bytes a draft attachment can be previewed from without the server. A picture taken from
+ * the photo library or the clipboard owns no file and carries its bytes inline, and its
+ * `attachmentId` is a local draft id the server has never seen — so falling back to a remote
+ * asset for one only ever fails. Returns undefined when the attachment really is remote-only.
+ */
+export function composerAttachmentInlineUri(
+  attachment: DraftComposerAttachment | undefined,
+): string | undefined {
+  if (attachment === undefined || isFileBackedComposerAttachment(attachment)) return undefined;
+  return attachment.type === "image" ? (attachment.dataUrl ?? attachment.previewUri) : undefined;
+}
+
 const OWNED_PASTED_IMAGE_DIRECTORY = "t3-composer-paste";
 const ATTACHMENT_COPY_CHUNK_BYTES = 64 * 1024;
 

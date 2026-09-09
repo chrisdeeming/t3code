@@ -3,7 +3,7 @@ import { Alert, Pressable, View } from "react-native";
 import { Image } from "expo-image";
 import { useEffect, useId, useMemo, useState } from "react";
 import type { DraftComposerAttachment } from "../lib/composerImages";
-import { isFileBackedComposerAttachment } from "../lib/composerImages";
+import { composerAttachmentInlineUri, isFileBackedComposerAttachment } from "../lib/composerImages";
 import { loadLocalAttachmentPreview } from "../lib/localAttachmentPreview";
 import { downloadAndShareAttachment } from "../lib/attachmentDownload";
 import { useAssetUrlState, useRefreshAssetUrl } from "../state/assets";
@@ -29,8 +29,10 @@ export function ComposerContextAttachment(props: {
   const local = attachment?.fileUri
     ? (attachment as DraftComposerAttachment & { fileUri: string })
     : undefined;
-  const asset = useAssetUrlState(local ? null : (props.environmentId ?? null), resource);
-  const refresh = useRefreshAssetUrl(local ? null : (props.environmentId ?? null), resource);
+  const inlineUri = composerAttachmentInlineUri(attachment);
+  const remoteEnvironmentId = local || inlineUri ? null : (props.environmentId ?? null);
+  const asset = useAssetUrlState(remoteEnvironmentId, resource);
+  const refresh = useRefreshAssetUrl(remoteEnvironmentId, resource);
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
@@ -55,7 +57,7 @@ export function ComposerContextAttachment(props: {
       dispose?.();
     };
   }, [local]);
-  const uri = local ? localUri : asset._tag === "Success" ? asset.url : null;
+  const uri = local ? localUri : (inlineUri ?? (asset._tag === "Success" ? asset.url : null));
   const share = async () => {
     if (sharing) return;
     setSharing(true);
@@ -131,7 +133,7 @@ export function ComposerContextAttachment(props: {
               mimeType: record.mimeType,
               ...(attachment && isFileBackedComposerAttachment(attachment)
                 ? { attachment }
-                : props.environmentId
+                : inlineUri === undefined && props.environmentId
                   ? { environmentId: props.environmentId, resource }
                   : { uri }),
             },
