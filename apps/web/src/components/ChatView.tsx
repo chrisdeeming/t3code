@@ -6526,7 +6526,12 @@ export default function ChatView(props: ChatViewProps) {
       if (composerRef.current?.isModelPickerOpen()) return;
       const text = pasteTextToFocusComposer(event);
       if (text === null) return;
-      if (composerRef.current?.insertTextAtEnd(text)) {
+      if (
+        composerRef.current?.insertTextAtEnd(
+          text,
+          event.clipboardData ? { clipboardData: event.clipboardData } : undefined,
+        )
+      ) {
         event.preventDefault();
         event.stopPropagation();
       }
