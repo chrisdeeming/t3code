@@ -7,6 +7,7 @@ import { ComposerEditor as NativeComposerEditor } from "../native/T3ComposerEdit
 import type { ComposerEditorProps as NativeComposerEditorProps } from "../native/T3ComposerEditor";
 import {
   appendComposerDraftAttachments,
+  createComposerDraftContextHistory,
   getComposerDraftSnapshot,
   insertComposerDraftContext,
   rememberComposerDraftSelection,
@@ -20,7 +21,7 @@ import {
 } from "../lib/composerContextClipboard";
 import { ComposerContextSheet } from "./ComposerContextSheet";
 import { AppText as Text } from "./AppText";
-import { composerMentionPath, createComposerContextHistory } from "../lib/composerContext";
+import { composerMentionPath } from "../lib/composerContext";
 
 export type ComposerEditorProps = NativeComposerEditorProps & {
   readonly draftKey?: string | null;
@@ -35,11 +36,18 @@ export function ComposerEditor({
   ...props
 }: ComposerEditorProps) {
   const draft = useComposerDraft(draftKey ?? null);
-  const contextHistory = useMemo(() => createComposerContextHistory(), [draftKey]);
+  const contextHistory = useMemo(() => createComposerDraftContextHistory(), [draftKey]);
+  useEffect(() => () => contextHistory.dispose(), [contextHistory]);
   const changeText = (text: string) => {
-    const context = contextHistory(text, draft.context);
+    const restored = contextHistory.restore(
+      text,
+      draftKey ? getComposerDraftSnapshot(draftKey) : draft,
+    );
     props.onChangeText(text);
-    if (draftKey) setComposerDraftContext(draftKey, context);
+    if (draftKey) {
+      setComposerDraftContext(draftKey, restored.context);
+      appendComposerDraftAttachments(draftKey, restored.attachments, { allowOverflow: true });
+    }
   };
   const [selected, setSelected] = useState<{ source: string; start: number; end: number } | null>(
     null,
@@ -170,7 +178,7 @@ export function ComposerEditor({
               ? undefined
               : () => {
                   if (props.value.slice(selected.start, selected.end) === selected.source) {
-                    props.onChangeText(
+                    changeText(
                       props.value.slice(0, selected.start) + props.value.slice(selected.end),
                     );
                     props.onSelectionChange?.({ start: selected.start, end: selected.start });

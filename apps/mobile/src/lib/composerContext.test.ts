@@ -61,6 +61,14 @@ const annotation = {
 };
 
 describe("mobile composer context", () => {
+  it("rejects a malformed record instead of allowing the wire decoder to drop its payload", () => {
+    expect(
+      composerContextSendBlockReason({
+        version: 1,
+        records: [{ ...terminal, label: "x".repeat(201) }],
+      }),
+    ).not.toBeNull();
+  });
   it("does not evict live recovery payloads from the editor's bounded undo history", () => {
     const records = Array.from({ length: 400 }, (_, index) => ({
       ...terminal,
