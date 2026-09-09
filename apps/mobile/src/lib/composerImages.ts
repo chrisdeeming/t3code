@@ -17,6 +17,7 @@ import {
   isComposerAttachmentFileRetained,
   resolveOwnedComposerAttachmentFileUri,
 } from "./composerAttachmentFiles";
+import { videoMimeType } from "@t3tools/shared/video";
 import { beginForegroundHandoff } from "./foreground-handoff";
 import { uuidv4 } from "./uuid";
 
@@ -43,6 +44,24 @@ export interface DraftComposerFileAttachment {
 }
 
 export type DraftComposerAttachment = DraftComposerImageAttachment | DraftComposerFileAttachment;
+
+/**
+ * What the strip above the composer shows. Media previews there because a thumbnail is the
+ * only way to see it; every other file is already legible as its inline chip, so it only
+ * falls back to the strip when the prompt carries no reference to it. Mirrors web's
+ * `composerOtherFilesForPresentation`.
+ */
+export function composerStripAttachments(
+  attachments: ReadonlyArray<DraftComposerAttachment>,
+  inlineAttachmentIds: ReadonlySet<string>,
+): ReadonlyArray<DraftComposerAttachment> {
+  return attachments.filter(
+    (attachment) =>
+      attachment.type === "image" ||
+      videoMimeType(attachment) !== null ||
+      !inlineAttachmentIds.has(attachment.id),
+  );
+}
 
 /** Any composer attachment whose bytes live in the app-owned attachment directory. */
 export type FileBackedComposerAttachment = DraftComposerAttachment & { readonly fileUri: string };

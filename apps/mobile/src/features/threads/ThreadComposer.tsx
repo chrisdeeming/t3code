@@ -66,10 +66,12 @@ import {
   ComposerToolbarRow,
 } from "../../components/ComposerToolbar";
 import { ProviderIcon } from "../../components/ProviderIcon";
-import type {
-  DraftComposerAttachment,
-  DraftComposerFileAttachment,
+import {
+  composerStripAttachments,
+  type DraftComposerAttachment,
+  type DraftComposerFileAttachment,
 } from "../../lib/composerImages";
+import { collectComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import {
   buildModelOptions,
   groupByProvider,
@@ -288,6 +290,20 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const [previewFile, setPreviewFile] = useState<FilePreviewSource | null>(null);
   const [previewVideo, setPreviewVideo] = useState<VideoPreviewSource | null>(null);
   const hasContent = props.draftMessage.trim().length > 0 || props.draftAttachments.length > 0;
+  // Attachment context ids are the attachment id, so the prompt alone says which attachments
+  // already read as an inline chip and need no strip tile.
+  const stripAttachments = useMemo(
+    () =>
+      composerStripAttachments(
+        props.draftAttachments,
+        new Set(
+          collectComposerContextReferences(props.draftMessage).map(
+            (occurrence) => occurrence.contextId as string,
+          ),
+        ),
+      ),
+    [props.draftAttachments, props.draftMessage],
+  );
   const showStopAction =
     !hasContent &&
     (props.selectedThread.session?.status === "running" ||
@@ -665,7 +681,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 onPickFiles={props.onPickDraftFiles}
               />
             ) : null}
-            {isExpanded && props.draftAttachments.length > 0 ? (
+            {isExpanded && stripAttachments.length > 0 ? (
               <Animated.View
                 className="px-[14px] pb-2.5"
                 entering={COMPOSER_ATTACHMENT_ENTERING}
@@ -673,7 +689,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
               >
                 <ComposerAttachmentStrip
                   environmentId={props.environmentId}
-                  attachments={props.draftAttachments}
+                  attachments={stripAttachments}
                   onRemove={voiceInput.isBusy ? () => undefined : props.onRemoveDraftImage}
                   onPressPreview={voiceInput.isBusy ? undefined : onPressPreview}
                   onPressVideo={voiceInput.isBusy ? undefined : onPressVideo}
@@ -730,9 +746,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 }}
               />
             </Animated.View>
-            {!isExpanded && props.draftAttachments.length > 0 ? (
+            {!isExpanded && stripAttachments.length > 0 ? (
               <View className="flex-row gap-1 pl-1">
-                {props.draftAttachments.slice(0, 3).map((attachment) => (
+                {stripAttachments.slice(0, 3).map((attachment) => (
                   <ComposerAttachmentThumbnail
                     environmentId={props.environmentId}
                     key={attachment.id}
@@ -744,10 +760,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                     onPressVideo={onPressVideo}
                   />
                 ))}
-                {props.draftAttachments.length > 3 ? (
+                {stripAttachments.length > 3 ? (
                   <View className="size-[30px] items-center justify-center rounded-lg bg-subtle-strong">
                     <Text className="text-foreground-muted text-2xs font-t3-bold">
-                      +{props.draftAttachments.length - 3}
+                      +{stripAttachments.length - 3}
                     </Text>
                   </View>
                 ) : null}
