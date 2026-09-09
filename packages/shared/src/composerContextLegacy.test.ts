@@ -375,6 +375,37 @@ describe("upgradeLegacyContextMessage", () => {
     });
   });
 
+  it("keeps a blank line inside a legacy annotation comment", () => {
+    const text = [
+      "<preview_annotation>",
+      "Preview annotation:",
+      "Comment: First paragraph",
+      "",
+      "Second paragraph",
+      "Targets: 1 selected element.",
+      "</preview_annotation>",
+    ].join("\n");
+    expect(upgradeLegacyContextMessage(text).records[0]).toMatchObject({
+      comment: "First paragraph\n\nSecond paragraph",
+    });
+  });
+
+  it("keeps markup inside a legacy annotation comment", () => {
+    // Only a real block delimiter ends the comment. A line that merely starts with `<` is
+    // something the author typed.
+    const text = [
+      "<preview_annotation>",
+      "Preview annotation:",
+      "Comment: Change this",
+      "<div>keep me</div>",
+      "and this too",
+      "</preview_annotation>",
+    ].join("\n");
+    expect(upgradeLegacyContextMessage(text).records[0]).toMatchObject({
+      comment: "Change this\n<div>keep me</div>\nand this too",
+    });
+  });
+
   it("upgrades trailing preview annotation blocks", () => {
     const text = [
       "bigger",
