@@ -58,11 +58,20 @@ export function composerStripAttachments(
 ): ReadonlyArray<DraftComposerAttachment> {
   return attachments.filter(
     (attachment) =>
-      attachment.type === "image" ||
-      imageMimeType(attachment) !== null ||
+      isComposerImageAttachment(attachment) ||
       videoMimeType(attachment) !== null ||
       !inlineAttachmentIds.has(attachment.id),
   );
+}
+
+/**
+ * Whether a draft attachment is a picture. The document picker types every pick as a plain
+ * file, so the answer comes from the attachment itself rather than from which picker made it.
+ */
+export function isComposerImageAttachment(
+  attachment: DraftComposerAttachment,
+): attachment is DraftComposerImageAttachment {
+  return attachment.type === "image" || imageMimeType(attachment) !== null;
 }
 
 /** Any composer attachment whose bytes live in the app-owned attachment directory. */
