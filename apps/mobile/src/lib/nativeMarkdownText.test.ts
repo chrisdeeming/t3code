@@ -1058,3 +1058,20 @@ describe("nativeMarkdownDocumentChunks", () => {
     expect(nativeMarkdownChunkSpacing(firstList, headingChunk)).toBe(20);
   });
 });
+
+describe("composerChipSizeSuffix", () => {
+  it("labels attachment records with a human size, matching web's chip", async () => {
+    const { composerChipSizeSuffix } = await import("@t3tools/mobile-markdown-text/markdown");
+    expect(composerChipSizeSuffix({ kind: "file", sizeBytes: 1024 })).toBe("1 KB");
+    expect(composerChipSizeSuffix({ kind: "file", sizeBytes: 3_700_000 })).toBe("3.5 MB");
+    expect(composerChipSizeSuffix({ kind: "image", sizeBytes: 2048 })).toBe("2 KB");
+  });
+
+  it("adds nothing for records that carry no bytes", async () => {
+    const { composerChipSizeSuffix } = await import("@t3tools/mobile-markdown-text/markdown");
+    // Terminal/review/PR chips have no size to show.
+    expect(composerChipSizeSuffix({ kind: "terminal" })).toBe("");
+    expect(composerChipSizeSuffix({ kind: "file" })).toBe("");
+    expect(composerChipSizeSuffix(undefined)).toBe("");
+  });
+});

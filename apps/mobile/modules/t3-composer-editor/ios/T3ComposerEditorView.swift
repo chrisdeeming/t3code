@@ -8,6 +8,7 @@ private struct ComposerTokenPayload: Decodable {
   let iconUri: String?
   let accent: String?
   let symbol: String?
+  let detail: String?
   let start: Int
   let end: Int
 }
@@ -762,6 +763,7 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     )
     let image = renderChip(
       label: token.label,
+      detail: token.detail,
       iconName: iconName,
       iconImage: iconImage,
       style: style
@@ -786,6 +788,7 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
 
   private func renderChip(
     label: String,
+    detail: String?,
     iconName: String,
     iconImage: UIImage?,
     style: ComposerChipStyle
@@ -798,7 +801,29 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
       withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)
     )
     let icon = iconImage ?? fallbackIcon
-    let textSize = (label as NSString).size(withAttributes: [.font: font])
+    // The size reads as metadata, not part of the name, so it renders a step down from the
+    // label the way the web chip does.
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.alignment = .left
+    let detailFont = UIFont(name: "DMSans-Medium", size: chipFontSize * 0.84)
+      ?? UIFont.systemFont(ofSize: chipFontSize * 0.84, weight: .medium)
+    let attributedLabel = NSMutableAttributedString(
+      string: label,
+      attributes: [.font: font, .foregroundColor: style.textColor, .paragraphStyle: paragraph]
+    )
+    if let detail, !detail.isEmpty {
+      attributedLabel.append(
+        NSAttributedString(
+          string: " \(detail)",
+          attributes: [
+            .font: detailFont,
+            .foregroundColor: style.textColor,
+            .paragraphStyle: paragraph,
+          ]
+        )
+      )
+    }
+    let textSize = attributedLabel.size()
     let iconWidth: CGFloat = icon == nil ? 0 : chipFontSize * 1.17
     let iconGap: CGFloat = icon == nil ? 0 : chipFontSize * 0.33
     let padding = chipFontSize * 0.5
@@ -826,15 +851,8 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
         )
         x += iconWidth + iconGap
       }
-      let paragraph = NSMutableParagraphStyle()
-      paragraph.alignment = .left
-      (label as NSString).draw(
-        in: CGRect(x: x, y: (height - textSize.height) / 2, width: textSize.width + 1, height: textSize.height),
-        withAttributes: [
-          .font: font,
-          .foregroundColor: style.textColor,
-          .paragraphStyle: paragraph,
-        ]
+      attributedLabel.draw(
+        in: CGRect(x: x, y: (height - textSize.height) / 2, width: textSize.width + 1, height: textSize.height)
       )
       context.cgContext.setAllowsAntialiasing(true)
     }
