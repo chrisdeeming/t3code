@@ -70,7 +70,7 @@ describe("mobile themes", () => {
     expect(readDefaultMobileThemeVariables("light")["--color-screen"]).toBe("#f2f2f7");
     expect(readDefaultMobileThemeVariables("dark")["--color-screen"]).toBe("#0a0a0a");
     expect(readDefaultMobileThemeVariables("light")["--color-user-bubble-skill-foreground"]).toBe(
-      "#f0abfc",
+      "#2563eb",
     );
   });
 
@@ -216,6 +216,33 @@ describe("mobile themes", () => {
           contrastRatio(variables["--color-md-user-fence-text"], fenceSurface),
         ).toBeGreaterThanOrEqual(4.5);
       }
+    }
+  });
+
+  // The default palette lives in global.css rather than BUILT_IN_THEMES, so the loops above
+  // never reached it; it kept an unreadable hardcoded bubble until this covered it.
+  it("keeps the default user bubble readable in both appearances", () => {
+    for (const appearance of ["light", "dark"] as const) {
+      const variables = readDefaultMobileThemeVariables(appearance);
+      const bubble = variables["--color-user-bubble"];
+      expect(
+        contrastRatio(variables["--color-user-bubble-foreground"], bubble),
+      ).toBeGreaterThanOrEqual(4.5);
+      expect(
+        contrastRatio(variables["--color-user-bubble-skill-foreground"], bubble),
+      ).toBeGreaterThanOrEqual(4.5);
+      expect(variables["--color-user-bubble-skill-foreground"]).not.toBe(
+        variables["--color-user-bubble-foreground"],
+      );
+      const fenceSurface = compositeOver(variables["--color-md-user-fence-bg"], bubble);
+      expect(fenceSurface).not.toBe(bubble);
+      expect(
+        contrastRatio(variables["--color-md-user-fence-text"], fenceSurface),
+      ).toBeGreaterThanOrEqual(4.5);
+      const codeSurface = compositeOver(variables["--color-md-user-code-bg"], bubble);
+      expect(
+        contrastRatio(variables["--color-md-user-code-text"], codeSurface),
+      ).toBeGreaterThanOrEqual(4.5);
     }
   });
 });
