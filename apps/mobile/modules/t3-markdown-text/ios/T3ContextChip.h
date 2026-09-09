@@ -32,6 +32,39 @@ static UIColor *T3ContextChipBlend(UIColor *accent, UIColor *base, CGFloat weigh
                         alpha:aa * weight + ba * (1 - weight)];
 }
 
+// Some chip glyphs have no SF Symbol that reads correctly: the pull request one would land on
+// `arrow.triangle.branch`, a road-sign fork that says "branch", not "pull request". Draw those
+// from the same lucide geometry web and Android use so one chip looks alike on every surface.
+static UIImage *T3ContextChipVectorIcon(NSString *symbol, CGFloat size, UIColor *color)
+{
+  if (![symbol isEqualToString:@"git-pull-request"]) return nil;
+  UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc]
+      initWithSize:CGSizeMake(size, size)];
+  return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+    CGFloat s = size / 24.0;  // lucide authors on a 24pt grid.
+    UIBezierPath *path = [UIBezierPath bezierPath];
+    [path appendPath:[UIBezierPath bezierPathWithArcCenter:CGPointMake(18 * s, 18 * s)
+                                                   radius:3 * s startAngle:0
+                                                 endAngle:M_PI * 2 clockwise:YES]];
+    [path appendPath:[UIBezierPath bezierPathWithArcCenter:CGPointMake(6 * s, 6 * s)
+                                                   radius:3 * s startAngle:0
+                                                 endAngle:M_PI * 2 clockwise:YES]];
+    [path moveToPoint:CGPointMake(13 * s, 6 * s)];
+    [path addLineToPoint:CGPointMake(16 * s, 6 * s)];
+    [path addCurveToPoint:CGPointMake(18 * s, 8 * s)
+            controlPoint1:CGPointMake(17.1 * s, 6 * s)
+            controlPoint2:CGPointMake(18 * s, 6.9 * s)];
+    [path addLineToPoint:CGPointMake(18 * s, 15 * s)];
+    [path moveToPoint:CGPointMake(6 * s, 9 * s)];
+    [path addLineToPoint:CGPointMake(6 * s, 21 * s)];
+    path.lineWidth = 2 * s;
+    path.lineCapStyle = kCGLineCapRound;
+    path.lineJoinStyle = kCGLineJoinRound;
+    [color setStroke];
+    [path stroke];
+  }];
+}
+
 static UIFont *T3ContextChipFont(NSDictionary *payload)
 {
   CGFloat size = MAX(10, MIN(40, [payload[@"fontSize"] doubleValue]));
@@ -75,7 +108,9 @@ static inline UIImage *T3ContextChipImage(NSDictionary *payload, CGSize size, UI
     path.lineWidth = 1;
     [path stroke];
     CGFloat iconSize = em * 1.17;
-    UIImage *icon = fileIcon ?: [[UIImage systemImageNamed:payload[@"symbol"]
+    UIImage *icon = fileIcon
+        ?: T3ContextChipVectorIcon(payload[@"symbol"], iconSize, foreground)
+        ?: [[UIImage systemImageNamed:payload[@"symbol"]
         withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:em weight:UIImageSymbolWeightMedium]]
         imageWithTintColor:foreground renderingMode:UIImageRenderingModeAlwaysOriginal];
     [icon drawInRect:CGRectMake(em * 0.5, (size.height - iconSize) / 2, iconSize, iconSize)];

@@ -16,7 +16,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   element: { accent: "#b87501", symbol: "cursorarrow.click" },
   "preview-annotation": { accent: "#b87501", symbol: "cursorarrow.click" },
   "review-comment": { accent: "#8a70dd", symbol: "text.bubble" },
-  "pull-request": { accent: "#7079e4", symbol: "arrow.triangle.branch" },
+  "pull-request": { accent: "#7079e4", symbol: "git-pull-request" },
   skill: { accent: "#b261be", symbol: "cube" },
 } as const;
 
@@ -34,13 +34,14 @@ export function composerChipSizeSuffix(record?: {
 
 /**
  * A pull request chip is coloured by what the pull request *is*, the way web colours it and
- * the way the forge itself does: green open, grey draft, purple merged, red closed.
+ * the way the forge itself does: green open, grey draft, purple merged, red closed. The glyph
+ * stays the same across all four, as it does on web — state is carried by colour alone.
  */
 const PULL_REQUEST_CHIP_PRESENTATIONS = {
-  open: { accent: "#009f6e", symbol: "arrow.triangle.branch" },
-  draft: { accent: "#7f8793", symbol: "arrow.triangle.branch" },
-  merged: { accent: "#8a70dd", symbol: "arrow.triangle.branch" },
-  closed: { accent: "#d55665", symbol: "arrow.triangle.branch" },
+  open: { accent: "#009f6e", symbol: "git-pull-request" },
+  draft: { accent: "#7f8793", symbol: "git-pull-request" },
+  merged: { accent: "#8a70dd", symbol: "git-pull-request" },
+  closed: { accent: "#d55665", symbol: "git-pull-request" },
 } as const;
 
 export function contextChipPresentation(

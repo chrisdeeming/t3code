@@ -1120,6 +1120,17 @@ describe("pull request chip status", () => {
     expect((await chip("closed")).accent).toBe("#d55665");
   });
 
+  it("keeps one glyph across every state, so only colour carries the status", async () => {
+    // Web draws a fixed `git-pull-request` and encodes state in colour alone. A per-state glyph
+    // here would put mobile out of step with it.
+    const symbols = await Promise.all(
+      [chip("open"), chip("open", true), chip("merged"), chip("closed")].map(
+        async (pending) => (await pending).symbol,
+      ),
+    );
+    expect(new Set(symbols)).toEqual(new Set(["git-pull-request"]));
+  });
+
   it("falls back to the generic pull request chip when the state is unknown", async () => {
     const { contextChipPresentation } = await import("@t3tools/mobile-markdown-text/markdown");
     // An older server may send no metadata at all; the chip still has to render.
