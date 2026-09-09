@@ -1783,6 +1783,9 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain('aria-label="Download notes.txt"');
     expect(markup).toContain("legacy.txt");
     expect(markup).not.toContain('href="t3-context://');
+    // A picture keeps its tile even though it also has a chip: the chip names it, the tile is
+    // the only way to see it. A plain file's row is what a chip replaces.
+    expect(markup).toContain("grid-cols-2");
   });
 
   it("resolves an annotation screenshot through its image context record", () => {
