@@ -1,3 +1,4 @@
+import { filterComposerPullRequestMatches } from "@t3tools/shared/composerPullRequestMatches";
 import type { VcsRefTarget } from "@t3tools/client-runtime/state/vcs";
 import type {
   EnvironmentId,
@@ -122,16 +123,23 @@ export function useComposerPullRequestSearch(input: {
   );
   const entries = useMemo(() => {
     if (!ready) return [];
+    if (numeric) {
+      return filterComposerPullRequestMatches({
+        entries: [...(exact.data ? [exact.data] : []), ...(list.data?.entries ?? [])],
+        projectId: input.projectId!,
+        repository: input.repository!,
+        query: query ?? "",
+        limit: 20,
+      });
+    }
     const words = (query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
     const found = [...(exact.data ? [exact.data] : []), ...(list.data?.entries ?? [])].filter(
       (entry) =>
         entry.projectId === input.projectId &&
         entry.repository.toLowerCase() === input.repository?.toLowerCase() &&
-        (numeric
-          ? String(entry.number).includes(query ?? "")
-          : words.every((word) =>
-              `${entry.title} ${entry.headBranch} ${entry.baseBranch}`.toLowerCase().includes(word),
-            )),
+        words.every((word) =>
+          `${entry.title} ${entry.headBranch} ${entry.baseBranch}`.toLowerCase().includes(word),
+        ),
     );
     const unique = new Map<number, (typeof found)[number]>();
     for (const entry of found) if (!unique.has(entry.number)) unique.set(entry.number, entry);

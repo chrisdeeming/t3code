@@ -19,7 +19,7 @@ import { Alert } from "react-native";
 
 import { scopedThreadKey } from "../lib/scopedEntities";
 import { buildProjectThreadStartTurnInput } from "../lib/projectThreadStartTurn";
-import { uploadedComposerContext } from "../lib/composerContext";
+import { serializeComposerMessageForServer, uploadedComposerContext } from "../lib/composerContext";
 import { prepareTurnAttachments, type PreparedTurnAttachments } from "../lib/attachmentUpload";
 import { randomHex } from "../lib/uuid";
 import { isModelSelectionUnavailable } from "../lib/modelOptions";
@@ -807,11 +807,14 @@ export function useThreadOutboxDrain(): void {
           message: {
             messageId: queuedMessage.messageId,
             role: "user",
-            text: queuedMessage.text,
-            context: uploadedComposerContext(
-              queuedMessage.context,
-              queuedMessage.attachments,
-              prepared.attachments,
+            ...serializeComposerMessageForServer(
+              queuedMessage.text,
+              uploadedComposerContext(
+                queuedMessage.context,
+                queuedMessage.attachments,
+                prepared.attachments,
+              ),
+              currentConfig.environment.capabilities.inlineMessageContext === true,
             ),
             attachments: prepared.attachments,
           },
@@ -933,11 +936,14 @@ export function useThreadOutboxDrain(): void {
           commandId: queuedMessage.commandId,
           messageId: queuedMessage.messageId,
           createdAt: queuedMessage.createdAt,
-          text: queuedMessage.text.trim(),
-          context: uploadedComposerContext(
-            queuedMessage.context,
-            queuedMessage.attachments,
-            prepared.attachments,
+          ...serializeComposerMessageForServer(
+            queuedMessage.text.trim(),
+            uploadedComposerContext(
+              queuedMessage.context,
+              queuedMessage.attachments,
+              prepared.attachments,
+            ),
+            currentConfig.environment.capabilities.inlineMessageContext === true,
           ),
           uploadedAttachments: prepared.attachments,
           modelSelection: sendSettings.modelSelection,
