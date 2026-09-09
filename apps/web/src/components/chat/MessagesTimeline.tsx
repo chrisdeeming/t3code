@@ -1438,16 +1438,15 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     [userImages],
   );
   const revertTurnCount = row.revertTurnCount;
-  // Attachments with a chip in the prose need no standalone row; older messages keep theirs.
+  // A file with a chip in the prose needs no standalone row. Media is the exception: the
+  // thumbnail is the only way to actually see it, so it shows whether or not it has a chip.
   const chippedAttachmentIds = new Set(
     collectComposerContextReferences(resolvedContext.text).flatMap((occurrence) => {
       const record = asKnownContextRecord(resolvedContext.recordsById.get(occurrence.contextId));
       return record?.kind === "file" || record?.kind === "image" ? [record.attachmentId] : [];
     }),
   );
-  const regularImages = userImages.filter(
-    (image) => !image.name.startsWith("preview-annotation-") && !chippedAttachmentIds.has(image.id),
-  );
+  const regularImages = userImages.filter((image) => !image.name.startsWith("preview-annotation-"));
   const unchippedFiles = otherUserFiles.filter((file) => !chippedAttachmentIds.has(file.id));
   const annotationRecordIds = useMemo(
     () =>
