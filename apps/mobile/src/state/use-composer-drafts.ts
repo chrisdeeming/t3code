@@ -79,6 +79,21 @@ export function rememberComposerDraftSelection(
   lastComposerSelection = { draftKey, text, ...selection };
 }
 
+/**
+ * The caret an insert left behind, for the text it produced. Inserting a chip moves the caret
+ * past it here; without reading this back the editor would restore the pre-insert offset and
+ * leave the caret sitting before the chip the user just added.
+ */
+export function readComposerDraftSelection(
+  draftKey: string,
+  text: string,
+): { start: number; end: number } | null {
+  if (lastComposerSelection?.draftKey !== draftKey || lastComposerSelection.text !== text) {
+    return null;
+  }
+  return { start: lastComposerSelection.start, end: lastComposerSelection.end };
+}
+
 /** Retains file bytes while native text undo can restore their references. */
 export function createComposerDraftContextHistory() {
   const restoreContext = createComposerContextHistory();

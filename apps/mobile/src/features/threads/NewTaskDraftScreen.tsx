@@ -8,7 +8,7 @@ import {
   usePreventRemove,
   type NavigationAction,
 } from "@react-navigation/native";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Platform, Pressable, ScrollView, View } from "react-native";
 import {
   KeyboardController,
@@ -38,6 +38,8 @@ import {
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
+import { composerStripAttachments } from "../../lib/composerImages";
+import { collectComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import {
   composerAttachmentUploadBlockReason,
@@ -342,6 +344,19 @@ export function NewTaskDraftScreen(props: {
     (flow.workspaceMode === "worktree"
       ? selectedProject?.workspaceRoot
       : (flow.selectedWorktreePath ?? selectedProject?.workspaceRoot)) || null;
+  // Media needs its thumbnail; every other file already reads as its inline chip.
+  const stripAttachments = useMemo(
+    () =>
+      composerStripAttachments(
+        flow.attachments,
+        new Set(
+          collectComposerContextReferences(flow.prompt).map(
+            (occurrence) => occurrence.contextId as string,
+          ),
+        ),
+      ),
+    [flow.attachments, flow.prompt],
+  );
   const composerMenu = useComposerCommandMenu({
     draftMessage: flow.prompt,
     ownerKey: flow.draftKey,
@@ -1335,11 +1350,11 @@ export function NewTaskDraftScreen(props: {
           paddingTop: 14,
         }}
       >
-        {flow.attachments.length > 0 ? (
+        {stripAttachments.length > 0 ? (
           <View className="px-[14px] pb-2.5">
             <ComposerAttachmentStrip
               environmentId={selectedProject.environmentId}
-              attachments={flow.attachments}
+              attachments={stripAttachments}
               imageBorderRadius={16}
               imageSize={72}
               onRemove={

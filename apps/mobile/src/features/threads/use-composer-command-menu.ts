@@ -9,7 +9,11 @@ import { Alert } from "react-native";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import { pullRequestComposerContext } from "../../lib/composerContext";
 import { uuidv4 } from "../../lib/uuid";
-import { getComposerDraftSnapshot, setComposerDraftContext } from "../../state/use-composer-drafts";
+import {
+  getComposerDraftSnapshot,
+  readComposerDraftSelection,
+  setComposerDraftContext,
+} from "../../state/use-composer-drafts";
 import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
 import {
   detectComposerTrigger,
@@ -193,6 +197,16 @@ export function useComposerCommandMenu({
     setSelection(nextSelection);
   }, []);
   useEffect(() => {
+    // An insert (attachment, terminal capture, review comment) rewrites the draft and records
+    // the caret that belongs after the new chip. Clamping alone would keep the old offset,
+    // which sits before it.
+    const inserted = ownerKey ? readComposerDraftSelection(ownerKey, draftMessage) : null;
+    if (inserted) {
+      setSelection((current) =>
+        current.start === inserted.start && current.end === inserted.end ? current : inserted,
+      );
+      return;
+    }
     const end = draftMessage.length;
     setSelection((current) => {
       const start = Math.min(current.start, end);
@@ -202,7 +216,7 @@ export function useComposerCommandMenu({
       }
       return { start, end: selectionEnd };
     });
-  }, [draftMessage.length]);
+  }, [draftMessage, ownerKey]);
   useEffect(() => {
     if (previousOwnerKeyRef.current === ownerKey) return;
     previousOwnerKeyRef.current = ownerKey;

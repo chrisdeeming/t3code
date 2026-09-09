@@ -92,3 +92,47 @@ describe("native pasted image cleanup", () => {
     expect(files.get(userOwned)?.deleted).toBe(false);
   });
 });
+
+describe("composerStripAttachments", () => {
+  const image = {
+    id: "img-1",
+    type: "image" as const,
+    name: "shot.jpg",
+    mimeType: "image/jpeg",
+    sizeBytes: 10,
+    dataUrl: "",
+  };
+  const video = {
+    id: "vid-1",
+    type: "file" as const,
+    name: "clip.mp4",
+    mimeType: "video/mp4",
+    sizeBytes: 20,
+    fileUri: "file:///clip.mp4",
+  };
+  const doc = {
+    id: "doc-1",
+    type: "file" as const,
+    name: "notes.txt",
+    mimeType: "text/plain",
+    sizeBytes: 5,
+    fileUri: "file:///notes.txt",
+  };
+
+  it("keeps media even when it already has an inline chip", async () => {
+    const { composerStripAttachments } = await import("./composerImages");
+    const kept = composerStripAttachments([image, video] as never, new Set(["img-1", "vid-1"]));
+    // A thumbnail is the only way to see media, so it stays regardless of the chip.
+    expect(kept.map((a) => a.id)).toEqual(["img-1", "vid-1"]);
+  });
+
+  it("drops a plain file once its inline chip represents it", async () => {
+    const { composerStripAttachments } = await import("./composerImages");
+    expect(composerStripAttachments([doc] as never, new Set(["doc-1"]))).toEqual([]);
+  });
+
+  it("keeps a plain file that has no inline chip", async () => {
+    const { composerStripAttachments } = await import("./composerImages");
+    expect(composerStripAttachments([doc] as never, new Set()).map((a) => a.id)).toEqual(["doc-1"]);
+  });
+});
