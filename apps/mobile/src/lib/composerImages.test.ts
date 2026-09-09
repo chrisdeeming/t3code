@@ -136,3 +136,66 @@ describe("composerStripAttachments", () => {
     expect(composerStripAttachments([doc] as never, new Set()).map((a) => a.id)).toEqual(["doc-1"]);
   });
 });
+
+describe("composerAttachmentInlineUri", () => {
+  it("offers the inline bytes of a picture that owns no file", async () => {
+    const { composerAttachmentInlineUri } = await import("./composerImages");
+    // The photo library and the clipboard both produce this shape. Its `attachmentId` is a
+    // local draft id, so a remote asset lookup for it can only fail.
+    expect(
+      composerAttachmentInlineUri({
+        id: "img-1",
+        type: "image",
+        name: "IMG_0111.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 9_100_000,
+        dataUrl: "data:image/jpeg;base64,AAAA",
+        previewUri: "ph://asset",
+      } as never),
+    ).toBe("data:image/jpeg;base64,AAAA");
+  });
+
+  it("falls back to the preview when a picture kept only its asset uri", async () => {
+    const { composerAttachmentInlineUri } = await import("./composerImages");
+    expect(
+      composerAttachmentInlineUri({
+        id: "img-2",
+        type: "image",
+        name: "IMG_0112.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 10,
+        previewUri: "ph://asset",
+      } as never),
+    ).toBe("ph://asset");
+  });
+
+  it("leaves a file-backed attachment to the retain-lease path", async () => {
+    const { composerAttachmentInlineUri } = await import("./composerImages");
+    expect(
+      composerAttachmentInlineUri({
+        id: "img-3",
+        type: "image",
+        name: "IMG_0113.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 10,
+        fileUri: "file:///owned.jpg",
+        previewUri: "file:///owned.jpg",
+      } as never),
+    ).toBeUndefined();
+  });
+
+  it("has nothing to offer for a plain file or a missing attachment", async () => {
+    const { composerAttachmentInlineUri } = await import("./composerImages");
+    expect(composerAttachmentInlineUri(undefined)).toBeUndefined();
+    expect(
+      composerAttachmentInlineUri({
+        id: "doc-1",
+        type: "file",
+        name: "notes.txt",
+        mimeType: "text/plain",
+        sizeBytes: 4,
+        fileUri: "file:///notes.txt",
+      } as never),
+    ).toBeUndefined();
+  });
+});

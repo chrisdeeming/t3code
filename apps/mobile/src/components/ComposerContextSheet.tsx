@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { REVIEW_MONO_FONT_FAMILY } from "../features/review/reviewDiffRendering";
 import { ReviewCommentCard, useReviewCommentColors } from "../features/review/ReviewCommentCard";
 import {
+  composerAttachmentInlineUri,
   isFileBackedComposerAttachment,
   type DraftComposerAttachment,
 } from "../lib/composerImages";
@@ -127,7 +128,12 @@ export function ComposerContextSheet(props: {
         );
       }
     } else if (record.kind === "image" || mimeType === "application/pdf") {
-      const source = localFile ? { attachment: localFile } : remoteSource;
+      const inlineUri = composerAttachmentInlineUri(localAttachment);
+      const source = localFile
+        ? { attachment: localFile }
+        : inlineUri
+          ? { uri: inlineUri }
+          : remoteSource;
       if (source) {
         return (
           <FilePreviewModal
