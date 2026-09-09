@@ -3099,6 +3099,42 @@ describe("composerDraftStore attachment references", () => {
     },
   );
 
+  it.each(["", "Fix this"])("migrates saved element context with prompt %j", (prompt) => {
+    const element = {
+      id: "old-element",
+      threadId,
+      pickedAt: "2026-01-01T00:00:00Z",
+      pageUrl: "https://example.com",
+      pageTitle: "Example",
+      tagName: "button",
+      selector: "#save",
+      htmlPreview: "<button>Save</button>",
+      componentName: "SaveButton",
+      source: null,
+      styles: "color: red;",
+    };
+    const merged = useComposerDraftStore.persist.getOptions().merge!(
+      {
+        draftsByThreadKey: {
+          [threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]: {
+            prompt,
+            attachments: [],
+            elementContexts: [element],
+          },
+        },
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+    const draft = merged.draftsByThreadKey[threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]!;
+    expect(draft.previewAnnotations[0]?.elements[0]?.element).toMatchObject({
+      htmlPreview: element.htmlPreview,
+      styles: element.styles,
+      selector: element.selector,
+    });
+    expect(draft.prompt).toContain("t3-context://v1/preview-annotation/");
+    expect(draft.prompt).toContain(prompt);
+  });
+
   it("appends chips for persisted files that predate references", () => {
     const persistApi = useComposerDraftStore.persist as unknown as {
       getOptions: () => {
