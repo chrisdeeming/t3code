@@ -20,6 +20,7 @@ import {
 } from "@t3tools/mobile-markdown-text/markdown";
 import { resolveMarkdownFileIcon } from "@t3tools/mobile-markdown-text/links";
 import { useUniwindTheme } from "../lib/useUniwindTheme";
+import { flattenThemeColor } from "../lib/mobileTheme";
 import { useFontFamily } from "../lib/useFontFamily";
 import { useScaledTextRole } from "../features/settings/appearance/useScaledTextRole";
 import {
@@ -165,17 +166,15 @@ export function ComposerEditor({
                 ? `${token.label}${props.context?.records.some((record) => record.contextId === token.contextId) ? "" : " · unavailable"}`
                 : basename(token.value),
           detail: token.type === "context" ? composerChipSizeSuffix(record) : "",
+          // Only a mention wears per-filetype artwork. An attachment chip keeps the tinted
+          // monochrome glyph web draws for it: coloured artwork ignores the chip's accent and
+          // makes the composer chip read differently from the same chip in a sent message.
           iconUri:
             token.type === "mention"
               ? fileIconUri(token.value)
               : record?.kind === "mention" && "path" in record
                 ? fileIconUri(record.path)
-                : // File and image attachments carry a filename, so they get the same
-                  // per-filetype artwork the attachment tray and web chips use instead of
-                  // the generic SF fallback.
-                  (record?.kind === "file" || record?.kind === "image") && "name" in record
-                  ? fileIconUri(record.name)
-                  : null,
+                : null,
         };
       }),
     );
@@ -247,7 +246,8 @@ export function ComposerEditor({
     text: theme["--color-foreground"],
     placeholder: theme["--color-placeholder"],
     chipBackground: theme["--color-subtle"],
-    chipBorder: theme["--color-border"],
+    // Native chip drawing parses opaque hex only, and this role is translucent.
+    chipBorder: flattenThemeColor(theme["--color-border"], theme["--color-user-bubble"]),
     chipText: theme["--color-foreground"],
     skillBackground: theme["--color-inline-skill-background"],
     skillBorder: theme["--color-inline-skill-border"],
