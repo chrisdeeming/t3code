@@ -177,6 +177,7 @@ import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../Compos
 import {
   ComposerContextActionsContext,
   composerContextRecordsFromDraft,
+  uploadedContextRecordFromDraft,
 } from "../composerContextPresentation";
 import {
   collectInlineContextIds,
@@ -2575,7 +2576,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               ? reviewCommentContextRecord(existing.record)
               : existing?.kind === "preview-annotation"
                 ? previewAnnotationContextRecord(existing.record)
-                : undefined;
+                : existing
+                  ? (uploadedContextRecordFromDraft(existing) ?? undefined)
+                  : undefined;
         if (existingRecord && isSameComposerContextPayload(existingRecord, record)) {
           if (record.kind === "preview-annotation" && record.screenshotContextId) {
             skippedDependentAttachmentIds.add(record.screenshotContextId);
