@@ -14,7 +14,10 @@ import type { NativeSyntheticEvent, StyleProp, ViewProps, ViewStyle } from "reac
 import { Image, StyleSheet } from "react-native";
 
 import { markdownFileIconSource } from "@t3tools/mobile-markdown-text/file-icons";
-import { contextChipPresentation } from "@t3tools/mobile-markdown-text/markdown";
+import {
+  composerChipSizeSuffix,
+  contextChipPresentation,
+} from "@t3tools/mobile-markdown-text/markdown";
 import { resolveMarkdownFileIcon } from "@t3tools/mobile-markdown-text/links";
 import { useUniwindTheme } from "../lib/useUniwindTheme";
 import { useFontFamily } from "../lib/useFontFamily";
@@ -161,12 +164,18 @@ export function ComposerEditor({
               : token.type === "context"
                 ? `${token.label}${props.context?.records.some((record) => record.contextId === token.contextId) ? "" : " · unavailable"}`
                 : basename(token.value),
+          detail: token.type === "context" ? composerChipSizeSuffix(record) : "",
           iconUri:
             token.type === "mention"
               ? fileIconUri(token.value)
               : record?.kind === "mention" && "path" in record
                 ? fileIconUri(record.path)
-                : null,
+                : // File and image attachments carry a filename, so they get the same
+                  // per-filetype artwork the attachment tray and web chips use instead of
+                  // the generic SF fallback.
+                  (record?.kind === "file" || record?.kind === "image") && "name" in record
+                  ? fileIconUri(record.name)
+                  : null,
         };
       }),
     );

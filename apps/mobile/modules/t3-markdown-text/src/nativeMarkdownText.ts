@@ -15,6 +15,18 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   skill: { accent: "#d946ef", symbol: "cube" },
 } as const;
 
+/**
+ * The size an attachment chip reports beside its name, matching web. Rendered as its own
+ * smaller run, so it carries no separator. Only attachment-backed records have bytes.
+ */
+export function composerChipSizeSuffix(record?: {
+  readonly kind?: string;
+  readonly sizeBytes?: number;
+}): string {
+  if (record?.kind !== "file" && record?.kind !== "image") return "";
+  return typeof record.sizeBytes === "number" ? formatAttachmentSize(record.sizeBytes) : "";
+}
+
 export function contextChipPresentation(
   kind: string,
   record?: {
@@ -38,6 +50,7 @@ export function contextChipPresentation(
     ? CONTEXT_CHIP_PRESENTATIONS[presentationKind as keyof typeof CONTEXT_CHIP_PRESENTATIONS]
     : CONTEXT_CHIP_PRESENTATIONS.file;
 }
+import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import {
   formatComposerContextReference,
   parseComposerContextHref,

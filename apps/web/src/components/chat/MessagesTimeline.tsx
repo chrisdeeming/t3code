@@ -2804,6 +2804,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             previewUrl={attachment.previewUrl}
             className={CHAT_INLINE_CHIP_CLASS_NAME}
             labelClassName={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}
+            size={formatAttachmentSize(record.sizeBytes)}
             data-markdown-copy={context.copyMarkdown}
             onClick={() => context.onExpandImage(attachment)}
           />
