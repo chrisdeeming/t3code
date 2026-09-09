@@ -36,21 +36,22 @@ class T3ContextChip(
   }
   private val detailText = if (detail.isEmpty()) "" else " $detail"
   private val detailWidth = if (detailText.isEmpty()) 0f else detailPaint.measureText(detailText)
-  // The border is stroked, and a stroke straddles the path it follows. Both the width and
-  // the inset below leave it a full stroke of room, or its outer half lands on the span
-  // bounds and antialiasing shaves the left and right edges off.
+  // The border is stroked, and a stroke straddles the path it follows, so the box has to
+  // reserve a stroke on every side it insets. Reserving it once left the right edge a
+  // stroke short, and antialiasing shaved that curve flat against the span bounds.
   private val strokeWidth = density
+  private val inset = strokeWidth * 2f
   val width = ceil(
     min(
       maximumWidth.coerceAtLeast(em * 3),
-      paint.measureText(label) + detailWidth + em * 2.5f + strokeWidth
+      paint.measureText(label) + detailWidth + em * 2.5f + inset
     )
   )
-  val height = ceil(em * 1.41f + strokeWidth)
+  val height = ceil(em * 1.41f + inset)
   private val text = TextUtils.ellipsize(
     label,
     paint,
-    (width - em * 2.5f - strokeWidth - detailWidth).coerceAtLeast(0f),
+    (width - em * 2.5f - inset - detailWidth).coerceAtLeast(0f),
     TextUtils.TruncateAt.MIDDLE
   ).toString()
   private val fill = Color.argb(
@@ -61,8 +62,10 @@ class T3ContextChip(
   )
   private val textColor = blend(colors.accent, colors.foreground, 0.22f)
   private val borderColor = blend(colors.accent, colors.border, 0.34f)
+  // Half a stroke keeps the border inside the box; the rest of the reserved margin is
+  // slack, so an antialiased edge fades out before it reaches the span bounds.
   private val shape =
-    RectF(strokeWidth, strokeWidth, width - strokeWidth, height - strokeWidth)
+    RectF(inset / 2f, inset / 2f, width - inset / 2f, height - inset / 2f)
   private val icon = iconPath(symbol)
 
   fun draw(canvas: Canvas, x: Float, y: Float) {
@@ -78,7 +81,7 @@ class T3ContextChip(
     paint.color = textColor
     canvas.save()
     val iconSize = em * 1.17f
-    canvas.translate(em / 2 + strokeWidth, (height - iconSize) / 2)
+    canvas.translate(em / 2 + inset / 2f, (height - iconSize) / 2)
     canvas.scale(iconSize / 24, iconSize / 24)
     paint.strokeWidth = 1.7f
     paint.strokeJoin = Paint.Join.ROUND
@@ -88,12 +91,12 @@ class T3ContextChip(
     paint.style = Paint.Style.FILL
     val metrics = paint.fontMetrics
     val baseline = (height - metrics.descent - metrics.ascent) / 2
-    canvas.drawText(text, em * 2 + strokeWidth, baseline, paint)
+    canvas.drawText(text, em * 2 + inset / 2f, baseline, paint)
     if (detailText.isNotEmpty()) {
       detailPaint.color = paint.color
       canvas.drawText(
         detailText,
-        em * 2 + strokeWidth + paint.measureText(text),
+        em * 2 + inset / 2f + paint.measureText(text),
         baseline,
         detailPaint
       )
