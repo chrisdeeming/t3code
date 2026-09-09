@@ -251,6 +251,10 @@
       "types": "./src/video.ts",
       "import": "./src/video.ts"
     },
+    "./image": {
+      "types": "./src/image.ts",
+      "import": "./src/image.ts"
+    },
     "./chatList": {
       "types": "./src/chatList.ts",
       "import": "./src/chatList.ts"

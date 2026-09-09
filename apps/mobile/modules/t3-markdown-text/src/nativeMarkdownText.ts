@@ -1,5 +1,6 @@
 import type { MarkdownNode } from "react-native-nitro-markdown/headless";
 import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
+import { imageMimeType } from "@t3tools/shared/image";
 import { videoMimeType } from "@t3tools/shared/video";
 /** Matches the restrained kind accents used by web's composerInlineChip. */
 const CONTEXT_CHIP_PRESENTATIONS = {
@@ -27,37 +28,6 @@ export function composerChipSizeSuffix(record?: {
   return typeof record.sizeBytes === "number" ? formatAttachmentSize(record.sizeBytes) : "";
 }
 
-const IMAGE_FILE_EXTENSIONS = new Set([
-  "apng",
-  "avif",
-  "bmp",
-  "gif",
-  "heic",
-  "heif",
-  "ico",
-  "jpeg",
-  "jpg",
-  "png",
-  "svg",
-  "tif",
-  "tiff",
-  "webp",
-]);
-
-/** Whether an attachment is a picture, by declared type or by name when the type is generic. */
-function isImageAttachmentName(name: string, mimeType: string): boolean {
-  if (mimeType.split(";", 1)[0]?.trim().toLowerCase().startsWith("image/")) return true;
-  const dotIndex = name.lastIndexOf(".");
-  return dotIndex < 0
-    ? false
-    : IMAGE_FILE_EXTENSIONS.has(
-        name
-          .slice(dotIndex + 1)
-          .trim()
-          .toLowerCase(),
-      );
-}
-
 export function contextChipPresentation(
   kind: string,
   record?: {
@@ -76,7 +46,8 @@ export function contextChipPresentation(
       ? "video"
       : // A picture chosen through the file picker is typed `file`, but it is still a
         // picture: it reads as one to the user and should not wear the generic file chip.
-        kind === "file" && isImageAttachmentName(record?.name ?? "", record?.mimeType ?? "")
+        kind === "file" &&
+          imageMimeType({ name: record?.name ?? "", mimeType: record?.mimeType ?? "" }) !== null
         ? "image"
         : kind === "review-comment" && record?.sectionId?.startsWith("pull-request:")
           ? "pull-request"
