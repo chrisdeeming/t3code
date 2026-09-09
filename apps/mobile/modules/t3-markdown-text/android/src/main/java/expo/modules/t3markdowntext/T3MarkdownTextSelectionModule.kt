@@ -172,8 +172,10 @@ class T3MarkdownTextSelectionModule : Module() {
       chipImages.get(key)?.let { return@Function it }
       val payload = JSONObject(payloadJson)
       val chip = T3ContextChip(
-        label = payload.optString("label").take(4096),
-        symbol = payload.optString("symbol", "doc"),
+        content = T3ContextChip.Content(
+          label = payload.optString("label").take(4096),
+          symbol = payload.optString("symbol", "doc")
+        ),
         fontSize =
           payload.optDouble("fontSize", 12.0).toFloat().coerceIn(10f, 40f) * metrics.density,
         colors = T3ContextChip.Colors(

@@ -13,15 +13,18 @@ import kotlin.math.min
 
 /** Shared by editable spans and inline chat images so their metrics and colors agree. */
 class T3ContextChip(
-  label: String,
-  detail: String = "",
-  private val symbol: String,
+  content: Content,
   fontSize: Float,
   colors: Colors,
   maximumWidth: Float,
   private val density: Float
 ) {
+  /** What the chip says: its name, the size beside it, and the glyph that leads it. */
+  data class Content(val label: String, val symbol: String, val detail: String = "")
+
   data class Colors(val accent: Int, val foreground: Int, val border: Int)
+
+  private val symbol = content.symbol
 
   private val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
     textSize = fontSize
@@ -35,7 +38,7 @@ class T3ContextChip(
     textSize = fontSize * 0.84f
     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
   }
-  private val detailText = if (detail.isEmpty()) "" else " $detail"
+  private val detailText = if (content.detail.isEmpty()) "" else " ${content.detail}"
   private val detailWidth = if (detailText.isEmpty()) 0f else detailPaint.measureText(detailText)
 
   // The border is stroked, and a stroke straddles the path it follows, so the box has to
@@ -46,12 +49,12 @@ class T3ContextChip(
   val width = ceil(
     min(
       maximumWidth.coerceAtLeast(em * 3),
-      paint.measureText(label) + detailWidth + em * 2.5f + inset
+      paint.measureText(content.label) + detailWidth + em * 2.5f + inset
     )
   )
   val height = ceil(em * 1.41f + inset)
   private val text = TextUtils.ellipsize(
-    label,
+    content.label,
     paint,
     (width - em * 2.5f - inset - detailWidth).coerceAtLeast(0f),
     TextUtils.TruncateAt.MIDDLE
