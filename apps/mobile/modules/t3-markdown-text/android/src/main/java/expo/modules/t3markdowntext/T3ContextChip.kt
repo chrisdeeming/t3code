@@ -28,6 +28,7 @@ class T3ContextChip(
     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
   }
   private val em = fontSize
+
   // The size reads as metadata beside the name, so it draws a step down from the label the
   // way the web chip does.
   private val detailPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -36,6 +37,7 @@ class T3ContextChip(
   }
   private val detailText = if (detail.isEmpty()) "" else " $detail"
   private val detailWidth = if (detailText.isEmpty()) 0f else detailPaint.measureText(detailText)
+
   // The border is stroked, and a stroke straddles the path it follows, so the box has to
   // reserve a stroke on every side it insets. Reserving it once left the right edge a
   // stroke short, and antialiasing shaved that curve flat against the span bounds.
@@ -62,6 +64,7 @@ class T3ContextChip(
   )
   private val textColor = blend(colors.accent, colors.foreground, 0.22f)
   private val borderColor = blend(colors.accent, colors.border, 0.34f)
+
   // Half a stroke keeps the border inside the box; the rest of the reserved margin is
   // slack, so an antialiased edge fades out before it reaches the span bounds.
   private val shape =
