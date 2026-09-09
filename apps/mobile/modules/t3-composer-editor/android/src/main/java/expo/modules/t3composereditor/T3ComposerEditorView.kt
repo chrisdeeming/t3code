@@ -408,9 +408,11 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
       editable.setSpan(
         ComposerChipSpan(
           T3ContextChip(
-            label = token.label,
-            detail = token.detail,
-            symbol = token.symbol,
+            content = T3ContextChip.Content(
+              label = token.label,
+              symbol = token.symbol,
+              detail = token.detail
+            ),
             fontSize = editor.textSize * 0.8f,
             colors = T3ContextChip.Colors(
               accent = T3ContextChip.color(token.accent, chipTheme.chipText),
