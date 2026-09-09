@@ -1102,3 +1102,32 @@ describe("contextChipPresentation image detection", () => {
     ).toEqual({ accent: "#d06217", symbol: "play.rectangle" });
   });
 });
+
+describe("pull request chip status", () => {
+  const chip = async (state: string, isDraft = false) => {
+    const { contextChipPresentation } = await import("@t3tools/mobile-markdown-text/markdown");
+    return contextChipPresentation("review-comment", {
+      kind: "review-comment",
+      sectionId: "pull-request:10978",
+      pullRequest: { state, isDraft },
+    });
+  };
+
+  it("colours a pull request by its state, the way web and the forge do", async () => {
+    expect((await chip("open")).accent).toBe("#009f6e");
+    expect((await chip("open", true)).accent).toBe("#7f8793");
+    expect((await chip("merged")).accent).toBe("#8a70dd");
+    expect((await chip("closed")).accent).toBe("#d55665");
+  });
+
+  it("falls back to the generic pull request chip when the state is unknown", async () => {
+    const { contextChipPresentation } = await import("@t3tools/mobile-markdown-text/markdown");
+    // An older server may send no metadata at all; the chip still has to render.
+    expect(
+      contextChipPresentation("review-comment", {
+        kind: "review-comment",
+        sectionId: "pull-request:1",
+      }).accent,
+    ).toBe("#7079e4");
+  });
+});

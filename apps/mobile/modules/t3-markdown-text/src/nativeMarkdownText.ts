@@ -32,6 +32,17 @@ export function composerChipSizeSuffix(record?: {
   return typeof record.sizeBytes === "number" ? formatAttachmentSize(record.sizeBytes) : "";
 }
 
+/**
+ * A pull request chip is coloured by what the pull request *is*, the way web colours it and
+ * the way the forge itself does: green open, grey draft, purple merged, red closed.
+ */
+const PULL_REQUEST_CHIP_PRESENTATIONS = {
+  open: { accent: "#009f6e", symbol: "arrow.triangle.branch" },
+  draft: { accent: "#7f8793", symbol: "arrow.triangle.branch" },
+  merged: { accent: "#8a70dd", symbol: "arrow.triangle.branch" },
+  closed: { accent: "#d55665", symbol: "arrow.triangle.branch" },
+} as const;
+
 export function contextChipPresentation(
   kind: string,
   record?: {
@@ -39,6 +50,10 @@ export function contextChipPresentation(
     readonly name?: string;
     readonly mimeType?: string;
     readonly sectionId?: string;
+    readonly pullRequest?: {
+      readonly state?: string;
+      readonly isDraft?: boolean;
+    };
   },
 ) {
   const presentationKind =
@@ -56,6 +71,16 @@ export function contextChipPresentation(
         : kind === "review-comment" && record?.sectionId?.startsWith("pull-request:")
           ? "pull-request"
           : kind;
+  if (presentationKind === "pull-request") {
+    const pullRequest = record?.pullRequest;
+    const state =
+      pullRequest?.state === "open" && pullRequest.isDraft === true
+        ? "draft"
+        : (pullRequest?.state ?? "");
+    if (Object.hasOwn(PULL_REQUEST_CHIP_PRESENTATIONS, state)) {
+      return PULL_REQUEST_CHIP_PRESENTATIONS[state as keyof typeof PULL_REQUEST_CHIP_PRESENTATIONS];
+    }
+  }
   return Object.hasOwn(CONTEXT_CHIP_PRESENTATIONS, presentationKind)
     ? CONTEXT_CHIP_PRESENTATIONS[presentationKind as keyof typeof CONTEXT_CHIP_PRESENTATIONS]
     : CONTEXT_CHIP_PRESENTATIONS.file;
