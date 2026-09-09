@@ -1,3 +1,4 @@
+import { imageMimeType } from "@t3tools/shared/image";
 import type {
   ChatFileAttachment as ContractChatFileAttachment,
   ChatImageAttachment as ContractChatImageAttachment,
@@ -55,7 +56,9 @@ export type ChatAttachment = ChatImageAttachment | ChatFileAttachment | ChatUnkn
 // The union has an open member (`type: string`), so a literal comparison does
 // not narrow. Use these guards wherever type-specific fields are read.
 export function isImageAttachment(attachment: ChatAttachment): attachment is ChatImageAttachment {
-  return attachment.type === "image";
+  // Messages sent before pictures were typed by content carry `file`; they are still
+  // pictures, and reading them as such is what lets them render instead of listing.
+  return attachment.type === "image" || imageMimeType(attachment) !== null;
 }
 
 export function isFileAttachment(attachment: ChatAttachment): attachment is ChatFileAttachment {

@@ -23,10 +23,12 @@ import { environmentSession } from "../state/session";
 import { retainComposerAttachmentFileForPreview } from "../state/use-composer-drafts";
 import { resolveOwnedComposerAttachmentFileUri } from "./composerAttachmentFiles";
 import {
+  isComposerImageAttachment,
   isFileBackedComposerAttachment,
   type DraftComposerAttachment,
   type DraftComposerImageAttachment,
 } from "./composerImages";
+import { imageMimeType } from "@t3tools/shared/image";
 import { uuidv4 } from "./uuid";
 
 /**
@@ -165,7 +167,11 @@ function uploadedReference(
     mimeType: attachment.mimeType,
     sizeBytes: attachment.sizeBytes,
   };
-  return attachment.type === "image" ? { type: "image", ...fields } : { type: "file", ...fields };
+  // A picture picked through Files is typed as a plain file; uploading it as one leaves the
+  // chat view with nothing to show a thumbnail from, on every client.
+  return isComposerImageAttachment(attachment)
+    ? { type: "image", ...fields }
+    : { type: "file", ...fields };
 }
 
 function attachmentUploadInput(attachment: DraftComposerAttachment) {
@@ -174,9 +180,12 @@ function attachmentUploadInput(attachment: DraftComposerAttachment) {
     mimeType: attachment.mimeType,
     sizeBytes: attachment.sizeBytes,
   };
-  if (attachment.type === "file") return { type: "file" as const, ...fields };
+  if (!isComposerImageAttachment(attachment)) return { type: "file" as const, ...fields };
+  // A picture picked through Files often arrives with no usable mime, so fall back to what
+  // the attachment itself says it is; either way the wire type stays one the provider takes.
+  const inferred = imageMimeType(attachment);
   const mimeType = PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES.find(
-    (type) => type === attachment.mimeType.toLowerCase(),
+    (type) => type === attachment.mimeType.toLowerCase() || type === inferred,
   );
   if (!mimeType) throw new Error(`Unsupported image type for '${attachment.name}'.`);
   return { ...fields, mimeType };
