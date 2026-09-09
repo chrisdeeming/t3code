@@ -6967,7 +6967,7 @@ export default function ChatView(props: ChatViewProps) {
       composerFiles.length === 0
     ) {
       const followUp = resolvePlanFollowUpSubmission({
-        draftText: trimmed,
+        draftText: promptForSend,
         planMarkdown: activeProposedPlan.planMarkdown,
       });
       const outgoingFollowUpText = formatOutgoingPrompt({
@@ -6985,6 +6985,11 @@ export default function ChatView(props: ChatViewProps) {
       composerRef.current?.resetCursorState();
       await onSubmitPlanFollowUp({
         text: followUp.text,
+        context: buildMessageContext({
+          terminalContexts: sendableComposerTerminalContexts,
+          reviewComments: composerReviewComments,
+          previewAnnotations: composerPreviewAnnotations,
+        }),
         interactionMode: followUp.interactionMode,
       });
       return;
@@ -7807,9 +7812,11 @@ export default function ChatView(props: ChatViewProps) {
   const onSubmitPlanFollowUp = useCallback(
     async ({
       text,
+      context,
       interactionMode: nextInteractionMode,
     }: {
       text: string;
+      context?: ReturnType<typeof buildMessageContext>;
       interactionMode: "default" | "plan";
     }) => {
       if (
@@ -7862,6 +7869,7 @@ export default function ChatView(props: ChatViewProps) {
           id: messageIdForSend,
           role: "user",
           text: outgoingMessageText,
+          ...(context ? { context } : {}),
           turnId: null,
           createdAt: messageCreatedAt,
           updatedAt: messageCreatedAt,
@@ -7897,7 +7905,15 @@ export default function ChatView(props: ChatViewProps) {
             message: {
               messageId: messageIdForSend,
               role: "user",
-              text: outgoingMessageText,
+              ...(appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment
+                .capabilities.inlineMessageContext === true
+                ? { text: outgoingMessageText, ...(context ? { context } : {}) }
+                : {
+                    text: serializeLegacyContextMessage({
+                      text: outgoingMessageText,
+                      records: context?.records ?? [],
+                    }),
+                  }),
               attachments: [],
             },
             modelSelection: ctxSelectedModelSelection,
