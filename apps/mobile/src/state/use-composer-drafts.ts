@@ -22,9 +22,10 @@ import { useEffect } from "react";
 import { Atom } from "effect/unstable/reactivity";
 
 import { writeFileAtomically } from "../lib/atomic-file";
-import { referencedComposerContext } from "../lib/composerContext";
+import { createComposerContextHistory, referencedComposerContext } from "../lib/composerContext";
 import {
   formatComposerContextReference,
+  sanitizeComposerContextLabel,
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
 import { DraftComposerAttachmentSchema } from "../lib/composer-image-schema";
@@ -76,6 +77,61 @@ export function rememberComposerDraftSelection(
   selection: { start: number; end: number },
 ): void {
   lastComposerSelection = { draftKey, text, ...selection };
+}
+
+/** Retains file bytes while native text undo can restore their references. */
+export function createComposerDraftContextHistory() {
+  const restoreContext = createComposerContextHistory();
+  const files = new Map<
+    string,
+    { attachment: FileBackedComposerAttachment; release: () => void }
+  >();
+  return {
+    restore(text: string, draft: ComposerDraft) {
+      for (const attachment of draft.attachments) {
+        if (attachment.type !== "file") continue;
+        const previous = files.get(attachment.id);
+        files.delete(attachment.id);
+        if (previous?.attachment.fileUri === attachment.fileUri) {
+          previous.attachment = attachment;
+          files.set(attachment.id, previous);
+        } else {
+          previous?.release();
+          files.set(attachment.id, {
+            attachment,
+            release: retainComposerAttachmentFileForPreview(attachment),
+          });
+        }
+      }
+      const limit = Math.max(COMPOSER_CONTEXT_MAX_RECORDS, draft.attachments.length);
+      while (files.size > limit) {
+        const oldest = files.keys().next().value!;
+        files.get(oldest)!.release();
+        files.delete(oldest);
+      }
+      const context = restoreContext(text, draft.context);
+      const liveIds = new Set(draft.attachments.map((attachment) => attachment.id));
+      const attachments = (context?.records ?? []).flatMap((record) => {
+        if (
+          record.kind !== "file" ||
+          !("attachmentId" in record) ||
+          liveIds.has(record.attachmentId)
+        )
+          return [];
+        const saved = files.get(record.attachmentId)?.attachment;
+        liveIds.add(record.attachmentId);
+        // Removing the file can release its old pending upload. Undo reuploads the retained bytes.
+        return saved
+          ? [{ ...saved, uploadedAttachmentId: undefined, uploadEnvironmentId: undefined }]
+          : [];
+      });
+      return { context, attachments };
+    },
+    dispose() {
+      for (const file of files.values()) file.release();
+      files.clear();
+    },
+  };
 }
 
 export function setComposerDraftContext(
@@ -1097,7 +1153,7 @@ export function appendComposerDraftAttachments(
         const common = {
           version: 1 as const,
           contextId: ComposerContextId.make(attachment.id),
-          label: attachment.name,
+          label: sanitizeComposerContextLabel(attachment.name, attachment.type),
           attachmentId: attachment.id,
           name: attachment.name,
           mimeType: attachment.mimeType,

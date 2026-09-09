@@ -18,6 +18,7 @@ import {
   type ComposerInlineToken,
 } from "@t3tools/shared/composerInlineTokens";
 
+const isMessageContext = Schema.is(OrchestrationMessageContext);
 const decodeMessageContext = Schema.decodeUnknownOption(OrchestrationMessageContext);
 
 /** Recovery drafts can exceed wire limits, but must never enter the outbox in that state. */
@@ -28,7 +29,7 @@ export function composerContextSendBlockReason(
   if (context.records.length > COMPOSER_CONTEXT_MAX_RECORDS) {
     return `Remove context items until there are at most ${COMPOSER_CONTEXT_MAX_RECORDS}.`;
   }
-  return decodeMessageContext(context)._tag === "None"
+  return !isMessageContext(context) || decodeMessageContext(context)._tag === "None"
     ? "This draft has too much context to send. Remove some context items and try again."
     : null;
 }
