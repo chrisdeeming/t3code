@@ -10,7 +10,6 @@ import { MediaActions, type MediaActionSource } from "../media/MediaActions";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
 import { isContextMenuOpen } from "../../contextMenuFallback";
 import { composerFloatingLayerProps } from "./composerEventScope";
-import { ZoomableImage, type ZoomableImageHandle } from "./ZoomableImage";
 
 interface ExpandedImageDialogProps {
   preview: ExpandedImagePreview;
@@ -58,7 +57,6 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   onClose,
 }: ExpandedImageDialogProps) {
   const [imageOffset, setImageOffset] = useState(0);
-  const zoomableImageRef = useRef<ZoomableImageHandle>(null);
   const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
   const [returnFocusTarget] = useState(() =>
     document.activeElement instanceof HTMLElement ? document.activeElement : null,
@@ -102,20 +100,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
 
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.defaultPrevented || isContextMenuOpen()) {
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onClose();
-        return;
-      }
-      if (zoomableImageRef.current?.pan(event.key)) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
+      if (event.defaultPrevented || isContextMenuOpen()) return;
       if (preview.images.length <= 1) return;
       if (event.key === "ArrowLeft") {
         event.preventDefault();
@@ -213,27 +198,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
                 draggable={false}
                 onError={() => setFailedImageSrc(item.src)}
               />
-            ) : null
-          ) : item.src === null || failedImageSrc === item.src ? (
-            <ExpandedMediaFailure>
-              <p>
-                {openOriginalLink
-                  ? "This image could not be loaded."
-                  : "Image unavailable. The file may have been moved or deleted."}
-              </p>
-              {openOriginalLink}
-            </ExpandedMediaFailure>
-          ) : (
-            <ZoomableImage
-              ref={zoomableImageRef}
-              key={`${index}:${item.src}`}
-              src={item.src}
-              name={item.name}
-              onError={() => setFailedImageSrc(item.src)}
-            />
-          )}
-          <div className="mt-2 flex max-w-[92vw] items-center justify-center gap-1.5 text-xs text-white/80">
-            <span className="truncate">
+            )}
+            <p className="mt-2 max-w-[92vw] truncate text-center text-xs text-white/90">
               {item.name}
               {preview.images.length > 1 ? ` (${index + 1}/${preview.images.length})` : ""}
             </p>

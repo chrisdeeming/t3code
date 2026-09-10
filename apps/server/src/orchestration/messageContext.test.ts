@@ -45,6 +45,7 @@ function makeReadModel(): OrchestrationReadModel {
         runtimeMode: "full-access",
         interactionMode: "default",
         branch: null,
+        pullRequests: [],
         worktreePath: null,
         latestTurn: null,
         createdAt: NOW,
