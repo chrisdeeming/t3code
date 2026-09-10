@@ -13,7 +13,12 @@ const IMAGE_MIME_TYPE_BY_EXTENSION = new Map([
 
 const SUPPORTED_IMAGE_MIME_TYPES = new Set(IMAGE_MIME_TYPE_BY_EXTENSION.values());
 
-export const IMAGE_FILE_EXTENSIONS = Object.freeze([...IMAGE_MIME_TYPE_BY_EXTENSION.keys()]);
+/** What a picker writes when it did not recognize the file; the name is better evidence. */
+const GENERIC_MIME_TYPES = new Set([
+  "application/octet-stream",
+  "binary/octet-stream",
+  "application/unknown",
+]);
 
 /**
  * Recognizes pictures even when the picker omitted their MIME type. A picture chosen through
@@ -28,6 +33,9 @@ export function imageMimeType(attachment: {
   if (SUPPORTED_IMAGE_MIME_TYPES.has(mimeType)) return mimeType;
   // A declared but unsupported image type stays a file: the send path cannot carry it.
   if (mimeType.startsWith("image/")) return null;
+  // The name is only evidence when nothing recorded what this is. A definite type already
+  // answers the question, and a `.png` on a PDF must not override it.
+  if (mimeType !== "" && !GENERIC_MIME_TYPES.has(mimeType)) return null;
   const dotIndex = attachment.name.lastIndexOf(".");
   return dotIndex < 0
     ? null

@@ -41,3 +41,20 @@ describe("legacy attachments", () => {
     expect(imageMimeType({ name: "1000000020.png", mimeType: "" })).toBe("image/png");
   });
 });
+
+describe("a declared non-image type", () => {
+  it("wins over a misleading picture extension", () => {
+    // The filename fallback exists for attachments whose type was never recorded. A definite
+    // type is what the file actually is, so a `.png` name cannot promote a PDF to a picture.
+    expect(imageMimeType({ name: "report.png", mimeType: "application/pdf" })).toBeNull();
+    expect(imageMimeType({ name: "archive.jpg", mimeType: "application/zip" })).toBeNull();
+    expect(imageMimeType({ name: "clip.png", mimeType: "video/mp4" })).toBeNull();
+  });
+
+  it("still falls back when the type is absent or generic", () => {
+    expect(imageMimeType({ name: "IMG_4996.PNG", mimeType: "application/octet-stream" })).toBe(
+      "image/png",
+    );
+    expect(imageMimeType({ name: "1000000020.png", mimeType: "" })).toBe("image/png");
+  });
+});
