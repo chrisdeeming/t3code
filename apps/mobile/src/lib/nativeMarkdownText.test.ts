@@ -1142,29 +1142,3 @@ describe("pull request chip status", () => {
     ).toBe("#7079e4");
   });
 });
-
-describe("composerChipBaselineDrop", () => {
-  it("drops the chip so its centre meets the text's, not the baseline", async () => {
-    const { composerChipBaselineDrop } = await import("@t3tools/mobile-markdown-text/markdown");
-    // A 16pt body renders an 18.05pt chip. Bottom-aligned to the baseline its centre sits
-    // 9.02pt up, while the text's is 4.16pt up, so it has to come down by the difference.
-    expect(composerChipBaselineDrop(18.05, 16)).toBeCloseTo(4.86, 2);
-  });
-
-  it("always drops, never lifts, for a chip taller than the lowercase band", async () => {
-    const { composerChipBaselineDrop } = await import("@t3tools/mobile-markdown-text/markdown");
-    // The sign is the whole point: a negative value lifts the chip clear of the words.
-    for (const fontSize of [13, 15, 16, 17, 20]) {
-      expect(composerChipBaselineDrop(fontSize * 0.8 * 1.41, fontSize)).toBeGreaterThan(0);
-    }
-  });
-
-  it("scales with the text, so a larger prompt font does not drift", async () => {
-    const { composerChipBaselineDrop } = await import("@t3tools/mobile-markdown-text/markdown");
-    const small = composerChipBaselineDrop(13 * 0.8 * 1.41, 13);
-    const large = composerChipBaselineDrop(20 * 0.8 * 1.41, 20);
-    expect(large).toBeGreaterThan(small);
-    // Same ratio to the font at both sizes: the correction is proportional, not a constant.
-    expect(large / 20).toBeCloseTo(small / 13, 5);
-  });
-});

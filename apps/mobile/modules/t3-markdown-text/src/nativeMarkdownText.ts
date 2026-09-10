@@ -21,17 +21,6 @@ const CONTEXT_CHIP_PRESENTATIONS = {
 } as const;
 
 /**
- * How far to drop an inline chip so it shares a centre line with the text beside it.
- *
- * An inline image sits with its bottom on the text baseline, and a chip is taller than the
- * lowercase band it sits in, so left alone it floats above the words. `0.52` is DM Sans's
- * x-height as a fraction of its em, which stands in for the text's visual centre.
- */
-export function composerChipBaselineDrop(chipHeight: number, textFontSize: number): number {
-  return (chipHeight - textFontSize * 0.52) / 2;
-}
-
-/**
  * The size an attachment chip reports beside its name, matching web. Rendered as its own
  * smaller run, so it carries no separator. Only attachment-backed records have bytes.
  */

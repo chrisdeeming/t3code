@@ -41,20 +41,6 @@ inline Float T3MarkdownTextAttachmentBaselineOffset(
   return -2;
 }
 
-/**
- * A chip sits on the text's x-height, not on its baseline: centering it on the lowercase band is
- * what makes it read as part of the sentence rather than floating above it. A fixed offset cannot
- * do that, because the drop has to grow with the chip.
- *
- * The chip is drawn at 1.41x its own font size, and that font is 0.8x the surrounding text, so the
- * text's x-height is recoverable from the chip's height alone. `0.52` is DM Sans's x-height as a
- * fraction of its em.
- */
-inline Float T3MarkdownTextChipBaselineOffset(Float chipHeight) {
-  const Float textFontSize = chipHeight / 1.41f / 0.8f;
-  return (textFontSize * 0.52f - chipHeight) / 2.0f;
-}
-
 class T3MarkdownTextStateReal final {
  public:
   AttributedString attributedString;
