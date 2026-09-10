@@ -66,7 +66,11 @@ static void applyAttachments(
         attachmentSize,
         attachmentSize);
     if (attachmentRange.chipWidth > 0) {
-      attachment.bounds = CGRectMake(0, -3, attachmentRange.chipWidth, attachmentRange.chipHeight);
+      attachment.bounds = CGRectMake(
+          0,
+          T3MarkdownTextChipBaselineOffset(attachmentRange.chipHeight),
+          attachmentRange.chipWidth,
+          attachmentRange.chipHeight);
     }
     const NSRange range = NSMakeRange(
         attachmentRange.location,
