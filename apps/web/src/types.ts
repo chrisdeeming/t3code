@@ -57,8 +57,11 @@ export type ChatAttachment = ChatImageAttachment | ChatFileAttachment | ChatUnkn
 // not narrow. Use these guards wherever type-specific fields are read.
 export function isImageAttachment(attachment: ChatAttachment): attachment is ChatImageAttachment {
   // Messages sent before pictures were typed by content carry `file`; they are still
-  // pictures, and reading them as such is what lets them render instead of listing.
-  return attachment.type === "image" || imageMimeType(attachment) !== null;
+  // pictures, and reading them as such is what lets them render instead of listing. Only
+  // `file` is reclassified: an attachment type this client does not know yet is not a
+  // picture by default, whatever its name says.
+  if (attachment.type === "image") return true;
+  return attachment.type === "file" && imageMimeType(attachment) !== null;
 }
 
 export function isFileAttachment(attachment: ChatAttachment): attachment is ChatFileAttachment {
