@@ -150,8 +150,7 @@ static void T3MarkdownTextApplyAttachments(
     NSDictionary *chip = T3ContextChipPayload(imageUri);
     if (chip != nil) {
       CGSize size = CGSizeMake(attachmentRange.chipWidth, attachmentRange.chipHeight);
-      attachment.bounds =
-          CGRectMake(0, T3MarkdownTextChipBaselineOffset(size.height), size.width, size.height);
+      attachment.bounds = CGRectMake(0, -3, size.width, size.height);
       NSString *iconUri = [chip[@"iconUri"] isKindOfClass:NSString.class] ? chip[@"iconUri"] : nil;
       attachment.image = T3ContextChipImage(chip, size, iconUri ? images[iconUri] : nil);
     }
