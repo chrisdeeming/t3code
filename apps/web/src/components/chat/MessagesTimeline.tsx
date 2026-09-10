@@ -1,4 +1,3 @@
-import { GitPullRequestIcon } from "lucide-react";
 import {
   getQuestionAnswerPreview,
   getQuestionAnswerText,
