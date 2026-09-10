@@ -72,7 +72,7 @@ function HighlightedAccessibilityJson({
   });
 }
 
-function SnapShotAccessibilityData({
+export function SnapShotAccessibilityData({
   details,
   className,
 }: {
@@ -125,7 +125,7 @@ export function snapShotIncludesAccessibility(source: SnapShotSource): boolean {
   return Boolean(source.accessibility || source.accessibleText?.trim());
 }
 
-function SnapShotContentsButton({
+export function SnapShotContentsButton({
   source,
   className,
   side = "top",
