@@ -16,7 +16,7 @@ import { markdownFileIconSource } from "./markdownFileIcons";
 import { markdownLinkIconSource } from "./markdownLinkIcons";
 import { resolveMarkdownFileIcon, resolveMarkdownLinkIcon } from "./markdownLinks";
 import type { NativeMarkdownTextRun } from "./nativeMarkdownText";
-import { nativeMarkdownContextCopyRanges } from "./nativeMarkdownText";
+import { composerChipBaselineDrop, nativeMarkdownContextCopyRanges } from "./nativeMarkdownText";
 import type {
   MarkdownFileContextMenu,
   NativeMarkdownTextStyle,
@@ -385,7 +385,21 @@ export function NativeMarkdownSelectableText(props: {
                 // off the right-hand border; `contain` fits the whole chip instead.
                 resizeMode="contain"
                 source={{ uri: androidChip.uri }}
-                style={{ width: androidChip.width, height: androidChip.height }}
+                // An inline image sits with its bottom on the text baseline, so a chip taller
+                // than the lowercase band floats above the words beside it. Drop it by the
+                // difference between the two centres to put them on one line.
+                style={{
+                  width: androidChip.width,
+                  height: androidChip.height,
+                  transform: [
+                    {
+                      translateY: composerChipBaselineDrop(
+                        androidChip.height,
+                        props.textStyle.fontSize,
+                      ),
+                    },
+                  ],
+                }}
               />
             ) : Platform.OS === "android" && run.fileIcon ? (
               <Image source={markdownFileIconSource(run.fileIcon)} style={styles.inlineIcon} />
