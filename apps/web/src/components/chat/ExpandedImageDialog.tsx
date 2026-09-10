@@ -2,11 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
-import {
-  wrapExpandedImageIndex,
-  type ExpandedImageItem,
-  type ExpandedImagePreview,
-} from "./ExpandedImagePreview";
+import type { ExpandedImageItem, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { resolveExternalWebLinkHost } from "./externalLinkContextMenu";
 import { useAssetUrlRefresh, useAssetUrlState } from "../../assets/assetUrls";
 import { OpenMediaLink } from "../media/OpenMediaLink";
@@ -14,7 +10,6 @@ import { MediaActions, type MediaActionSource } from "../media/MediaActions";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
 import { isContextMenuOpen } from "../../contextMenuFallback";
 import { composerFloatingLayerProps } from "./composerEventScope";
-import { ZoomableImage, type ZoomableImageHandle } from "./ZoomableImage";
 
 interface ExpandedImageDialogProps {
   preview: ExpandedImagePreview;
@@ -62,13 +57,12 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   onClose,
 }: ExpandedImageDialogProps) {
   const [imageOffset, setImageOffset] = useState(0);
-  const zoomableImageRef = useRef<ZoomableImageHandle>(null);
   const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
   const [returnFocusTarget] = useState(() =>
     document.activeElement instanceof HTMLElement ? document.activeElement : null,
   );
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const index = wrapExpandedImageIndex(preview.index + imageOffset, preview.images.length);
+  const index = (preview.index + imageOffset + preview.images.length) % preview.images.length;
   const item = preview.images[index];
   const source: MediaActionSource = item?.actionsSource ?? {
     kind: item?.type === "video" ? "video" : "image",
@@ -86,14 +80,9 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
       }
     : source;
 
-  const navigateImage = useCallback(
-    (direction: -1 | 1) => {
-      setImageOffset((current) =>
-        wrapExpandedImageIndex(current + direction, preview.images.length),
-      );
-    },
-    [preview.images.length],
-  );
+  const navigateImage = useCallback((direction: -1 | 1) => {
+    setImageOffset((current) => current + direction);
+  }, []);
 
   // The element that opened the preview gets focus back on close. Without
   // this a close button click leaves focus on the unmounted dialog, and the
@@ -111,20 +100,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
 
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.defaultPrevented || isContextMenuOpen()) {
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onClose();
-        return;
-      }
-      if (zoomableImageRef.current?.pan(event.key)) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
+      if (event.defaultPrevented || isContextMenuOpen()) return;
       if (preview.images.length <= 1) return;
       if (event.key === "ArrowLeft") {
         event.preventDefault();
@@ -173,7 +149,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         bottomStickOnMobile={false}
         backdropClassName="z-[60]"
         viewportClassName="z-[60] grid-rows-1 place-items-center px-4 py-6 [-webkit-app-region:no-drag]"
-        className="row-start-1"
+        className="row-start-1 max-h-[92vh] w-auto max-w-[92vw] overflow-visible"
         initialFocus={closeButtonRef}
         finalFocus={() => returnFocusTarget}
       >
@@ -182,8 +158,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           <Button
             type="button"
             size="icon"
-            variant="media-navigation"
-            className="left-2 sm:left-6"
+            variant="ghost"
+            className="absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6"
             aria-label="Previous media"
             onClick={() => navigateImage(-1)}
           >
@@ -196,8 +172,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
               type="button"
               ref={closeButtonRef}
               size="icon-xs"
-              variant="media-close"
-              className="absolute right-2 top-2 z-20"
+              variant="ghost"
+              className="absolute right-2 top-2 z-20 bg-black/65 text-white shadow-sm ring-1 ring-white/20 hover:bg-black/80 hover:text-white focus-visible:ring-white"
               onClick={onClose}
               aria-label={`Close ${mediaLabel} preview`}
             >
@@ -222,27 +198,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
                 draggable={false}
                 onError={() => setFailedImageSrc(item.src)}
               />
-            ) : null
-          ) : item.src === null || failedImageSrc === item.src ? (
-            <ExpandedMediaFailure>
-              <p>
-                {openOriginalLink
-                  ? "This image could not be loaded."
-                  : "Image unavailable. The file may have been moved or deleted."}
-              </p>
-              {openOriginalLink}
-            </ExpandedMediaFailure>
-          ) : (
-            <ZoomableImage
-              ref={zoomableImageRef}
-              key={`${index}:${item.src}`}
-              src={item.src}
-              name={item.name}
-              onError={() => setFailedImageSrc(item.src)}
-            />
-          )}
-          <div className="mt-2 flex max-w-[92vw] items-center justify-center gap-1.5 text-xs text-white/80">
-            <span className="truncate">
+            )}
+            <p className="mt-2 max-w-[92vw] truncate text-center text-xs text-white/90">
               {item.name}
               {preview.images.length > 1 ? ` (${index + 1}/${preview.images.length})` : ""}
             </p>
@@ -252,8 +209,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           <Button
             type="button"
             size="icon"
-            variant="media-navigation"
-            className="right-2 sm:right-6"
+            variant="ghost"
+            className="absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6"
             aria-label="Next media"
             onClick={() => navigateImage(1)}
           >
