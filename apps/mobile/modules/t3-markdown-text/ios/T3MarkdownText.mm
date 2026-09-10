@@ -133,9 +133,9 @@ static void T3MarkdownTextApplyAttachments(
     if (isSymbol) {
       image = [UIImage systemImageNamed:[imageUri substringFromIndex:3]];
     }
-    UIColor *foregroundColor = [attributedString attribute:NSForegroundColorAttributeName
-                                                   atIndex:attachmentRange.location
-                                            effectiveRange:nil];
+    NSDictionary *runAttributes =
+        [attributedString attributesAtIndex:attachmentRange.location effectiveRange:nil];
+    UIColor *foregroundColor = runAttributes[NSForegroundColorAttributeName];
     if (image != nil && (isSymbol || attachmentRange.tintWithForeground)) {
       image = [image imageWithTintColor:foregroundColor ?: UIColor.labelColor
                           renderingMode:UIImageRenderingModeAlwaysOriginal];
@@ -150,23 +150,15 @@ static void T3MarkdownTextApplyAttachments(
     NSDictionary *chip = T3ContextChipPayload(imageUri);
     if (chip != nil) {
       CGSize size = CGSizeMake(attachmentRange.chipWidth, attachmentRange.chipHeight);
-      attachment.bounds = CGRectMake(0, -3, size.width, size.height);
+      attachment.bounds = T3ContextChipBounds(runAttributes[NSFontAttributeName], size);
       NSString *iconUri = [chip[@"iconUri"] isKindOfClass:NSString.class] ? chip[@"iconUri"] : nil;
       attachment.image = T3ContextChipImage(chip, size, iconUri ? images[iconUri] : nil);
     }
     const NSRange range = NSMakeRange(
         attachmentRange.location,
         MIN(attachmentRange.length, attributedString.length - attachmentRange.location));
-    NSMutableAttributedString *attachmentString =
-        [[NSAttributedString attributedStringWithAttachment:attachment] mutableCopy];
-    // Keep the run color on the attachment so a later re-apply (after the image
-    // loads asynchronously) still tints with the link color, not labelColor.
-    if (foregroundColor != nil) {
-      [attachmentString addAttribute:NSForegroundColorAttributeName
-                               value:foregroundColor
-                               range:NSMakeRange(0, attachmentString.length)];
-    }
-    [attributedString replaceCharactersInRange:range withAttributedString:attachmentString];
+    [attributedString replaceCharactersInRange:range
+                          withAttributedString:T3MarkdownTextAttachmentString(attachment, runAttributes)];
   }
 }
 
@@ -409,6 +401,8 @@ T3MarkdownOutsideTapCoordinatorForWindow(UIWindow *window)
       convertedAttrString,
       _state->getData().attachmentRanges,
       _attachmentImages);
+  // Matches the shadow node so drawn lines sit where measurement put them.
+  RCTApplyBaselineOffset(convertedAttrString);
   NSUInteger runLocation = 0;
   for (UIView *child in self.subviews) {
     if (![child isKindOfClass:[T3MarkdownTextRun class]]) {

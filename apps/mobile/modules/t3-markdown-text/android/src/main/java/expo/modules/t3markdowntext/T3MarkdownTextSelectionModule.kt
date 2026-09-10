@@ -6,9 +6,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.Spanned
+import android.text.TextPaint
 import android.text.style.ReplacementSpan
 import android.view.ActionMode
 import android.view.Menu
@@ -17,6 +20,7 @@ import android.widget.TextView
 import android.util.Base64
 import android.util.LruCache
 import com.facebook.react.bridge.ReactContext
+import com.facebook.react.common.assets.ReactFontManager
 import com.facebook.react.uimanager.UIManagerHelper
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -163,12 +167,30 @@ private class SanitizingSelectionActionModeCallback(
 class T3MarkdownTextSelectionModule : Module() {
   private val chipImages = LruCache<String, Map<String, Any>>(128)
 
+  /**
+   * Metrics of the paragraph font a chip sits in, so the inline box it reports can be sized
+   * from the same ascent and descent the surrounding text lays out with.
+   */
+  private fun paragraphFontMetrics(text: JSONObject?, scale: Float): Paint.FontMetricsInt =
+    TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+      textSize = (text?.optDouble("fontSize", 15.0)?.toFloat() ?: 15f).coerceIn(6f, 80f) * scale
+      val fontFamily = text?.optString("fontFamily").orEmpty()
+      typeface = if (fontFamily.isEmpty()) {
+        Typeface.DEFAULT
+      } else {
+        ReactFontManager.getInstance()
+          .getTypeface(fontFamily, Typeface.NORMAL, appContext.reactContext?.assets)
+      }
+    }.fontMetricsInt
+
   override fun definition() = ModuleDefinition {
     Name("T3MarkdownTextSelection")
 
     Function("renderContextChip") { payloadJson: String ->
-      val metrics = appContext.reactContext?.resources?.displayMetrics ?: return@Function null
-      val key = "${metrics.density}:${metrics.widthPixels}:$payloadJson"
+      val resources = appContext.reactContext?.resources ?: return@Function null
+      val metrics = resources.displayMetrics
+      val fontScale = resources.configuration.fontScale
+      val key = "${metrics.density}:$fontScale:${metrics.widthPixels}:$payloadJson"
       chipImages.get(key)?.let { return@Function it }
       val payload = JSONObject(payloadJson)
       val chip = T3ContextChip(
@@ -200,14 +222,30 @@ class T3MarkdownTextSelectionModule : Module() {
       val bytes = ByteArrayOutputStream()
       bitmap.compress(Bitmap.CompressFormat.PNG, 100, bytes)
       bitmap.recycle()
+      // React Native sits an inline view's box on the text baseline and grows the line's
+      // ascent to fit it, so a box as tall as the chip lifts the chip above the words and
+      // pushes the baseline down. Report a box no taller than the paragraph font's ascent,
+      // which leaves the line exactly as tall as a line of plain text, plus where inside
+      // that box the bitmap must sit so the chip centres on the font's ascent/descent box:
+      // the same rule the composer's ReplacementSpan uses to draw its chips.
+      val lineMetrics = paragraphFontMetrics(
+        payload.optJSONObject("text"),
+        fontScale * metrics.density,
+      )
+      val ascent = -lineMetrics.ascent
+      val descent = lineMetrics.descent
+      val bitmapWidth = ceil(chip.width) + bleed * 2
+      val bitmapHeight = ceil(chip.height) + bleed * 2
       val result = mapOf<String, Any>(
         "uri" to
           "data:image/png;base64,${Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)}",
         // Layout rounds dp back to whole pixels. Reporting a hair less than the bitmap lets
         // that rounding land inside the image and crop its right-hand border, so round the
         // box up: an extra fraction of a pixel is invisible, a missing border is not.
-        "width" to (ceil(chip.width) + bleed * 2) / metrics.density,
-        "height" to (ceil(chip.height) + bleed * 2) / metrics.density,
+        "width" to bitmapWidth / metrics.density,
+        "height" to bitmapHeight / metrics.density,
+        "boxHeight" to ascent / metrics.density,
+        "offsetY" to (ascent + descent - bitmapHeight) / 2f / metrics.density,
       )
       chipImages.put(key, result)
       result
