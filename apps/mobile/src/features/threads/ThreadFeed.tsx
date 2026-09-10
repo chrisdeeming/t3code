@@ -1474,6 +1474,9 @@ function renderFeedEntry(
             : [],
         ),
       );
+      const visibleAttachments = attachments.filter(
+        (attachment) => isImageAttachment(attachment) || !inlineAttachmentIds.has(attachment.id),
+      );
       return (
         <View className="mb-5 items-end">
           <View
@@ -1510,13 +1513,10 @@ function renderFeedEntry(
                 <MessageAttachmentUnknown key={attachment.id} name={attachment.name} />
               ),
             )}
-            <View className={inlineAttachmentIds.size ? "flex-row flex-wrap gap-2" : "gap-2"}>
-              {attachments
-                .filter(
-                  (attachment) =>
-                    isImageAttachment(attachment) || !inlineAttachmentIds.has(attachment.id),
-                )
-                .map((attachment) => {
+            {/* An empty container still takes a gap, which pads every attachment-free bubble. */}
+            {visibleAttachments.length > 0 ? (
+              <View className={inlineAttachmentIds.size ? "flex-row flex-wrap gap-2" : "gap-2"}>
+                {visibleAttachments.map((attachment) => {
                   return isImageAttachment(attachment) ? (
                     <MessageAttachmentImage
                       key={attachment.id}
@@ -1543,7 +1543,8 @@ function renderFeedEntry(
                     <MessageAttachmentUnknown key={attachment.id} name={attachment.name} />
                   );
                 })}
-            </View>
+              </View>
+            ) : null}
             {message.text.trim().length > 0 ? (
               <MarkdownImageAvailableWidthContext
                 value={props.userBubbleMaxWidth - USER_BUBBLE_HORIZONTAL_PADDING * 2}

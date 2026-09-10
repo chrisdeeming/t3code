@@ -65,6 +65,36 @@ static UIImage *T3ContextChipVectorIcon(NSString *symbol, CGFloat size, UIColor 
   }];
 }
 
+// Centres the chip on the run font's ascent/descent box, the rule the composer span and
+// Android use, so the chip lands in the same place beside the words on every surface.
+static inline CGRect T3ContextChipBounds(UIFont *font, CGSize size)
+{
+  CGFloat y = font != nil ? (font.ascender + font.descender - size.height) / 2 : -3;
+  return CGRectMake(0, y, size.width, size.height);
+}
+
+// A bare attachment string carries none of the run's attributes. Losing the paragraph
+// style at a paragraph's first character drops its line height, and losing the font lets
+// a chip-only line shrink to the bitmap, so the placeholder keeps both, plus the run
+// colour so a later re-apply (after an image loads) still tints with it.
+static inline NSAttributedString *T3MarkdownTextAttachmentString(
+    NSTextAttachment *attachment, NSDictionary<NSAttributedStringKey, id> *runAttributes)
+{
+  NSMutableAttributedString *string =
+      [[NSAttributedString attributedStringWithAttachment:attachment] mutableCopy];
+  for (NSAttributedStringKey key in
+       @[
+         NSFontAttributeName, NSParagraphStyleAttributeName, NSForegroundColorAttributeName,
+         NSBaselineOffsetAttributeName
+       ]) {
+    id value = runAttributes[key];
+    if (value != nil) {
+      [string addAttribute:key value:value range:NSMakeRange(0, string.length)];
+    }
+  }
+  return string;
+}
+
 static UIFont *T3ContextChipFont(NSDictionary *payload)
 {
   CGFloat size = MAX(10, MIN(40, [payload[@"fontSize"] doubleValue]));

@@ -9,6 +9,7 @@ import {
   Text as RNText,
   type TextStyle,
   useColorScheme,
+  View,
 } from "react-native";
 
 import { MarkdownTextPrimitive } from "./MarkdownTextPrimitive";
@@ -43,6 +44,11 @@ export const MarkdownFileContextMenuContext = createContext<MarkdownFileContextM
 const EXTERNAL_LINK_PREFIX = "◉ ";
 const INLINE_ATTACHMENT_PREFIX = "\uFFFC\u00A0";
 const SKILL_ICON_PLACEHOLDER = "\uFFFC";
+// React Native turns a run whose whole text is U+FFFC into a bare inline-view attachment
+// with no font or paragraph style, so a chip opening a paragraph would drop its line
+// height. Any other single character keeps the run's attributes; the native side swaps it
+// for the chip attachment either way.
+const IOS_CHIP_PLACEHOLDER = "\u200B";
 const PARAGRAPH_STYLE_ENCODING_OFFSET = 1000;
 const MONO_FONT_FAMILY = Platform.select({
   ios: "ui-monospace",
@@ -241,12 +247,24 @@ export function NativeMarkdownSelectableText(props: {
               border: props.textStyle.contextChipBorderColor ?? props.textStyle.dividerColor,
             }
           : null;
+      // Android sizes the chip's inline box from the paragraph font so the line box stays
+      // the height of a plain text line; see renderContextChip.
       const androidChip =
-        Platform.OS === "android" && chip ? renderAndroidContextChip(JSON.stringify(chip)) : null;
+        Platform.OS === "android" && chip
+          ? renderAndroidContextChip(
+              JSON.stringify({
+                ...chip,
+                text: {
+                  fontFamily: props.textStyle.fontFamily,
+                  fontSize: props.textStyle.fontSize,
+                },
+              }),
+            )
+          : null;
       if (androidChip) {
         text = "";
       } else if (chip && Platform.OS === "ios") {
-        text = "\uFFFC";
+        text = IOS_CHIP_PLACEHOLDER;
       } else if (run.fileIcon && Platform.OS === "ios") {
         text = `${INLINE_ATTACHMENT_PREFIX}${text}`;
       } else if (run.skillName && run.skillLabel) {
@@ -368,7 +386,10 @@ export function NativeMarkdownSelectableText(props: {
             }
           >
             {androidChip ? (
-              <Image
+              // The inline box sits on the baseline and is only as tall as the font's
+              // ascent, so it never changes the line's height. The bitmap hangs off that
+              // box (views in text are not clipped) to centre the chip on the text.
+              <View
                 accessible
                 accessibilityLabel={chip?.label}
                 accessibilityRole={onPress ? "button" : "image"}
@@ -380,13 +401,23 @@ export function NativeMarkdownSelectableText(props: {
                       }
                     : undefined
                 }
-                // The bitmap is measured in whole pixels but laid out in dp, so the box can
-                // round a hair narrower than the image. `cover` would crop that difference
-                // off the right-hand border; `contain` fits the whole chip instead.
-                resizeMode="contain"
-                source={{ uri: androidChip.uri }}
-                style={{ width: androidChip.width, height: androidChip.height }}
-              />
+                style={{ width: androidChip.width, height: androidChip.boxHeight }}
+              >
+                <Image
+                  // The bitmap is measured in whole pixels but laid out in dp, so the box can
+                  // round a hair narrower than the image. `cover` would crop that difference
+                  // off the right-hand border; `contain` fits the whole chip instead.
+                  resizeMode="contain"
+                  source={{ uri: androidChip.uri }}
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: androidChip.offsetY,
+                    width: androidChip.width,
+                    height: androidChip.height,
+                  }}
+                />
+              </View>
             ) : Platform.OS === "android" && run.fileIcon ? (
               <Image source={markdownFileIconSource(run.fileIcon)} style={styles.inlineIcon} />
             ) : Platform.OS === "android" && linkIcon ? (

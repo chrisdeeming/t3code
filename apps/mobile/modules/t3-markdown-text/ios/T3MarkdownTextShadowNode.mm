@@ -65,15 +65,18 @@ static void applyAttachments(
         T3MarkdownTextAttachmentBaselineOffset(attachmentRange),
         attachmentSize,
         attachmentSize);
+    NSDictionary *runAttributes =
+        [attributedString attributesAtIndex:attachmentRange.location effectiveRange:nil];
     if (attachmentRange.chipWidth > 0) {
-      attachment.bounds = CGRectMake(0, -3, attachmentRange.chipWidth, attachmentRange.chipHeight);
+      attachment.bounds = T3ContextChipBounds(
+          runAttributes[NSFontAttributeName],
+          CGSizeMake(attachmentRange.chipWidth, attachmentRange.chipHeight));
     }
     const NSRange range = NSMakeRange(
         attachmentRange.location,
         MIN(attachmentRange.length, attributedString.length - attachmentRange.location));
-    NSAttributedString *attachmentString =
-        [NSAttributedString attributedStringWithAttachment:attachment];
-    [attributedString replaceCharactersInRange:range withAttributedString:attachmentString];
+    [attributedString replaceCharactersInRange:range
+                          withAttributedString:T3MarkdownTextAttachmentString(attachment, runAttributes)];
   }
 }
 
@@ -240,6 +243,10 @@ Size T3MarkdownTextShadowNode::measureContent(
         [RCTNSAttributedStringFromAttributedString(baseAttributedString) mutableCopy];
     applyParagraphStyles(convertedAttributedString, paragraphStyleRanges);
     applyAttachments(convertedAttributedString, attachmentRanges);
+    // TextKit stacks a paragraph's extra line height above the glyphs. React Native's own
+    // layout manager centres them with a baseline offset; do the same, after attachments
+    // so chips shift with the words.
+    RCTApplyBaselineOffset(convertedAttributedString);
 
     const CGFloat maximumWidth = std::isfinite(layoutConstraints.maximumSize.width)
         ? layoutConstraints.maximumSize.width
