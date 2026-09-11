@@ -464,11 +464,9 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       break;
     }
     case "draft-workspace-file": {
-      if (!input.workspaceRoot) {
-        return yield* new AssetWorkspaceContextNotFoundError({
-          resource: input.resource,
-        });
-      }
+      // The draft names its workspace root in the resource itself; an explicit
+      // root only overrides it.
+      const draftWorkspaceRoot = input.workspaceRoot ?? input.resource.cwd;
       if (path.isAbsolute(input.resource.path)) {
         // An absolute draft path serves exactly like an absolute media path.
         const finalized = yield* finalizeAbsoluteMediaFileAsset({
@@ -481,7 +479,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         imageDimensions = finalized.imageDimensions;
         break;
       }
-      const workspaceRoot = yield* workspacePaths.normalizeWorkspaceRoot(input.workspaceRoot).pipe(
+      const workspaceRoot = yield* workspacePaths.normalizeWorkspaceRoot(draftWorkspaceRoot).pipe(
         Effect.mapError(
           (cause) =>
             new AssetWorkspaceRootNormalizationError({

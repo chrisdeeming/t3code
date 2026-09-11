@@ -41,6 +41,7 @@ export function mediaVideoThumbnailKey(source: MediaVideoPreviewSource): string 
         : source.resource._tag === "media-file"
           ? [
               "media-video",
+              "media-file",
               source.environmentId,
               source.resource.threadId,
               source.resource.path,
@@ -48,6 +49,7 @@ export function mediaVideoThumbnailKey(source: MediaVideoPreviewSource): string 
             ]
           : [
               "media-video",
+              "draft-workspace-file",
               source.environmentId,
               source.resource.cwd,
               source.resource.path,
