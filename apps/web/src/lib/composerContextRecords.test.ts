@@ -1,4 +1,5 @@
 import {
+  type ComposerContextId,
   EnvironmentId,
   MessageId,
   OrchestrationMessageContext,
@@ -483,6 +484,26 @@ describe("composerContextRecords", () => {
     expect(destinationId).toBe("terminal_legacy_terminal_1");
     expect(composerContextImportLookupIds(second)[0]).toBe(destinationId);
     expect(isSameComposerContextPayload(first, second)).toBe(false);
+  });
+
+  it("treats an imported legacy id and its canonical reconstruction as the same excerpt", () => {
+    const draft = {
+      id: "term-1",
+      threadId: ThreadId.make("t"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      terminalId: "default",
+      terminalLabel: "Terminal 1",
+      lineStart: 1,
+      lineEnd: 2,
+      text: "A",
+    };
+    const canonical = terminalContextRecord(draft);
+    // An import carries the id it was sent with; the draft rebuilds the folded
+    // canonical form. Same payload either way, so no duplicate entry may form.
+    const imported = { ...canonical, contextId: "legacy_terminal_1" as ComposerContextId };
+
+    expect(isSameComposerContextPayload(canonical, imported)).toBe(true);
+    expect(isSameComposerContextPayload(canonical, { ...canonical, text: "B" })).toBe(false);
   });
 
   it("compares nested annotation element and source payloads", () => {

@@ -28,6 +28,15 @@ describe("nativeMarkdownTextRuns", () => {
     );
   });
 
+  it("renders a video-named file with a declared document MIME type as a file chip", () => {
+    expect(
+      contextChipPresentation("file", {
+        name: "recording.mp4",
+        mimeType: "application/pdf",
+      }),
+    ).toEqual(contextChipPresentation("file"));
+  });
+
   it("maps rendered selection offsets back to canonical references without losing repeated chips", () => {
     const href = "t3-context://v1/image/screenshot";
     expect(

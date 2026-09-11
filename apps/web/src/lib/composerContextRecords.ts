@@ -486,7 +486,10 @@ export function isSameComposerContextPayload(
 ): boolean {
   if (left.kind !== right.kind) return false;
   const stableKey = (record: ComposerContextRecord) => {
-    const { label: _label, ...rest } = record;
+    // Labels are display text and context ids are folded producer ids: neither
+    // distinguishes excerpts, so an imported legacy id must still match the
+    // canonical id reconstructed for the same payload instead of duplicating it.
+    const { label: _label, contextId: _contextId, ...rest } = record;
     const sortDeep = (value: unknown): unknown => {
       if (Array.isArray(value)) return value.map(sortDeep);
       if (value === null || typeof value !== "object") return value;

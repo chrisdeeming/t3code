@@ -7115,11 +7115,6 @@ export default function ChatView(props: ChatViewProps) {
     const outgoingMessageContext = buildOutgoingMessageContext(
       composerAttachmentsSnapshot.map((attachment) => attachment.id),
     );
-    // Servers from before inline context drop the records and forward the links as literal
-    // text, so their turns carry the payload the legacy way instead.
-    const supportsInlineMessageContext =
-      appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-        .inlineMessageContext === true;
     const outgoingMessageText = formatOutgoingPrompt({
       provider: ctxSelectedProvider,
       model: ctxSelectedModel,
@@ -7445,6 +7440,13 @@ export default function ChatView(props: ChatViewProps) {
                 ),
               );
               if (context === undefined) return {};
+              // Read the capability at dispatch time: the upload and persistence
+              // awaits above can span a server reconnect that changes it. Servers
+              // from before inline context drop the records and forward the links
+              // as literal text, so their turns carry the payload the legacy way.
+              const supportsInlineMessageContext =
+                appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment
+                  .capabilities.inlineMessageContext === true;
               if (!supportsInlineMessageContext) {
                 return {
                   text: serializeLegacyContextMessage({
