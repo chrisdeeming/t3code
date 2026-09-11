@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { filePreviewDelimiter, parseDelimitedPreview } from "./delimitedPreview";
+import { filePreviewDelimiter, parseDelimitedPreview } from "./delimitedPreview.ts";
 
 describe("delimited file previews", () => {
   it("respects a specific MIME type before the extension", () => {

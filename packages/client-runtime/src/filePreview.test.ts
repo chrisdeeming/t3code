@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { FILE_TEXT_PREVIEW_MAX_BYTES } from "@t3tools/shared/filePreview";
-import { readFilePreviewResponse } from "./filePreview";
+import { readFilePreviewResponse } from "./filePreview.ts";
 
 describe("readFilePreviewResponse", () => {
   it("cancels a pending read when its preview closes", async () => {
