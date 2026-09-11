@@ -495,6 +495,83 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(testLayer)),
   );
 
+  it.effect("issues draft workspace URLs without a thread", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-asset-draft-",
+      });
+      const htmlPath = path.join(root, "report.html");
+      const cssPath = path.join(root, "report.css");
+      yield* fileSystem.writeFileString(htmlPath, '<link rel="stylesheet" href="report.css">');
+      yield* fileSystem.writeFileString(cssPath, "body { color: red; }");
+      const canonicalHtmlPath = yield* fileSystem.realPath(htmlPath);
+      const canonicalCssPath = yield* fileSystem.realPath(cssPath);
+
+      const result = yield* issueAssetUrl({
+        resource: { _tag: "draft-workspace-file", cwd: root, path: "report.html" },
+        workspaceRoot: root,
+      });
+      const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+      const separatorIndex = suffix.indexOf("/");
+      const token = suffix.slice(0, separatorIndex);
+
+      expect(yield* resolveAsset(token, "report.html")).toEqual({
+        kind: "file",
+        path: canonicalHtmlPath,
+      });
+      expect(yield* resolveAsset(token, "report.css")).toEqual({
+        kind: "file",
+        path: canonicalCssPath,
+      });
+      expect(yield* resolveAsset(token, "../secret.txt")).toBeNull();
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("serves absolute draft media files exactly, wherever they live", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-asset-draft-root-",
+      });
+      const outside = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-asset-draft-outside-",
+      });
+      const clipPath = path.join(outside, "clip.mp4");
+      yield* fileSystem.writeFileString(clipPath, "video");
+      const canonicalClipPath = yield* fileSystem.realPath(clipPath);
+
+      const result = yield* issueAssetUrl({
+        resource: { _tag: "draft-workspace-file", cwd: root, path: clipPath },
+        workspaceRoot: root,
+      });
+      const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+      const separatorIndex = suffix.indexOf("/");
+      const token = suffix.slice(0, separatorIndex);
+
+      expect(yield* resolveAsset(token, "clip.mp4")).toMatchObject({
+        kind: "file",
+        path: canonicalClipPath,
+        mimeType: "video/mp4",
+      });
+      expect(yield* resolveAsset(token, "other.mp4")).toBeNull();
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("requires a workspace root for relative draft paths", () =>
+    Effect.gen(function* () {
+      const error = yield* issueAssetUrl({
+        resource: { _tag: "draft-workspace-file", cwd: "/draft", path: "report.html" },
+      }).pipe(Effect.flip);
+      expect(error).toMatchObject({
+        _tag: "AssetWorkspaceContextNotFoundError",
+        resource: { _tag: "draft-workspace-file", cwd: "/draft", path: "report.html" },
+      });
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect("preserves non-missing canonical path failures when issuing asset URLs", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

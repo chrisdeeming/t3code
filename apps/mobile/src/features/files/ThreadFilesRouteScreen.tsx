@@ -137,19 +137,6 @@ function FileContent(props: {
     isAudioFile ||
     (props.activeMode === "preview" && (isImageFile || isBrowserFile));
 
-  // A signed asset URL is minted against a thread's workspace. A draft has no thread, so these
-  // surfaces cannot render at all here; say so instead of spinning on a URL that never arrives.
-  if (needsAssetUrl && props.threadId === null) {
-    return (
-      <View className="flex-1 items-center justify-center bg-sheet px-6">
-        <EmptyState
-          title="Preview unavailable"
-          detail="This file can be previewed once the draft has started its thread."
-        />
-      </View>
-    );
-  }
-
   if (needsAssetUrl && props.previewFailure !== null) {
     return (
       <WorkspaceFilePreviewError
@@ -637,12 +624,13 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
     environmentId,
     relativePath: assetPreviewPath,
     threadId,
+    // A project draft names its workspace root explicitly: there is no thread to resolve one.
+    draftCwd: threadId === null ? cwd : null,
   });
   const assetPreviewUri = assetPreview._tag === "Success" ? assetPreview.url : null;
   const mediaSource = useMemo<MediaActionsSource | undefined>(
     () =>
       environmentId !== null &&
-      threadId !== null &&
       relativePath !== null &&
       assetPreview.resource !== null &&
       "path" in assetPreview.resource &&
@@ -655,7 +643,7 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
               mediaMimeTypeFromExtension(relativePath.slice(relativePath.lastIndexOf("."))) ??
               "application/octet-stream",
             environmentId,
-            threadId,
+            ...(threadId === null ? {} : { threadId }),
             resource: assetPreview.resource,
           }
         : undefined,
@@ -666,7 +654,8 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
     () =>
       environmentId !== null &&
       relativePath !== null &&
-      assetPreview.resource?._tag === "media-file"
+      (assetPreview.resource?._tag === "media-file" ||
+        assetPreview.resource?._tag === "draft-workspace-file")
         ? {
             type: "media",
             environmentId,

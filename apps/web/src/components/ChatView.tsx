@@ -424,6 +424,7 @@ import {
   resolveComposerInteractionMode,
   resolveComposerProviderSelection,
   resolveDraftHeroState,
+  restorePlanFollowUpComposer,
   isPaintOnlyThreadTimeline,
   peekHeldThreadTimeline,
   peekRememberedThreadTimeline,
@@ -6985,10 +6986,11 @@ export default function ChatView(props: ChatViewProps) {
       }
       // The composer is cleared before the send resolves, so hold everything it carried: a
       // transient failure must give the prose and its context back, as the ordinary send does.
+      // Snapshot exactly what was sent, copied, so later mutations cannot alias the backup.
       const followUpPromptSnapshot = promptRef.current;
-      const followUpTerminalContexts = composerTerminalContextsRef.current;
-      const followUpReviewComments = composerReviewComments;
-      const followUpPreviewAnnotations = composerPreviewAnnotations;
+      const followUpTerminalContexts = [...sendableComposerTerminalContexts];
+      const followUpReviewComments = [...composerReviewComments];
+      const followUpPreviewAnnotations = [...composerPreviewAnnotations];
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
@@ -7003,18 +7005,22 @@ export default function ChatView(props: ChatViewProps) {
       });
       if (!followUpSent) {
         promptRef.current = followUpPromptSnapshot;
-        composerTerminalContextsRef.current = followUpTerminalContexts;
-        setComposerDraftPrompt(composerDraftTarget, followUpPromptSnapshot);
-        setComposerDraftTerminalContexts(composerDraftTarget, followUpTerminalContexts);
-        setComposerDraftPreviewAnnotations(composerDraftTarget, followUpPreviewAnnotations);
-        setComposerDraftReviewComments(composerDraftTarget, followUpReviewComments);
-        composerRef.current?.resetCursorState({
-          cursor: collapseExpandedComposerCursor(
-            followUpPromptSnapshot,
-            followUpPromptSnapshot.length,
-          ),
-          prompt: followUpPromptSnapshot,
-          detectTrigger: true,
+        composerTerminalContextsRef.current = [...followUpTerminalContexts];
+        restorePlanFollowUpComposer({
+          snapshot: {
+            prompt: followUpPromptSnapshot,
+            terminalContexts: followUpTerminalContexts,
+            reviewComments: followUpReviewComments,
+            previewAnnotations: followUpPreviewAnnotations,
+          },
+          writePrompt: (prompt) => setComposerDraftPrompt(composerDraftTarget, prompt),
+          writeTerminalContexts: (contexts) =>
+            setComposerDraftTerminalContexts(composerDraftTarget, [...contexts]),
+          writeReviewComments: (comments) =>
+            setComposerDraftReviewComments(composerDraftTarget, [...comments]),
+          writePreviewAnnotations: (annotations) =>
+            setComposerDraftPreviewAnnotations(composerDraftTarget, [...annotations]),
+          resetCursor: (options) => composerRef.current?.resetCursorState(options),
         });
       }
       return;

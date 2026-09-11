@@ -259,6 +259,143 @@ const readImageDimensionsFromHeader = (filePath: string) =>
     Effect.orElseSucceed((): ImageDimensions | null => null),
   );
 
+const finalizeAbsoluteMediaFileAsset = Effect.fn("AssetAccess.finalizeAbsoluteMediaFileAsset")(
+  function* (input: {
+    readonly requestedPath: string;
+    readonly resource: AssetResource;
+    readonly expiresAt: number;
+  }) {
+    const path = yield* Path.Path;
+    const canonicalFile = yield* resolveCanonicalFile(input.requestedPath).pipe(
+      Effect.mapError(
+        (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
+      ),
+    );
+    if (!canonicalFile) {
+      return yield* new AssetWorkspaceAssetNotFoundError({ resource: input.resource });
+    }
+    if (hostPreviewMimeTypeFromExtension(path.extname(canonicalFile)) === null) {
+      return yield* new AssetPreviewTypeValidationError({ resource: input.resource });
+    }
+    const wantsDimensions = HEADER_IMAGE_EXTENSIONS.has(path.extname(canonicalFile).toLowerCase());
+    const opened = yield* openMediaFile(canonicalFile).pipe(
+      Effect.flatMap((file) =>
+        file === null
+          ? Effect.succeed(null)
+          : Effect.map(
+              wantsDimensions
+                ? readImageDimensionsFromOpenFile(canonicalFile, file)
+                : Effect.succeed(null),
+              (dimensions) => ({
+                identity: { device: file.info.dev.toString(), inode: file.info.ino.toString() },
+                dimensions,
+              }),
+            ),
+      ),
+      Effect.scoped,
+      Effect.mapError(
+        (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
+      ),
+    );
+    if (!opened) {
+      return yield* new AssetWorkspaceAssetNotFoundError({ resource: input.resource });
+    }
+    return {
+      claims: {
+        version: 1 as const,
+        kind: "media-file-exact" as const,
+        filePath: canonicalFile,
+        ...opened.identity,
+        expiresAt: input.expiresAt,
+      },
+      fileName: path.basename(canonicalFile),
+      imageDimensions: opened.dimensions,
+    };
+  },
+);
+
+const finalizeWorkspaceFileAsset = Effect.fn("AssetAccess.finalizeWorkspaceFileAsset")(
+  function* (input: {
+    readonly workspaceRoot: string;
+    readonly requestedPath: string;
+    readonly resource: AssetResource;
+    readonly expiresAt: number;
+  }) {
+    const path = yield* Path.Path;
+    const fileSystem = yield* FileSystem.FileSystem;
+    const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
+    const relativePath = path.isAbsolute(input.requestedPath)
+      ? path.relative(input.workspaceRoot, input.requestedPath)
+      : input.requestedPath;
+    const resolved = yield* workspacePaths
+      .resolveRelativePathWithinRoot({ workspaceRoot: input.workspaceRoot, relativePath })
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new AssetWorkspacePathValidationError({
+              resource: input.resource,
+              cause,
+            }),
+        ),
+      );
+    if (!isWorkspacePreviewEntryPath(resolved.relativePath)) {
+      return yield* new AssetPreviewTypeValidationError({
+        resource: input.resource,
+      });
+    }
+    const canonicalFile = yield* resolveCanonicalWorkspaceFile({
+      workspaceRoot: input.workspaceRoot,
+      relativePath: resolved.relativePath,
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new AssetWorkspaceAssetInspectionError({
+            resource: input.resource,
+            cause,
+          }),
+      ),
+    );
+    if (!canonicalFile) {
+      return yield* new AssetWorkspaceAssetNotFoundError({
+        resource: input.resource,
+      });
+    }
+    const canonicalWorkspaceRoot = yield* fileSystem.realPath(input.workspaceRoot).pipe(
+      Effect.mapError(
+        (cause) =>
+          new AssetWorkspaceResolutionError({
+            resource: input.resource,
+            cause,
+          }),
+      ),
+    );
+    const imageDimensions = HEADER_IMAGE_EXTENSIONS.has(
+      path.extname(resolved.relativePath).toLowerCase(),
+    )
+      ? yield* readImageDimensionsFromHeader(canonicalFile)
+      : null;
+    return {
+      claims: isWorkspaceImagePreviewPath(resolved.relativePath)
+        ? {
+            version: 1 as const,
+            kind: "workspace-file-exact" as const,
+            workspaceRoot: canonicalWorkspaceRoot,
+            relativePath: resolved.relativePath,
+            expiresAt: input.expiresAt,
+          }
+        : {
+            version: 1 as const,
+            kind: "workspace-file" as const,
+            workspaceRoot: canonicalWorkspaceRoot,
+            baseRelativePath: path.dirname(resolved.relativePath),
+            expiresAt: input.expiresAt,
+          },
+      fileName: path.basename(resolved.relativePath),
+      imageDimensions,
+    };
+  },
+);
+
 export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (input: {
   readonly resource: AssetResource;
   readonly workspaceRoot?: string;
@@ -290,52 +427,14 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
           );
         requestedPath = path.resolve(workspaceRoot, requestedPath);
       }
-      const canonicalFile = yield* resolveCanonicalFile(requestedPath).pipe(
-        Effect.mapError(
-          (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
-        ),
-      );
-      if (!canonicalFile) {
-        return yield* new AssetWorkspaceAssetNotFoundError({ resource: input.resource });
-      }
-      if (hostPreviewMimeTypeFromExtension(path.extname(canonicalFile)) === null) {
-        return yield* new AssetPreviewTypeValidationError({ resource: input.resource });
-      }
-      const wantsDimensions = HEADER_IMAGE_EXTENSIONS.has(
-        path.extname(canonicalFile).toLowerCase(),
-      );
-      const opened = yield* openMediaFile(canonicalFile).pipe(
-        Effect.flatMap((file) =>
-          file === null
-            ? Effect.succeed(null)
-            : Effect.map(
-                wantsDimensions
-                  ? readImageDimensionsFromOpenFile(canonicalFile, file)
-                  : Effect.succeed(null),
-                (dimensions) => ({
-                  identity: { device: file.info.dev.toString(), inode: file.info.ino.toString() },
-                  dimensions,
-                }),
-              ),
-        ),
-        Effect.scoped,
-        Effect.mapError(
-          (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
-        ),
-      );
-      if (!opened) {
-        return yield* new AssetWorkspaceAssetNotFoundError({ resource: input.resource });
-      }
-      const identity = opened.identity;
-      imageDimensions = opened.dimensions;
-      claims = {
-        version: 1,
-        kind: "media-file-exact",
-        filePath: canonicalFile,
-        ...identity,
+      const finalized = yield* finalizeAbsoluteMediaFileAsset({
+        requestedPath,
+        resource: input.resource,
         expiresAt,
-      };
-      fileName = path.basename(canonicalFile);
+      });
+      claims = finalized.claims;
+      fileName = finalized.fileName;
+      imageDimensions = finalized.imageDimensions;
       break;
     }
     case "workspace-file": {
@@ -353,70 +452,53 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
             }),
         ),
       );
-      const relativePath = path.isAbsolute(input.resource.path)
-        ? path.relative(workspaceRoot, input.resource.path)
-        : input.resource.path;
-      const resolved = yield* workspacePaths
-        .resolveRelativePathWithinRoot({ workspaceRoot, relativePath })
-        .pipe(
-          Effect.mapError(
-            (cause) =>
-              new AssetWorkspacePathValidationError({
-                resource: input.resource,
-                cause,
-              }),
-          ),
-        );
-      if (!isWorkspacePreviewEntryPath(resolved.relativePath)) {
-        return yield* new AssetPreviewTypeValidationError({
-          resource: input.resource,
-        });
-      }
-      const canonicalFile = yield* resolveCanonicalWorkspaceFile({
+      const finalized = yield* finalizeWorkspaceFileAsset({
         workspaceRoot,
-        relativePath: resolved.relativePath,
-      }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new AssetWorkspaceAssetInspectionError({
-              resource: input.resource,
-              cause,
-            }),
-        ),
-      );
-      if (!canonicalFile) {
-        return yield* new AssetWorkspaceAssetNotFoundError({
+        requestedPath: input.resource.path,
+        resource: input.resource,
+        expiresAt,
+      });
+      claims = finalized.claims;
+      fileName = finalized.fileName;
+      imageDimensions = finalized.imageDimensions;
+      break;
+    }
+    case "draft-workspace-file": {
+      if (!input.workspaceRoot) {
+        return yield* new AssetWorkspaceContextNotFoundError({
           resource: input.resource,
         });
       }
-      const canonicalWorkspaceRoot = yield* fileSystem.realPath(workspaceRoot).pipe(
+      if (path.isAbsolute(input.resource.path)) {
+        // An absolute draft path serves exactly like an absolute media path.
+        const finalized = yield* finalizeAbsoluteMediaFileAsset({
+          requestedPath: input.resource.path,
+          resource: input.resource,
+          expiresAt,
+        });
+        claims = finalized.claims;
+        fileName = finalized.fileName;
+        imageDimensions = finalized.imageDimensions;
+        break;
+      }
+      const workspaceRoot = yield* workspacePaths.normalizeWorkspaceRoot(input.workspaceRoot).pipe(
         Effect.mapError(
           (cause) =>
-            new AssetWorkspaceResolutionError({
+            new AssetWorkspaceRootNormalizationError({
               resource: input.resource,
               cause,
             }),
         ),
       );
-      if (HEADER_IMAGE_EXTENSIONS.has(path.extname(resolved.relativePath).toLowerCase())) {
-        imageDimensions = yield* readImageDimensionsFromHeader(canonicalFile);
-      }
-      claims = isWorkspaceImagePreviewPath(resolved.relativePath)
-        ? {
-            version: 1,
-            kind: "workspace-file-exact",
-            workspaceRoot: canonicalWorkspaceRoot,
-            relativePath: resolved.relativePath,
-            expiresAt,
-          }
-        : {
-            version: 1,
-            kind: "workspace-file",
-            workspaceRoot: canonicalWorkspaceRoot,
-            baseRelativePath: path.dirname(resolved.relativePath),
-            expiresAt,
-          };
-      fileName = path.basename(resolved.relativePath);
+      const finalized = yield* finalizeWorkspaceFileAsset({
+        workspaceRoot,
+        requestedPath: input.resource.path,
+        resource: input.resource,
+        expiresAt,
+      });
+      claims = finalized.claims;
+      fileName = finalized.fileName;
+      imageDimensions = finalized.imageDimensions;
       break;
     }
     case "attachment": {
