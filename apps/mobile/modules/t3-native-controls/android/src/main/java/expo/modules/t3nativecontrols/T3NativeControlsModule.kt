@@ -11,6 +11,7 @@ import java.net.URI
 class T3NativeControlsModule : Module() {
   private var filePreviewPromise: Promise? = null
 
+  @Suppress("TooGenericExceptionCaught") // Clear the pending promise before rethrowing.
   override fun definition() = ModuleDefinition {
     Name("T3NativeControls")
 
