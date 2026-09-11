@@ -1012,11 +1012,15 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       }),
     );
 
-    it.effect("keeps interactive Vite stdin in the foreground process group", () =>
+    it.effect("owns backend process groups while preserving interactive Vite stdin", () =>
       Effect.gen(function* () {
-        const detachedFor = (platform: NodeJS.Platform) =>
+        const detachedFor = (
+          mode: Parameters<typeof runDevRunnerWithInput>[0]["mode"],
+          platform: NodeJS.Platform,
+        ) =>
           Effect.gen(function* () {
             const detached: Array<boolean | undefined> = [];
+            const expectedSpawnCount = mode === "dev:desktop" ? 3 : 1;
             const allSpawned = yield* Deferred.make<void>();
             const spawnerLayer = Layer.succeed(
               ChildProcessSpawner.ChildProcessSpawner,
@@ -1025,7 +1029,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
                   if (command._tag === "StandardCommand") {
                     detached.push(command.options.detached);
                   }
-                  if (detached.length === 3) {
+                  if (detached.length === expectedSpawnCount) {
                     yield* Deferred.succeed(allSpawned, undefined);
                   }
                   return mockProcessWithExitCode(
@@ -1035,21 +1039,27 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
               ),
             );
 
-            yield* runDevRunnerWithInput({
+            const run = runDevRunnerWithInput({
               ...devServerInput,
-              mode: "dev:desktop",
+              mode,
               port: undefined,
             }).pipe(
               Effect.provide(Layer.mergeAll(emptyConfigLayer, netServiceLayer, spawnerLayer)),
               Effect.provideService(HostProcessPlatform, platform),
-              Effect.flip,
             );
+            yield* mode === "dev:desktop" ? Effect.flip(run) : run;
 
             return detached;
           });
 
-        assert.deepStrictEqual(yield* detachedFor("linux"), [false, true, true]);
-        assert.deepStrictEqual(yield* detachedFor("win32"), [false, false, false]);
+        assert.deepStrictEqual(yield* detachedFor("dev:server", "linux"), [true]);
+        assert.deepStrictEqual(yield* detachedFor("dev:server", "win32"), [false]);
+        for (const platform of ["linux", "win32"] as const) {
+          assert.deepStrictEqual(yield* detachedFor("dev", platform), [false]);
+          assert.deepStrictEqual(yield* detachedFor("dev:web", platform), [false]);
+        }
+        assert.deepStrictEqual(yield* detachedFor("dev:desktop", "linux"), [false, true, true]);
+        assert.deepStrictEqual(yield* detachedFor("dev:desktop", "win32"), [false, false, false]);
       }),
     );
 

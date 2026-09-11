@@ -826,7 +826,7 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
             argumentCount: spawnCommand.args.length,
             shell: spawnCommand.shell,
           } as const;
-          const isInteractiveViteTask = modeArgs.at(-1) === "dev";
+          const isInteractiveViteTask = input.mode !== "dev:server" && modeArgs.at(-1) === "dev";
           const child = yield* ChildProcess.make(spawnCommand.command, spawnCommand.args, {
             stdin: "inherit",
             stdout: "inherit",
@@ -836,8 +836,8 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
             shell: spawnCommand.shell,
             // Keep interactive Vite tasks in the terminal's foreground group
             // so their inherited stdin and keyboard shortcuts remain usable.
-            // Non-interactive desktop siblings get owned process groups on
-            // Unix; Windows uses taskkill /T for tree cleanup instead.
+            // Backend-only dev and non-interactive desktop tasks get owned
+            // groups on Unix; Windows uses taskkill /T for tree cleanup instead.
             detached: hostPlatform !== "win32" && !isInteractiveViteTask,
             forceKillAfter: "1500 millis",
           }).pipe(
