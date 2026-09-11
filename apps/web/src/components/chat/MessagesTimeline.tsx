@@ -197,6 +197,7 @@ import {
   pullRequestContextKindLabel,
   resolveUserMessageContext,
   reviewCommentContextLabel,
+  selectedMessageContextFragment,
 } from "~/lib/composerContextRecords";
 import {
   collectComposerContextReferences,
@@ -204,8 +205,10 @@ import {
 } from "@t3tools/shared/composerContextReferences";
 import {
   COMPOSER_CONTEXT_CLIPBOARD_MIME,
+  encodeComposerContextClipboardHtml,
   encodeComposerContextFragment,
 } from "@t3tools/shared/composerContextClipboard";
+import { chatMarkdownClipboardPayload } from "../../markdown-clipboard";
 import {
   CHAT_INLINE_CHIP_CLASS_NAME,
   CHAT_INLINE_CHIP_LABEL_CLASS_NAME,
@@ -1483,21 +1486,26 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         copiedMarkdown.push(element.getAttribute("data-markdown-copy") ?? "");
       }
     }
-    const selectedIds = new Set(
-      collectComposerContextReferences(copiedMarkdown.join("\n")).map((o) => o.contextId),
-    );
-    const records = resolvedContext.records.filter((record) => selectedIds.has(record.contextId));
-    if (records.length === 0) return;
-    const fragment = encodeComposerContextFragment({
-      version: 1,
-      source: {
-        environmentId: ctx.activeThreadEnvironmentId,
-        ...(ctx.threadRef ? { threadId: ctx.threadRef.threadId } : {}),
-        messageId: row.message.id,
-      },
-      records,
+    const fragment = selectedMessageContextFragment({
+      markdown: copiedMarkdown.join("\n"),
+      records: resolvedContext.records,
+      environmentId: ctx.activeThreadEnvironmentId,
+      ...(ctx.threadRef ? { threadId: ctx.threadRef.threadId } : {}),
+      messageId: row.message.id,
     });
-    if (fragment) event.clipboardData.setData(COMPOSER_CONTEXT_CLIPBOARD_MIME, fragment);
+    if (!fragment) return;
+    // Claim the copy: without preventDefault the browser default overwrites the
+    // custom MIME type. The default content must then be written back explicitly.
+    const payload = chatMarkdownClipboardPayload(selection);
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", payload?.text ?? selection.toString());
+    if (payload) {
+      event.clipboardData.setData(
+        "text/html",
+        encodeComposerContextClipboardHtml(payload.text, fragment, payload.html),
+      );
+    }
+    event.clipboardData.setData(COMPOSER_CONTEXT_CLIPBOARD_MIME, fragment);
   };
   const renderContextReference = useCallback(
     (reference: ChatMarkdownContextReference) => {

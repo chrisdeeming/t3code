@@ -566,6 +566,26 @@ describe("nativeMarkdownDocumentRuns", () => {
         .join(""),
     ).toBe("BASH\npnpm install");
   });
+
+  it("keeps adjacent context links with the same href in separate runs", () => {
+    const href = "t3-context://v1/terminal/ctx-1";
+    const link = (content: string): MarkdownNode => ({
+      type: "link",
+      href,
+      children: [{ type: "text", content }],
+    });
+    const runs = nativeMarkdownDocumentRuns({
+      type: "document",
+      children: [{ type: "paragraph", children: [link("First"), link("Second")] }],
+    });
+
+    // Merging these would render one chip and emit one copy range with a
+    // combined label for two distinct references.
+    expect(runs).toEqual([
+      { text: "First", role: "body", href, fileIcon: "bash" },
+      { text: "Second", role: "body", href, fileIcon: "bash" },
+    ]);
+  });
 });
 
 describe("nativeMarkdownListItemBlocks", () => {

@@ -5,9 +5,11 @@ import {
 import type {
   ComposerContextId,
   ComposerContextRecord,
+  EnvironmentId,
   FileContextRecord,
   ImageContextRecord,
   KnownComposerContextRecord,
+  MessageId,
   OrchestrationMessageContext,
   PreviewAnnotationContextRecord,
   PreviewAnnotationPayload,
@@ -16,7 +18,11 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
-import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
+import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
+import {
+  collectComposerContextReferences,
+  sanitizeComposerContextLabel,
+} from "@t3tools/shared/composerContextReferences";
 
 import {
   type ComposerContextReference,
@@ -338,6 +344,35 @@ export interface ResolvedUserMessageContext {
   text: string;
   records: ReadonlyArray<ComposerContextRecord>;
   recordsById: ReadonlyMap<string, ComposerContextRecord>;
+}
+
+/**
+ * The clipboard fragment behind a timeline message selection: only records for
+ * chips actually inside the selection travel, so copying prose next to an
+ * image never starts importing that image somewhere else. Returns null when no
+ * selected chip has backing records.
+ */
+export function selectedMessageContextFragment(input: {
+  readonly markdown: string;
+  readonly records: ReadonlyArray<ComposerContextRecord>;
+  readonly environmentId: EnvironmentId;
+  readonly threadId?: ThreadId;
+  readonly messageId: MessageId;
+}): string | null {
+  const selectedIds = new Set(
+    collectComposerContextReferences(input.markdown).map((occurrence) => occurrence.contextId),
+  );
+  const records = input.records.filter((record) => selectedIds.has(record.contextId));
+  if (records.length === 0) return null;
+  return encodeComposerContextFragment({
+    version: 1,
+    source: {
+      environmentId: input.environmentId,
+      ...(input.threadId ? { threadId: input.threadId } : {}),
+      messageId: input.messageId,
+    },
+    records,
+  });
 }
 
 /** A message's canonical text plus records; old messages are upgraded in memory on read. */

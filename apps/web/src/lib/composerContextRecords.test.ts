@@ -1,5 +1,6 @@
 import {
   EnvironmentId,
+  MessageId,
   OrchestrationMessageContext,
   ThreadId,
   type PreviewAnnotationPayload,
@@ -26,6 +27,7 @@ import {
   previewAnnotationContextRecord,
   previewAnnotationFromRecord,
   resolveUserMessageContext,
+  selectedMessageContextFragment,
   reviewCommentContextLabel,
   reviewCommentContextRecord,
   reviewCommentFromRecord,
@@ -680,5 +682,56 @@ describe("producer ids that do not fit the grammar", () => {
         context: { version: 1, records: [record] },
       }).recordsById.has(record.contextId),
     ).toBe(true);
+  });
+});
+
+describe("selectedMessageContextFragment", () => {
+  const terminal = terminalContextRecord({
+    id: "term-1",
+    threadId: ThreadId.make("t"),
+    createdAt: "2026-01-01T00:00:00.000Z",
+    terminalId: "default",
+    terminalLabel: "Terminal 1",
+    lineStart: 1,
+    lineEnd: 1,
+    text: "A",
+  });
+  const review = reviewCommentContextRecord({
+    id: "rc-1",
+    sectionId: "s",
+    sectionTitle: "t",
+    filePath: "a/b.ts",
+    startIndex: 3,
+    endIndex: 3,
+    rangeLabel: "L4",
+    text: "",
+    diff: "",
+  });
+  const input = {
+    records: [terminal, review],
+    environmentId: EnvironmentId.make("env"),
+    threadId: ThreadId.make("t"),
+    messageId: MessageId.make("msg-1"),
+  };
+
+  it("carries only records for chips inside the selection", () => {
+    const fragment = selectedMessageContextFragment({
+      ...input,
+      markdown: `see [b.ts L4](t3-context://v1/review-comment/${review.contextId})`,
+    });
+
+    expect(fragment).toContain(review.contextId);
+    expect(fragment).not.toContain(terminal.contextId);
+  });
+
+  it("returns null when no selected chip has backing records", () => {
+    expect(selectedMessageContextFragment({ ...input, markdown: "just prose" })).toBeNull();
+    expect(
+      selectedMessageContextFragment({
+        ...input,
+        records: [],
+        markdown: `[b.ts L4](t3-context://v1/review-comment/${review.contextId})`,
+      }),
+    ).toBeNull();
   });
 });
