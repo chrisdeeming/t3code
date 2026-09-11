@@ -651,6 +651,10 @@ private class SelectionAwareEditText(context: Context) : EditText(context) {
       pasteContextListener?.invoke(payload)
       return true
     }
+    return pasteImagesOrInterceptedText()
+  }
+
+  private fun pasteImagesOrInterceptedText(): Boolean {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
     val clip = clipboard?.primaryClip
     val imageUris = buildList {
@@ -663,20 +667,24 @@ private class SelectionAwareEditText(context: Context) : EditText(context) {
         }
       }
     }
-    if (imageUris.isNotEmpty()) {
-      pasteImagesListener?.invoke(imageUris)
-      return true
+    return when {
+      imageUris.isNotEmpty() -> {
+        pasteImagesListener?.invoke(imageUris)
+        true
+      }
+      else -> pasteInterceptedText(clip)
     }
+  }
+
+  private fun pasteInterceptedText(clip: ClipData?): Boolean {
     val text = if (interceptTextPastes) clip?.plainText() else null
-    if (!text.isNullOrEmpty()) {
-      pasteTextListener?.invoke(
-        text,
-        selectionStart.coerceAtLeast(0),
-        selectionEnd.coerceAtLeast(0),
-      )
-      return true
-    }
-    return false
+    if (text.isNullOrEmpty()) return false
+    pasteTextListener?.invoke(
+      text,
+      selectionStart.coerceAtLeast(0),
+      selectionEnd.coerceAtLeast(0),
+    )
+    return true
   }
 
   // coerceToText opens content: URIs synchronously. Leave URI-backed

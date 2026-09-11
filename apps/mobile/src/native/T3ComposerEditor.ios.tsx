@@ -88,6 +88,7 @@ interface NativeComposerEditorProps extends ViewProps {
   readonly onComposerPasteContext?: (
     event: NativeSyntheticEvent<{ text: string; fragment: string; html: string }>,
   ) => void;
+  readonly interceptTextPastes: boolean;
   readonly onComposerPasteText?: (event: NativePasteTextEvent) => void;
   readonly onComposerFocus?: () => void;
   readonly onComposerBlur?: () => void;
