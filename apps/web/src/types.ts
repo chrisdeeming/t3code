@@ -65,7 +65,9 @@ export function isImageAttachment(attachment: ChatAttachment): attachment is Cha
 }
 
 export function isFileAttachment(attachment: ChatAttachment): attachment is ChatFileAttachment {
-  return attachment.type === "file";
+  // Disjoint from `isImageAttachment` on purpose: a legacy `file` carrying an image reads as a
+  // picture, and callers filter both sets independently, so overlap renders it twice.
+  return attachment.type === "file" && !isImageAttachment(attachment);
 }
 
 export function isVideoAttachment(attachment: ChatFileAttachment): boolean {

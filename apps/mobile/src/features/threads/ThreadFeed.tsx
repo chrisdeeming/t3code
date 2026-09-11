@@ -1789,20 +1789,21 @@ function LegacyUserMessageContent(props: UserMessageContentProps) {
   const text = props.text;
   const segments = parseReviewCommentMessageSegments(text);
   const hasReviewComment = segments.some((segment) => segment.kind === "review-comment");
+  // A message can hold both a review comment and context chips. The fragment travels with every
+  // text run, so copying from the segmented branch carries the same context as the plain one.
+  const contextClipboardFragment = props.context
+    ? (encodeComposerContextFragment({
+        version: 1,
+        source: { environmentId: props.environmentId },
+        records: props.context.records,
+      }) ?? undefined)
+    : undefined;
   if (!hasReviewComment) {
     if (hasNativeSelectableMarkdownText()) {
       return (
         <SelectableMarkdownText
           markdown={text}
-          contextClipboardFragment={
-            props.context
-              ? (encodeComposerContextFragment({
-                  version: 1,
-                  source: { environmentId: props.environmentId },
-                  records: props.context.records,
-                }) ?? undefined)
-              : undefined
-          }
+          contextClipboardFragment={contextClipboardFragment}
           skills={props.skills}
           textStyle={props.markdownStyles.nativeTextStyle}
           preserveSoftBreaks
@@ -1845,6 +1846,7 @@ function LegacyUserMessageContent(props: UserMessageContentProps) {
           <SelectableMarkdownText
             key={segment.id}
             markdown={text}
+            contextClipboardFragment={contextClipboardFragment}
             skills={props.skills}
             textStyle={props.markdownStyles.nativeTextStyle}
             preserveSoftBreaks

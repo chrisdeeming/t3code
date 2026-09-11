@@ -146,6 +146,24 @@ describe("video asset byte ranges", () => {
     }).pipe(Effect.provide(fileResponseLayer)),
   );
 
+  it.effect("keeps attachment media out of the cache once its signed URL expires", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-attachment-media-" });
+      const filePath = path.join(directory, "audio.wav");
+      yield* fs.writeFileString(filePath, "RIFF");
+      const canonicalPath = yield* fs.realPath(filePath);
+      // An attachment is read straight from disk, so it carries no opened host file. Its URL is
+      // signed and short-lived; a cached copy would outlive the grant that served it.
+      const response = HttpServerResponse.toWeb(
+        yield* assetFileResponse({ path: canonicalPath, mimeType: "audio/wav" }),
+      );
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("accept-ranges")).toBe("bytes");
+    }).pipe(Effect.provide(fileResponseLayer)),
+  );
+
   it.effect("closes guarded descriptors after full, HEAD, rejected, and cancelled responses", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

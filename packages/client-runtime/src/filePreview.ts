@@ -5,7 +5,11 @@ export async function readFilePreviewResponse(
   response: Pick<Response, "ok" | "body">,
   signal: AbortSignal,
 ) {
-  if (!response.ok) throw new Error("The file could not be loaded. Reconnect and try again.");
+  if (!response.ok) {
+    // A streamed error body holds the connection open until GC otherwise.
+    void response.body?.cancel().catch(() => undefined);
+    throw new Error("The file could not be loaded. Reconnect and try again.");
+  }
   if (signal.aborted) throw new Error("Preview cancelled.");
   const limit = FILE_TEXT_PREVIEW_MAX_BYTES + 1;
   const reader = response.body?.getReader();

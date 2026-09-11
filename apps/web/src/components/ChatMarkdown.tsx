@@ -1689,6 +1689,20 @@ function plainHastText(node: unknown): string | null {
 }
 
 /**
+ * The anchor's words, gathered through any nesting. A context label that picked up emphasis or a
+ * code span still has to read as its label; `plainHastText` gives up on the first non-text child,
+ * which would leave the raw context id showing in its place.
+ */
+function hastPlainTextDeep(node: unknown): string {
+  if (!node || typeof node !== "object") return "";
+  if ("type" in node && node.type === "text" && "value" in node && typeof node.value === "string") {
+    return node.value;
+  }
+  if (!("children" in node) || !Array.isArray(node.children)) return "";
+  return node.children.map(hastPlainTextDeep).join("");
+}
+
+/**
  * Whether the link carries any words of its own. An anchor that is only an image — a badge, a
  * "Fix in Cursor" button — already shows its identity, and a favicon bolted on in front of it
  * is a stray logo rather than a hint.
@@ -2771,7 +2785,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     if (citation) return <AssistantCitationChip citation={citation} />;
     const contextReference = href ? parseComposerContextHref(href) : null;
     if (contextReference) {
-      const label = plainHastText(node) ?? contextReference.contextId;
+      const label = hastPlainTextDeep(node) || contextReference.contextId;
       return renderContextReference ? (
         renderContextReference({ ...contextReference, label })
       ) : (

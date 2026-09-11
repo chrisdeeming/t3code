@@ -6983,10 +6983,16 @@ export default function ChatView(props: ChatViewProps) {
       if (composerRef.current?.validateProviderInput(outgoingFollowUpText) === false) {
         return;
       }
+      // The composer is cleared before the send resolves, so hold everything it carried: a
+      // transient failure must give the prose and its context back, as the ordinary send does.
+      const followUpPromptSnapshot = promptRef.current;
+      const followUpTerminalContexts = composerTerminalContextsRef.current;
+      const followUpReviewComments = composerReviewComments;
+      const followUpPreviewAnnotations = composerPreviewAnnotations;
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
-      await onSubmitPlanFollowUp({
+      const followUpSent = await onSubmitPlanFollowUp({
         text: followUp.text,
         context: buildMessageContext({
           terminalContexts: sendableComposerTerminalContexts,
@@ -6995,6 +7001,22 @@ export default function ChatView(props: ChatViewProps) {
         }),
         interactionMode: followUp.interactionMode,
       });
+      if (!followUpSent) {
+        promptRef.current = followUpPromptSnapshot;
+        composerTerminalContextsRef.current = followUpTerminalContexts;
+        setComposerDraftPrompt(composerDraftTarget, followUpPromptSnapshot);
+        setComposerDraftTerminalContexts(composerDraftTarget, followUpTerminalContexts);
+        setComposerDraftPreviewAnnotations(composerDraftTarget, followUpPreviewAnnotations);
+        setComposerDraftReviewComments(composerDraftTarget, followUpReviewComments);
+        composerRef.current?.resetCursorState({
+          cursor: collapseExpandedComposerCursor(
+            followUpPromptSnapshot,
+            followUpPromptSnapshot.length,
+          ),
+          prompt: followUpPromptSnapshot,
+          detectTrigger: true,
+        });
+      }
       return;
     }
     // Providers without the legacy toggle receive their native commands unchanged.
@@ -7821,7 +7843,9 @@ export default function ChatView(props: ChatViewProps) {
       text: string;
       context?: ReturnType<typeof buildMessageContext>;
       interactionMode: "default" | "plan";
-    }) => {
+      // Whether the message actually went out. A `false` return tells the caller to put the
+      // composer back, because it cleared it before awaiting this.
+    }): Promise<boolean> => {
       if (
         !activeThread ||
         !isServerThread ||
@@ -7829,17 +7853,17 @@ export default function ChatView(props: ChatViewProps) {
         isConnecting ||
         sendInFlightRef.current
       ) {
-        return;
+        return false;
       }
 
       const trimmed = text.trim();
       if (!trimmed) {
-        return;
+        return false;
       }
 
       const sendCtx = composerRef.current?.getSendContext();
       if (!sendCtx?.providerAvailable || !sendCtx.interactionModeEnabled) {
-        return;
+        return false;
       }
       const {
         selectedProvider: ctxSelectedProvider,
@@ -7941,7 +7965,7 @@ export default function ChatView(props: ChatViewProps) {
         clearUsageLimitsFor(routeThreadKey);
         acknowledgeActiveThreadWoke();
         sendInFlightRef.current = false;
-        return;
+        return true;
       }
 
       setOptimisticUserMessages((existing) =>
@@ -7956,6 +7980,7 @@ export default function ChatView(props: ChatViewProps) {
       }
       sendInFlightRef.current = false;
       resetLocalDispatch();
+      return false;
     },
     [
       activeThread,

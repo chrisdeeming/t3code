@@ -34,6 +34,21 @@ describe("readFilePreviewResponse", () => {
       readFilePreviewResponse(new Response(null, { status: 403 }), signal),
     ).rejects.toThrow("could not be loaded");
   });
+  it("cancels a streamed error body instead of leaving it open", async () => {
+    const signal = new AbortController().signal;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      },
+    });
+
+    await expect(
+      readFilePreviewResponse(new Response(body, { status: 500 }), signal),
+    ).rejects.toThrow("could not be loaded");
+    expect(cancelled).toBe(true);
+  });
+
   it("stops consuming an unbounded response and cancels its stream", async () => {
     let cancelled = false;
     const body = new ReadableStream<Uint8Array>({

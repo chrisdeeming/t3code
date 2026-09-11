@@ -137,6 +137,19 @@ function FileContent(props: {
     isAudioFile ||
     (props.activeMode === "preview" && (isImageFile || isBrowserFile));
 
+  // A signed asset URL is minted against a thread's workspace. A draft has no thread, so these
+  // surfaces cannot render at all here; say so instead of spinning on a URL that never arrives.
+  if (needsAssetUrl && props.threadId === null) {
+    return (
+      <View className="flex-1 items-center justify-center bg-sheet px-6">
+        <EmptyState
+          title="Preview unavailable"
+          detail="This file can be previewed once the draft has started its thread."
+        />
+      </View>
+    );
+  }
+
   if (needsAssetUrl && props.previewFailure !== null) {
     return (
       <WorkspaceFilePreviewError
@@ -690,13 +703,27 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
 
   const handleSelectFile = useCallback(
     (path: string) => {
+      const segments = path.split("/").filter(Boolean);
+      // A draft has no thread. `ThreadFile` would stringify null and then wait forever for a
+      // thread to resolve, so a draft stays on its own route and carries its workspace along.
+      if (threadId === null) {
+        navigation.dispatch(
+          StackActions.push("NewTaskFile", {
+            environmentId: String(environmentId),
+            ...(cwd === null ? {} : { cwd }),
+            projectName,
+            path: segments,
+          }),
+        );
+        return;
+      }
       navigation.navigate("ThreadFile", {
         environmentId: String(environmentId),
         threadId: String(threadId),
-        path: path.split("/").filter(Boolean),
+        path: segments,
       });
     },
-    [environmentId, navigation, threadId],
+    [cwd, environmentId, navigation, projectName, threadId],
   );
   const renderInspector = useCallback(
     (headerInset: number) =>

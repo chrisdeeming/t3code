@@ -171,9 +171,10 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
   const mediaFile = asset.file;
   const mediaInfo = mediaFile ? yield* statMediaFile(asset.path, mediaFile) : undefined;
   const isMedia = /^(?:audio|video)\//i.test(headers["Content-Type"] ?? "");
-  if (mediaFile && isMedia) {
+  if (isMedia) {
     // Host media can change in place. Do not invite conditional range requests
-    // with validators that cannot establish byte-for-byte identity.
+    // with validators that cannot establish byte-for-byte identity. Attachment media
+    // carries no `file`, and must not outlive the signed URL that granted it either.
     headers["Cache-Control"] = "private, no-store";
   }
   let status = 200;

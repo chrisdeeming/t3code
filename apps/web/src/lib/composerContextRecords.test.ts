@@ -673,7 +673,7 @@ describe("producer ids that do not fit the grammar", () => {
       text: "",
       diff: "",
     });
-    expect(record.contextId).toMatch(/^review-comment_pull-request-finding-42-[0-9a-f]{8}$/);
+    expect(record.contextId).toMatch(/^review-comment_pull-request-finding-42-[0-9a-f]{16}$/);
     expect(
       resolveUserMessageContext({
         text: `[b.ts L1](t3-context://v1/review-comment/${record.contextId})`,

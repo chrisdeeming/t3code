@@ -2808,15 +2808,15 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
     },
     {
       kind: "file",
+      // A file chip names its attachment by id, so it renders whatever came back under that id.
+      // `isFileAttachment` excludes pictures, which a legacy `file` attachment may still be.
       canRender: (record, context) =>
-        record.kind === "file" &&
-        context.attachment !== null &&
-        isFileAttachment(context.attachment),
+        record.kind === "file" && context.attachment !== null && context.attachment.type === "file",
       render: (record, context) => {
         if (
           record.kind !== "file" ||
           context.attachment === null ||
-          !isFileAttachment(context.attachment)
+          context.attachment.type !== "file"
         ) {
           return <UnavailableUserMessageContextChip {...context} />;
         }

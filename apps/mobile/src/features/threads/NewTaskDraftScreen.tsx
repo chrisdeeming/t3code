@@ -1142,6 +1142,10 @@ export function NewTaskDraftScreen(props: {
     !voiceInput.blocksSubmission &&
     !(flow.workspaceMode === "worktree" && !flow.selectedBranchName);
   const openDraftDocument = (attachment: ComposerDocumentAttachment) => {
+    // A draft attachment lives only in the draft. Without its key the screen would fall through
+    // to a remote lookup for bytes the server has never seen.
+    const draftKey = flow.draftKey;
+    if (!draftKey) return;
     promptInputRef.current?.blur();
     void KeyboardController.dismiss({ animated: true });
     navigation.dispatch(
@@ -1151,7 +1155,7 @@ export function NewTaskDraftScreen(props: {
         name: attachment.name,
         mimeType: attachment.mimeType,
         sizeBytes: String(attachment.sizeBytes),
-        draftKey: flow.draftKey,
+        draftKey,
       }),
     );
   };

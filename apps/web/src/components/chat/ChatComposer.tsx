@@ -5160,8 +5160,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       const storedIds = new Set(addComposerFilesToDraft(acceptedFiles));
       const storedFiles = acceptedFiles.filter((file) => storedIds.has(file.id));
       if (storedFiles.length > 0) {
-        insertAttachmentReferences(storedFiles.map(fileContextReference));
-        insertedAny = true;
+        insertedAny = insertAttachmentReferences(storedFiles.map(fileContextReference));
       }
     }
     if (acceptedImages.length === 0) return insertedAny;
@@ -5217,8 +5216,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       );
       const storedImages = nextImages.filter((image) => storedImageIds.has(image.id));
       if (storedImages.length > 0) {
-        insertAttachmentReferences(storedImages.map(imageContextReference));
-        insertedAny = true;
+        insertedAny =
+          insertAttachmentReferences(storedImages.map(imageContextReference)) || insertedAny;
       }
       // Only failures are reported here. Success must not pass `null`: by
       // now other work (a failed send, an overlapping paste) may have set a
@@ -5245,16 +5244,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    * Chips for freshly attached files land at the caret; when the editor cannot take
    * input (approval, pending questions) they are appended so the file is never invisible.
    */
-  const insertAttachmentReferences = (references: ReadonlyArray<ComposerContextReference>) => {
-    if (references.length === 0) return;
+  const insertAttachmentReferences = (
+    references: ReadonlyArray<ComposerContextReference>,
+  ): boolean => {
+    if (references.length === 0) return false;
     // Question answers carry attachments beside the answer, never as chips. Falling back to
     // the thread prompt here would hide the file behind a reference the question never shows.
-    if (questionAttachmentTarget) return;
+    if (questionAttachmentTarget) return false;
     const text = references.map(formatInlineContextReference).join(" ");
     const inserted = insertComposerText(`${text} `, "cursor", { ensureLeadingBoundary: true });
     if (!inserted) {
       setPrompt(ensureInlineContextReferences(promptRef.current, references));
     }
+    return true;
   };
 
   const removeComposerImage = (imageId: string) => {

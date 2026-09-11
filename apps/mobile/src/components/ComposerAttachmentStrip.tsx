@@ -113,6 +113,9 @@ const PREVIEW_CACHE_DIRECTORY = "t3-composer-previews";
  * time until the renderer aborts. Inline bytes are written to the cache once and
  * the thumbnail renders from that file instead.
  */
+/** Roughly 192KB of base64: small enough that re-parsing it per layout stays imperceptible. */
+const INLINE_PREVIEW_FALLBACK_MAX_CHARS = 256_000;
+
 async function materializeDataUrlPreview(id: string, dataUrl: string): Promise<string | null> {
   const comma = dataUrl.indexOf(",");
   if (comma < 0) return null;
@@ -133,7 +136,7 @@ async function materializeDataUrlPreview(id: string, dataUrl: string): Promise<s
 function useComposerImagePreviewUri(attachment: DraftComposerImageAttachment): string | null {
   const { id, fileUri, previewUri } = attachment;
   const [rebased, setRebased] = useState<{ fileUri: string; uri: string } | null>(null);
-  const [materialized, setMaterialized] = useState<{ id: string; uri: string } | null>(null);
+  const [materialized, setMaterialized] = useState<{ id: string; uri: string | null } | null>(null);
   const inlinePreview = fileUri === undefined && previewUri.startsWith("data:");
   useEffect(() => {
     if (fileUri === undefined) return;
@@ -157,6 +160,8 @@ function useComposerImagePreviewUri(attachment: DraftComposerImageAttachment): s
       })
       .catch((error: unknown) => {
         console.warn("[composer-attachments] could not cache an image preview", error);
+        // Record the failure so the thumbnail stops waiting on a file that will never arrive.
+        if (!cancelled) setMaterialized({ id, uri: null });
       });
     return () => {
       cancelled = true;
@@ -164,7 +169,16 @@ function useComposerImagePreviewUri(attachment: DraftComposerImageAttachment): s
   }, [id, inlinePreview, previewUri]);
   if (fileUri !== undefined && rebased?.fileUri === fileUri) return rebased.uri;
   if (fileUri !== undefined) return previewUri.startsWith("data:") ? fileUri : previewUri;
-  if (inlinePreview) return materialized?.id === id ? materialized.uri : null;
+  if (inlinePreview) {
+    if (materialized?.id !== id) return null;
+    // Falling back to the data URL is a last resort: a large one re-parses on every layout and
+    // starves the Fabric commit, which is what the cache file exists to avoid. Small ones are
+    // cheap enough to render directly rather than leaving the thumbnail blank forever.
+    return (
+      materialized.uri ??
+      (previewUri.length <= INLINE_PREVIEW_FALLBACK_MAX_CHARS ? previewUri : null)
+    );
+  }
   return previewUri;
 }
 

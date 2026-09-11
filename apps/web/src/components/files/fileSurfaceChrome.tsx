@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { Spinner } from "~/components/ui/spinner";
+import { Button } from "~/components/ui/button";
 import { Toggle } from "~/components/ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { DIFF_SURFACE_THEME_UNSAFE_CSS } from "~/lib/diffRendering";
@@ -60,7 +61,11 @@ export const FILE_LINK_REVEAL_UNSAFE_CSS = `
   }
 `;
 
-/** An icon-only header action with its label in a tooltip, the same control workspace files use. */
+/**
+ * An icon-only header action with its label in a tooltip, the same control workspace files use.
+ * A `pressed` action is a toggle and says so; a command (Copy, Save, Close) is a plain button,
+ * because announcing it as an unpressed toggle tells a screen reader it has a state it has not.
+ */
 export function FileSurfaceAction(props: {
   readonly label: string;
   readonly pressed?: boolean;
@@ -68,21 +73,36 @@ export function FileSurfaceAction(props: {
   readonly onPress: () => void;
   readonly children: ReactNode;
 }) {
+  const pressed = props.pressed;
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <Toggle
-            className="shrink-0"
-            pressed={props.pressed ?? false}
-            disabled={props.disabled ?? false}
-            onPressedChange={props.onPress}
-            aria-label={props.label}
-            variant="ghost"
-            size="sm"
-          >
-            {props.children}
-          </Toggle>
+          pressed === undefined ? (
+            <Button
+              type="button"
+              className="shrink-0"
+              disabled={props.disabled ?? false}
+              onClick={props.onPress}
+              aria-label={props.label}
+              variant="ghost"
+              size="icon-sm"
+            >
+              {props.children}
+            </Button>
+          ) : (
+            <Toggle
+              className="shrink-0"
+              pressed={pressed}
+              disabled={props.disabled ?? false}
+              onPressedChange={props.onPress}
+              aria-label={props.label}
+              variant="ghost"
+              size="sm"
+            >
+              {props.children}
+            </Toggle>
+          )
         }
       />
       <TooltipPopup>{props.label}</TooltipPopup>

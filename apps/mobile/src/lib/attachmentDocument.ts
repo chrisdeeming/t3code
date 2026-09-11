@@ -91,6 +91,12 @@ export function useAttachmentDocument(input: {
   }, [attachment, refresh, revision]);
   useEffect(() => {
     if (!attachment) return;
+    // A new attachment must not keep the previous file behind it: `share()` would otherwise
+    // send the old bytes under the new name if this load fails.
+    // oxlint-disable-next-line react/set-state-in-effect -- A new attachment invalidates the last one.
+    setLocalUri(null);
+    setContent(null);
+    setContentError(null);
     const controller = new AbortController();
     let release: (() => void) | undefined;
     void loadLocalAttachmentPreview(attachment, controller.signal)

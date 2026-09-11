@@ -217,7 +217,15 @@ export function AttachmentFilePreview(props: {
   };
 
   const body = failure ? (
-    <FileSurfaceFailure message={failure} onRetry={() => setRevision((value) => value + 1)} />
+    <FileSurfaceFailure
+      message={failure}
+      onRetry={() => {
+        // Clearing first lets a local Blob preview remount: its URL never changes, so the
+        // revision bump alone would re-render the same failed element.
+        setError(null);
+        setRevision((value) => value + 1);
+      }}
+    />
   ) : !url || (needsText && !content) ? (
     <FileSurfaceLoading />
   ) : needsText && content ? (
@@ -233,7 +241,7 @@ export function AttachmentFilePreview(props: {
   ) : kind === "pdf" || kind === "html" ? (
     <BrowserDocumentFrame src={url} title={props.name} pdf={kind === "pdf"} />
   ) : kind === "audio" ? (
-    <AudioPreview src={url} name={props.name} />
+    <AudioPreview src={url} name={props.name} onError={() => setError("Unable to load audio.")} />
   ) : kind === "video" ? (
     <div className="flex min-h-0 flex-1 items-center justify-center bg-black">
       <video
@@ -242,11 +250,17 @@ export function AttachmentFilePreview(props: {
         src={url}
         aria-label={props.name}
         className="max-h-full max-w-full"
+        onError={() => setError("Unable to load video.")}
       />
     </div>
   ) : kind === "image" ? (
     <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
-      <img src={url} alt={props.name} className="max-h-full max-w-full object-contain" />
+      <img
+        src={url}
+        alt={props.name}
+        className="max-h-full max-w-full object-contain"
+        onError={() => setError("Unable to load image.")}
+      />
     </div>
   ) : (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-6 text-center">
