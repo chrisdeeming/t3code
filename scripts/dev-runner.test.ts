@@ -1012,31 +1012,44 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       }),
     );
 
-    it.effect("does not detach child processes into new Windows consoles", () =>
+    it.effect("keeps interactive Vite stdin in the foreground process group", () =>
       Effect.gen(function* () {
         const detachedFor = (platform: NodeJS.Platform) =>
           Effect.gen(function* () {
-            let detached: boolean | undefined;
+            const detached: Array<boolean | undefined> = [];
+            const allSpawned = yield* Deferred.make<void>();
             const spawnerLayer = Layer.succeed(
               ChildProcessSpawner.ChildProcessSpawner,
-              ChildProcessSpawner.make((command) => {
-                if (command._tag === "StandardCommand") {
-                  detached = command.options.detached;
-                }
-                return Effect.succeed(mockProcess(0));
-              }),
+              ChildProcessSpawner.make((command) =>
+                Effect.gen(function* () {
+                  if (command._tag === "StandardCommand") {
+                    detached.push(command.options.detached);
+                  }
+                  if (detached.length === 3) {
+                    yield* Deferred.succeed(allSpawned, undefined);
+                  }
+                  return mockProcessWithExitCode(
+                    Deferred.await(allSpawned).pipe(Effect.as(ChildProcessSpawner.ExitCode(0))),
+                  );
+                }),
+              ),
             );
 
-            yield* runDevRunnerWithInput({ ...devServerInput, port: undefined }).pipe(
+            yield* runDevRunnerWithInput({
+              ...devServerInput,
+              mode: "dev:desktop",
+              port: undefined,
+            }).pipe(
               Effect.provide(Layer.mergeAll(emptyConfigLayer, netServiceLayer, spawnerLayer)),
               Effect.provideService(HostProcessPlatform, platform),
+              Effect.flip,
             );
 
             return detached;
           });
 
-        assert.equal(yield* detachedFor("linux"), true);
-        assert.equal(yield* detachedFor("win32"), false);
+        assert.deepStrictEqual(yield* detachedFor("linux"), [false, true, true]);
+        assert.deepStrictEqual(yield* detachedFor("win32"), [false, false, false]);
       }),
     );
 
