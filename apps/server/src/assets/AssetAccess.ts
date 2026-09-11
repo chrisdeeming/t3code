@@ -15,6 +15,7 @@ import {
   ToolActivityNativeAppReference,
 } from "@t3tools/contracts";
 import {
+  audioMimeTypeFromExtension,
   hostPreviewMimeTypeFromExtension,
   isWorkspaceImagePreviewPath,
   isWorkspacePreviewEntryPath,
@@ -58,14 +59,15 @@ const ASSET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const PROJECT_FAVICON_TOKEN_BUCKET_MS = 30 * 60 * 1000;
 const PROJECT_FAVICON_VERSION_PREFIX = "v";
 const INLINE_VIDEO_MIME_TYPE_PATTERN = /^video\/[\w!#$&^.+-]+$/i;
-// Extensions a document viewer may request inline. The extension comes from
+// Extensions a document viewer or audio player may request inline. The extension comes from
 // the attachment id the server assigned, never from the client's mime type.
-const INLINE_DOCUMENT_EXTENSIONS = new Set(["pdf", "html", "htm"]);
-const INLINE_DOCUMENT_MIME_TYPES: Record<string, string> = {
+const INLINE_PREVIEW_MIME_TYPES: Record<string, string> = {
   pdf: "application/pdf",
   html: "text/html",
   htm: "text/html",
 };
+const inlinePreviewMimeTypeForExtension = (extension: string) =>
+  INLINE_PREVIEW_MIME_TYPES[extension] ?? audioMimeTypeFromExtension(`.${extension}`) ?? undefined;
 const PREVIEW_ASSET_EXTENSIONS = new Set([
   ...WORKSPACE_BROWSER_PREVIEW_EXTENSIONS,
   ...WORKSPACE_IMAGE_PREVIEW_EXTENSIONS,
@@ -430,17 +432,15 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       }
       // Generic files carry their extension inside the attachment id (that
       // shape resolves the on-disk path); images do not. Videos and images
-      // render inline. Other generic files download, unless a document viewer
-      // asked for inline and the stored extension is one a browser can show.
+      // render inline. Other generic files download unless a viewer requests
+      // a supported document or audio format inline.
       const extension = parseAttachmentFileExtension(input.resource.attachmentId);
       const isGenericFile = extension !== null;
       const videoMimeType = input.resource.mimeType?.split(";", 1)[0]?.trim() ?? "";
       const isVideo = INLINE_VIDEO_MIME_TYPE_PATTERN.test(videoMimeType);
-      const inlineDocumentMimeType =
-        input.resource.disposition === "inline" &&
-        extension !== null &&
-        INLINE_DOCUMENT_EXTENSIONS.has(extension)
-          ? INLINE_DOCUMENT_MIME_TYPES[extension]
+      const inlinePreviewMimeType =
+        input.resource.disposition === "inline" && extension !== null
+          ? inlinePreviewMimeTypeForExtension(extension)
           : undefined;
       if (!isGenericFile) {
         imageDimensions = yield* readImageDimensionsFromHeader(attachmentPath);
@@ -449,12 +449,12 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         version: 1,
         kind: "attachment",
         attachmentId: input.resource.attachmentId,
-        ...(isGenericFile && !isVideo && inlineDocumentMimeType === undefined
+        ...(isGenericFile && !isVideo && inlinePreviewMimeType === undefined
           ? { download: true }
           : {}),
         ...(input.resource.fileName !== undefined ? { fileName: input.resource.fileName } : {}),
-        ...(inlineDocumentMimeType !== undefined
-          ? { mimeType: inlineDocumentMimeType }
+        ...(inlinePreviewMimeType !== undefined
+          ? { mimeType: inlinePreviewMimeType }
           : input.resource.mimeType !== undefined
             ? { mimeType: isVideo ? videoMimeType : input.resource.mimeType }
             : {}),

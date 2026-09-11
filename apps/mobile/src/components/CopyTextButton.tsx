@@ -10,7 +10,7 @@ export const CopyTextButton = memo(function CopyTextButton(props: {
   readonly accessibilityLabel: string;
   readonly text: string;
   readonly onCopy?: () => Promise<void>;
-  readonly tintColor: ColorValue;
+  readonly tintColor?: ColorValue;
   readonly copiedTintColor?: ColorValue;
   readonly backgroundColor?: ColorValue;
   readonly borderColor?: ColorValue;
@@ -72,6 +72,7 @@ export const CopyTextButton = memo(function CopyTextButton(props: {
         }
         size={props.iconSize ?? 13}
         tintColor={copied ? (props.copiedTintColor ?? props.tintColor) : props.tintColor}
+        tintColorClassName={props.tintColor ? undefined : "accent-foreground"}
         type="monochrome"
       />
     </Pressable>

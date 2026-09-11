@@ -246,6 +246,36 @@ describe("video asset byte ranges", () => {
     }).pipe(Effect.provide(fileResponseLayer)),
   );
 
+  it.effect(
+    "supports native audio header probes and seeking without changing explicit downloads",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-audio-range-" });
+        const file = path.join(directory, "recording.wav");
+        yield* fs.writeFileString(file, "0123456789");
+        const asset = { path: file, mimeType: "audio/wav" };
+        for (const [header, expected] of [
+          ["bytes=0-1", "01"],
+          ["bytes=5-", "56789"],
+        ] as const) {
+          const response = HttpServerResponse.toWeb(yield* assetFileResponse(asset, header));
+          expect(response.status).toBe(206);
+          expect(response.headers.get("content-type")).toBe("audio/wav");
+          expect(response.headers.get("accept-ranges")).toBe("bytes");
+          expect(response.headers.get("content-length")).toBe(String(expected.length));
+          expect(yield* Effect.promise(() => response.text())).toBe(expected);
+        }
+        const download = HttpServerResponse.toWeb(
+          yield* assetFileResponse({ ...asset, download: true, fileName: "recording.wav" }),
+        );
+        expect(download.status).toBe(200);
+        expect(download.headers.get("content-disposition")).toContain("attachment;");
+        expect(yield* Effect.promise(() => download.text())).toBe("0123456789");
+      }).pipe(Effect.provide(fileResponseLayer)),
+  );
+
   it.effect("rejects ranges outside the file, including empty files", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

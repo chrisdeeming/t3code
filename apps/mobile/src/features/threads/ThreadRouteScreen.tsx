@@ -957,7 +957,15 @@ function ThreadRouteContent(
         <AndroidScreenHeader
           title={selectedThread.title}
           subtitle={headerSubtitle}
-          onBack={layout.usesSplitView ? undefined : () => navigation.goBack()}
+          onBack={
+            layout.usesSplitView
+              ? undefined
+              : () => {
+                  // A deep link or cold start has no previous route; Home is the way out.
+                  if (canGoBack) navigation.goBack();
+                  else navigation.dispatch(StackActions.replace("Home"));
+                }
+          }
           actions={androidHeaderActions}
           hideBottomBorder={materialYouStyleLayoutActive}
         />

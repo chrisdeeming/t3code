@@ -28,7 +28,10 @@ import {
 
 import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
 import { composerContextImportsAtom } from "../../state/use-composer-drafts";
-import { composerContextSendBlockReason } from "../../lib/composerContext";
+import {
+  composerContextSendBlockReason,
+  type ComposerDocumentAttachment,
+} from "../../lib/composerContext";
 import {
   ComposerActionButton,
   ComposerInlineControl,
@@ -1138,11 +1141,26 @@ export function NewTaskDraftScreen(props: {
     !flow.submitting &&
     !voiceInput.blocksSubmission &&
     !(flow.workspaceMode === "worktree" && !flow.selectedBranchName);
+  const openDraftDocument = (attachment: ComposerDocumentAttachment) => {
+    promptInputRef.current?.blur();
+    void KeyboardController.dismiss({ animated: true });
+    navigation.dispatch(
+      StackActions.push("NewTaskAttachment", {
+        environmentId: String(selectedProject.environmentId),
+        attachmentId: attachment.attachmentId,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        sizeBytes: String(attachment.sizeBytes),
+        draftKey: flow.draftKey,
+      }),
+    );
+  };
   const promptEditor = (
     <>
       <ComposerEditor
         draftKey={flow.draftKey}
         environmentId={selectedProject.environmentId}
+        onOpenAttachment={openDraftDocument}
         onOpenMention={(path) => {
           if (!composerWorkspaceCwd) return;
           promptInputRef.current?.blur();
@@ -1362,6 +1380,17 @@ export function NewTaskDraftScreen(props: {
               }
               onPressVideo={
                 isComposerInteractionLocked || voiceInput.isBusy ? undefined : openVideoPreview
+              }
+              onPressDocument={
+                isComposerInteractionLocked || voiceInput.isBusy
+                  ? undefined
+                  : (attachment) =>
+                      openDraftDocument({
+                        attachmentId: attachment.id,
+                        name: attachment.name,
+                        mimeType: attachment.mimeType,
+                        sizeBytes: attachment.sizeBytes,
+                      })
               }
             />
           </View>

@@ -426,7 +426,7 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
       var elements: [Any] = [textView]
       let layout = textView.layoutManager
       textView.textStorage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: textView.textStorage.length)) { value, range, _ in
-        guard let attachment = value as? ComposerTextAttachment, !attachment.source.hasPrefix("$") else { return }
+        guard let attachment = value as? ComposerTextAttachment else { return }
         let glyphRange = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
         let rect = layout.boundingRect(forGlyphRange: glyphRange, in: textView.textContainer)
           .offsetBy(dx: textView.textContainerInset.left, dy: textView.textContainerInset.top)
@@ -466,8 +466,7 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     let layout = textView.layoutManager
     let index = layout.characterIndex(for: containerPoint, in: textView.textContainer, fractionOfDistanceBetweenInsertionPoints: nil)
     guard index < textView.textStorage.length,
-          let attachment = textView.textStorage.attribute(.attachment, at: index, effectiveRange: nil) as? ComposerTextAttachment,
-          !attachment.source.hasPrefix("$") else { return nil }
+          let attachment = textView.textStorage.attribute(.attachment, at: index, effectiveRange: nil) as? ComposerTextAttachment else { return nil }
     let glyphRange = layout.glyphRange(forCharacterRange: NSRange(location: index, length: 1), actualCharacterRange: nil)
     guard layout.boundingRect(forGlyphRange: glyphRange, in: textView.textContainer).contains(containerPoint) else { return nil }
     return (index, attachment)

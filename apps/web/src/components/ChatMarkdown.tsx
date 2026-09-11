@@ -1534,7 +1534,7 @@ function ChatMarkdownVideo(props: {
   readonly style?: CSSProperties | undefined;
   readonly mediaIdentity?: string | undefined;
   readonly actionsSource?: MediaActionSource | undefined;
-  readonly onRetry?: (() => Promise<void>) | undefined;
+  readonly onRetry?: (() => Promise<unknown>) | undefined;
 }) {
   return (
     <MediaVideoPlayer
