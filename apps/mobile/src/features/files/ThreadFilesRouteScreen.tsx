@@ -794,6 +794,17 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
               onPress: () => copyTextWithHaptic(relativePath),
             } as const,
           ]),
+      // Selecting a long file by hand is painful on a phone, so copying the whole thing is
+      // the action most readers actually want. The attachment screen already offers it.
+      fileData?.contents != null
+        ? ({
+            id: "copy-contents",
+            title: fileData.truncated ? "Copy preview" : "Copy contents",
+            icon: "doc.on.doc",
+            inline: false,
+            onPress: () => copyTextWithHaptic(fileData.contents),
+          } as const)
+        : null,
       isPdfFile({ name: relativePath }) && previewUri !== null
         ? ({
             id: "open-pdf",
@@ -846,6 +857,8 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
     resolvedActiveMode,
     mediaSource,
     mediaActions.actions,
+    fileData?.contents,
+    fileData?.truncated,
   ]);
 
   const androidFileMenuActions = useMemo<MenuAction[]>(
