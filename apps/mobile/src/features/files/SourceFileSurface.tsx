@@ -2,7 +2,14 @@ import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/unstable/reactivity";
 import type { ComponentType } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, ScrollView, Text as NativeText, useWindowDimensions, View } from "react-native";
+import {
+  FlatList,
+  RefreshControl,
+  ScrollView,
+  Text as NativeText,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
 import { LoadingStrip } from "../../components/LoadingStrip";
@@ -150,17 +157,7 @@ function SourceHighlightStatusView(props: { readonly status: SourceHighlightStat
   return null;
 }
 
-function NativeSourceFileSurface(
-  props: SourceFileSurfaceProps & {
-    readonly NativeView: ComponentType<NativeReviewDiffViewProps>;
-  },
-) {
-  const { NativeView, onRefresh } = props;
-  const { codeSurface, codeWordBreak, nativeSourceStyle } = useAppearanceCodeSurface();
-  const { themeAppearance, themeId } = useAppearancePreferences();
-  const appTheme = useUniwindTheme();
-  const { width: viewportWidth } = useWindowDimensions();
-  const { rowsJson, status, targetIndex, tokens } = useSourceFileModel(props);
+function useSourceFileRefresh(onRefresh: SourceFileSurfaceProps["onRefresh"]) {
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const handlePullToRefresh = useCallback(async () => {
     if (!onRefresh) {
@@ -173,6 +170,21 @@ function NativeSourceFileSurface(
       setIsPullRefreshing(false);
     }
   }, [onRefresh]);
+  return { isPullRefreshing, handlePullToRefresh };
+}
+
+function NativeSourceFileSurface(
+  props: SourceFileSurfaceProps & {
+    readonly NativeView: ComponentType<NativeReviewDiffViewProps>;
+  },
+) {
+  const { NativeView, onRefresh } = props;
+  const { codeSurface, codeWordBreak, nativeSourceStyle } = useAppearanceCodeSurface();
+  const { themeAppearance, themeId } = useAppearancePreferences();
+  const appTheme = useUniwindTheme();
+  const { width: viewportWidth } = useWindowDimensions();
+  const { rowsJson, status, targetIndex, tokens } = useSourceFileModel(props);
+  const { isPullRefreshing, handlePullToRefresh } = useSourceFileRefresh(onRefresh);
   const tokensJson = useMemo(() => JSON.stringify(buildNativeSourceTokens(tokens)), [tokens]);
   const selectedRowIdsJson = useMemo(
     () => JSON.stringify(targetIndex === null ? [] : [nativeSourceRowId(targetIndex)]),
@@ -220,6 +232,10 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
   const { codeSurface, codeWordBreak } = useAppearanceCodeSurface();
   const { lines, status, targetIndex, tokens } = useSourceFileModel(props);
   const listRef = useRef<FlatList<string>>(null);
+  const { isPullRefreshing, handlePullToRefresh } = useSourceFileRefresh(props.onRefresh);
+  const refreshControl = props.onRefresh ? (
+    <RefreshControl refreshing={isPullRefreshing} onRefresh={() => void handlePullToRefresh()} />
+  ) : undefined;
 
   useEffect(() => {
     if (targetIndex === null) {
@@ -293,6 +309,7 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
   const list = (
     <FlatList
       ref={listRef}
+      refreshControl={refreshControl}
       data={lines}
       keyExtractor={(_line, index) => String(index)}
       initialNumToRender={80}
@@ -321,6 +338,7 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
   const usesLineTarget = targetIndex !== null && !props.selectable;
   const padded = (
     <ScrollView
+      refreshControl={refreshControl}
       className="flex-1"
       contentContainerStyle={{
         paddingBottom: codeSurface.rowHeight,

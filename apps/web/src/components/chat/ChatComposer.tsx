@@ -1,9 +1,10 @@
+import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
 import { runtimeModeConfig, runtimeModeOptions } from "./runtimeModeConfig";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { AttachmentFilePreview } from "../files/AttachmentFilePreview";
 import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
 import { filterComposerPullRequestMatches } from "@t3tools/shared/composerPullRequestMatches";
-import { importPastedComposerText } from "../composerInlineTokenPaste";
+import { importPastedComposerText, readPastedComposerContext } from "../composerInlineTokenPaste";
 import { elementContextToPreviewAnnotation } from "../../lib/elementContext";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import {
@@ -201,6 +202,7 @@ import {
   ensureInlineContextReferences,
   formatInlineContextReference,
   insertInlineContextReference,
+  inlineContextReferenceReplacement,
   toKindScopedComposerContextId,
 } from "~/lib/composerContextReferences";
 import {
@@ -2132,29 +2134,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const onBlur = () => {
       pasteAsTextShortcutUntilRef.current = 0;
     };
-    const unsubscribeMenuAction = window.desktopBridge?.onMenuAction?.((action) => {
-      if (action === "paste-as-text") {
-        const activeElement = document.activeElement;
-        const blocksPasteToFocus =
-          activeElement instanceof Element &&
-          activeElement.closest(
-            'input, textarea, select, button, a[href], summary, [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"], [role="button"], [role="menuitem"], [role="option"]',
-          ) !== null;
-        if (
-          (activeElement instanceof Node && composerFormRef.current?.contains(activeElement)) ||
-          !blocksPasteToFocus
-        ) {
-          armPasteAsTextShortcut();
-        }
-        // The native menu owns Cmd+Shift+V in Desktop. Only a focused composer
-        // arms the bypass, so other editable controls cannot affect its next paste.
-        void window.desktopBridge?.pasteAsText?.();
+    const onDesktopPasteAsText = () => {
+      const activeElement = document.activeElement;
+      const blocksPasteToFocus =
+        activeElement instanceof Element &&
+        activeElement.closest(
+          'input, textarea, select, button, a[href], summary, [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"], [role="button"], [role="menuitem"], [role="option"]',
+        ) !== null;
+      if (
+        (activeElement instanceof Node && composerFormRef.current?.contains(activeElement)) ||
+        !blocksPasteToFocus
+      ) {
+        armPasteAsTextShortcut();
       }
-    });
+    };
+    window.addEventListener(DESKTOP_PASTE_AS_TEXT_EVENT, onDesktopPasteAsText);
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("blur", onBlur);
     return () => {
-      unsubscribeMenuAction?.();
+      window.removeEventListener(DESKTOP_PASTE_AS_TEXT_EVENT, onDesktopPasteAsText);
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("blur", onBlur);
     };
@@ -5098,7 +5096,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   /** Resolves true when at least one chip was inserted for the accepted attachments. */
   const addComposerAttachments = async (
     files: File[],
-    options?: { readonly source?: ChatFileAttachment["source"] },
+    options?: {
+      readonly source?: ChatFileAttachment["source"];
+      readonly selection?: { start: number; end: number };
+    },
   ): Promise<boolean> => {
     if (!activeThreadId || files.length === 0 || isRevertingCheckpointRef.current) return false;
     if (
@@ -5227,7 +5228,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       const storedIds = new Set(addComposerFilesToDraft(acceptedFiles));
       const storedFiles = acceptedFiles.filter((file) => storedIds.has(file.id));
       if (storedFiles.length > 0) {
-        insertedAny = insertAttachmentReferences(storedFiles.map(fileContextReference));
+        insertedAny = insertAttachmentReferences(
+          storedFiles.map(fileContextReference),
+          options?.selection,
+        );
       }
       if (options?.source?._tag === "pasted-text" && storedFiles.length > 0) {
         const attached = storedFiles[0]!;
@@ -5324,11 +5328,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    */
   const insertAttachmentReferences = (
     references: ReadonlyArray<ComposerContextReference>,
+    selection?: { start: number; end: number },
   ): boolean => {
     if (references.length === 0) return false;
     // Question answers carry attachments beside the answer, never as chips. Falling back to
     // the thread prompt here would hide the file behind a reference the question never shows.
     if (questionAttachmentTarget) return false;
+    if (selection) {
+      const edit = inlineContextReferenceReplacement(promptRef.current, selection, references);
+      return applyPromptReplacement(edit.start, edit.end, edit.text);
+    }
     const text = references.map(formatInlineContextReference).join(" ");
     const inserted = insertComposerText(`${text} `, "cursor", { ensureLeadingBoundary: true });
     if (!inserted) {
@@ -5433,7 +5442,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       return true;
     }
 
-    void addComposerAttachments([foldedFile], { source: { _tag: "pasted-text" } });
+    void addComposerAttachments([foldedFile], {
+      source: { _tag: "pasted-text" },
+      ...(selection ? { selection } : {}),
+    });
     return true;
   };
 
@@ -5457,6 +5469,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       return;
     }
 
+    // Copied T3 chips need the structured importer to bring their records and files along.
+    if ((readPastedComposerContext(event.clipboardData)?.records.length ?? 0) > 0) return;
     if (!foldPastedText(plainText, bypassAutoAttachment)) {
       return;
     }

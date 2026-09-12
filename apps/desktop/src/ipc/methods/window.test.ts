@@ -6,6 +6,9 @@ import { vi } from "vite-plus/test";
 
 import type * as Electron from "electron";
 
+const focusedWebContents = vi.hoisted(() => vi.fn());
+vi.mock("electron", () => ({ webContents: { getFocusedWebContents: focusedWebContents } }));
+
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
@@ -155,26 +158,35 @@ describe("getWindowFullscreenState", () => {
 });
 
 describe("pasteAsText", () => {
-  it.effect("pastes only after the main renderer acknowledges the menu action", () => {
-    const paste = vi.fn();
-    const window = {
-      webContents: { id: 42, paste },
-    } as unknown as Electron.BrowserWindow;
+  it.effect(
+    "pastes into the focused guest only after the main renderer acknowledges the menu action",
+    () => {
+      const paste = vi.fn();
+      const mainPaste = vi.fn();
+      const window = {
+        webContents: { id: 42, paste: mainPaste },
+      } as unknown as Electron.BrowserWindow;
+      focusedWebContents.mockReturnValue({ paste, isDestroyed: () => false });
 
-    return Effect.gen(function* () {
-      yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
-      assert.equal(paste.mock.calls.length, 1);
+      return Effect.gen(function* () {
+        yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
+        assert.equal(paste.mock.calls.length, 1);
+        assert.equal(mainPaste.mock.calls.length, 0);
 
-      yield* pasteAsText.handler(undefined, { sender: { id: 99 } });
-      assert.equal(paste.mock.calls.length, 1);
-    }).pipe(
-      Effect.provide(
-        Layer.mock(ElectronWindow.ElectronWindow)({
-          main: Effect.succeed(Option.some(window)),
-        }),
-      ),
-    );
-  });
+        yield* pasteAsText.handler(undefined, { sender: { id: 99 } });
+        assert.equal(paste.mock.calls.length, 1);
+        focusedWebContents.mockReturnValue(null);
+        yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
+        assert.equal(paste.mock.calls.length, 1);
+      }).pipe(
+        Effect.provide(
+          Layer.mock(ElectronWindow.ElectronWindow)({
+            main: Effect.succeed(Option.some(window)),
+          }),
+        ),
+      );
+    },
+  );
 });
 
 describe("pickProjectFavicon", () => {

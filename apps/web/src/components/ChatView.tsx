@@ -46,6 +46,7 @@ import {
 } from "@t3tools/contracts";
 import { type EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { wasBootstrapThreadDeleted } from "@t3tools/client-runtime/errors";
+import { readPastedComposerContext } from "./composerInlineTokenPaste";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import { type CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
 import { effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
@@ -6535,15 +6536,14 @@ export default function ChatView(props: ChatViewProps) {
       if (getTerminalFocusOwner() !== null) return;
       if (composerRef.current?.isModelPickerOpen()) return;
       const text = pasteTextToFocusComposer(event);
-      if (text === null) return;
+      const clipboardData = event.clipboardData;
+      if (text === null || clipboardData === null) return;
       const bypassAutoAttachment = Date.now() <= pasteAsTextShortcutUntilRef.current;
       pasteAsTextShortcutUntilRef.current = 0;
       if (
-        composerRef.current?.pasteTextAtEnd(text, { bypassAutoAttachment }) ||
-        composerRef.current?.insertTextAtEnd(
-          text,
-          event.clipboardData ? { clipboardData: event.clipboardData } : undefined,
-        )
+        ((readPastedComposerContext(clipboardData)?.records.length ?? 0) === 0 &&
+          composerRef.current?.pasteTextAtEnd(text, { bypassAutoAttachment })) ||
+        composerRef.current?.insertTextAtEnd(text, { clipboardData })
       ) {
         event.preventDefault();
         event.stopPropagation();

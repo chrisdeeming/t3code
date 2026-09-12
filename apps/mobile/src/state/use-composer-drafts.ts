@@ -24,11 +24,13 @@ import { Atom } from "effect/unstable/reactivity";
 import { writeFileAtomically } from "../lib/atomic-file";
 import { createComposerContextHistory, referencedComposerContext } from "../lib/composerContext";
 import {
+  collectComposerContextReferences,
   formatComposerContextReference,
   sanitizeComposerContextLabel,
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
 import { imageMimeType } from "@t3tools/shared/image";
+import { videoMimeType } from "@t3tools/shared/video";
 import { DraftComposerAttachmentSchema } from "../lib/composer-image-schema";
 import {
   composerAttachmentFileReferenceKey,
@@ -352,6 +354,68 @@ export function resetComposerDraftsLoadState(): void {
   persistRetryNeeded = false;
 }
 
+function attachmentContextRecord(
+  attachment: DraftComposerAttachment,
+  contextId = ComposerContextId.make(attachment.id),
+) {
+  const common = {
+    version: 1 as const,
+    contextId,
+    label: sanitizeComposerContextLabel(attachment.name, attachment.type),
+    attachmentId: attachment.id,
+    name: attachment.name,
+    mimeType: attachment.mimeType,
+    sizeBytes: attachment.sizeBytes,
+  };
+  // A picture picked through the document picker is typed as a plain file, but the
+  // record has to say what it is or no client will offer to open it as an image.
+  return attachment.type === "image" || imageMimeType(attachment) !== null
+    ? { ...common, kind: "image" as const }
+    : { ...common, kind: "file" as const };
+}
+
+/** Older drafts stored documents only in the attachment strip. Restore their missing chips. */
+function restoreMissingComposerFileReferences(draft: ComposerDraft): ComposerDraft {
+  const records = [...(draft.context?.records ?? [])];
+  const usedIds = new Set<string>(records.map((record) => record.contextId));
+  const referenced = new Set(
+    collectComposerContextReferences(draft.text).map(
+      (reference) => `${reference.kind}:${reference.contextId}`,
+    ),
+  );
+  let text = draft.text;
+  let changed = false;
+  for (const attachment of draft.attachments) {
+    if (
+      attachment.type === "image" ||
+      imageMimeType(attachment) !== null ||
+      videoMimeType(attachment) !== null
+    )
+      continue;
+    let record = records.find(
+      (candidate) =>
+        candidate.kind === "file" &&
+        "attachmentId" in candidate &&
+        candidate.attachmentId === attachment.id,
+    );
+    if (!record) {
+      const baseId = attachment.id.replace(/[^a-z0-9_-]/gi, "_").slice(0, 110) || "file";
+      let contextId = baseId;
+      for (let suffix = 2; usedIds.has(contextId); suffix += 1) contextId = `${baseId}_${suffix}`;
+      usedIds.add(contextId);
+      record = attachmentContextRecord(attachment, ComposerContextId.make(contextId));
+      records.push(record);
+      changed = true;
+    }
+    const key = `${record.kind}:${record.contextId}`;
+    if (referenced.has(key)) continue;
+    text += `${text.length > 0 && !/\s$/.test(text) ? " " : ""}${formatComposerContextReference(record)} `;
+    referenced.add(key);
+    changed = true;
+  }
+  return changed ? { ...draft, text, context: { version: 1, records } } : draft;
+}
+
 function normalizeDraft(draft: ComposerDraft | undefined): ComposerDraft {
   if (!draft) {
     return EMPTY_DRAFT;
@@ -421,14 +485,15 @@ export function migrateLegacyNewTaskDraft(
   draft: ComposerDraft,
   now: string,
 ): readonly [key: string, draft: ComposerDraft] {
+  const restored = restoreMissingComposerFileReferences(draft);
   const legacy = draft.project === undefined ? parseLegacyNewTaskDraftKey(key) : null;
   if (legacy === null) {
-    return [key, draft];
+    return [key, restored];
   }
   return [
     newTaskDraftKey(newDraftId()),
     {
-      ...draft,
+      ...restored,
       project: {
         environmentId: EnvironmentIdSchema.make(legacy.environmentId),
         projectId: ProjectIdSchema.make(legacy.projectId),
@@ -1165,22 +1230,7 @@ export function appendComposerDraftAttachments(
     }
     let draft = { ...existing, attachments: [...existing.attachments, ...accepted] };
     if (options?.appendReference) {
-      const records = accepted.map((attachment) => {
-        const common = {
-          version: 1 as const,
-          contextId: ComposerContextId.make(attachment.id),
-          label: sanitizeComposerContextLabel(attachment.name, attachment.type),
-          attachmentId: attachment.id,
-          name: attachment.name,
-          mimeType: attachment.mimeType,
-          sizeBytes: attachment.sizeBytes,
-        };
-        // A picture picked through the document picker is typed as a plain file, but the
-        // record has to say what it is or no client will offer to open it as an image.
-        return attachment.type === "image" || imageMimeType(attachment) !== null
-          ? { ...common, kind: "image" as const }
-          : { ...common, kind: "file" as const };
-      });
+      const records = accepted.map((attachment) => attachmentContextRecord(attachment));
       const inserted = draftWithInsertedContext(draftKey, draft, {
         text: records.map(formatComposerContextReference).join(" "),
         context: { version: 1, records },

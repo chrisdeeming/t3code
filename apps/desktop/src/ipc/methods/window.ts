@@ -359,7 +359,8 @@ export const pasteAsText = DesktopIpc.makeIpcMethod({
     ) {
       return;
     }
-    window.value.webContents.paste();
+    const focused = Electron.webContents.getFocusedWebContents();
+    if (focused && !focused.isDestroyed()) focused.paste();
   }),
 });
 

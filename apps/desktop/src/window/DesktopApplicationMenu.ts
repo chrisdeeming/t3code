@@ -46,7 +46,9 @@ const dispatchMenuAction = Effect.fn("desktop.menu.dispatchMenuAction")(function
   action: string,
 ): Effect.fn.Return<void, DesktopWindow.DesktopWindowError, DesktopWindow.DesktopWindow> {
   const desktopWindow = yield* DesktopWindow.DesktopWindow;
-  yield* desktopWindow.dispatchMenuAction(action);
+  yield* desktopWindow.dispatchMenuAction(action, {
+    reveal: action !== "paste-as-text",
+  });
 });
 
 const zoomMainWindow = Effect.fn("desktop.menu.zoomMainWindow")(function* (
