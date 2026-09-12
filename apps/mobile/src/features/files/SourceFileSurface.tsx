@@ -23,15 +23,10 @@ import {
   NATIVE_SOURCE_CONTENT_WIDTH,
   nativeSourceRowId,
 } from "./nativeSourceFileAdapter";
+import { MarkdownTextPrimitive } from "@t3tools/mobile-markdown-text/primitive";
+
 import { prepareSourceFileDocument } from "./source-file-document";
 import { sourceHighlightAtom } from "./sourceHighlightingState";
-
-/**
- * Line count below which the source renders as one selectable block rather than a virtualised
- * list. Roughly a 100KB file at 40 characters a line: large enough that most files a reader
- * opens on a phone are selectable, small enough that rendering it all at once stays cheap.
- */
-const SELECTABLE_SOURCE_MAX_LINES = 2_500;
 
 interface SourceFileSurfaceProps {
   readonly contents: string;
@@ -247,57 +242,49 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
     [codeSurface, codeWordBreak, targetIndex, tokens],
   );
 
-  // A `FlatList` row is its own selection scope, so a drag cannot cross lines and "Select all"
-  // takes one line. Below this many lines the whole file renders as a single selectable block,
-  // which is what makes copying a passage work. Longer files keep the virtualised list: losing
-  // selection there is better than rendering a megabyte of text at once.
-  const selectableAsOneBlock = lines.length <= SELECTABLE_SOURCE_MAX_LINES;
+  // One selectable text for the whole file. On iOS `uiTextView` renders a real `UITextView`,
+  // which selects across every line, wraps, and lays out long documents through TextKit; on
+  // Android the primitive is an RN `Text`, which selects across its nested children. Either
+  // way "select all" takes the file rather than a line, which a `FlatList` row can never do
+  // because each row is its own selection scope.
   const selectableBlock = (
-    <ScrollView
-      className="flex-1"
-      contentContainerStyle={{ paddingBottom: codeSurface.rowHeight, paddingTop: 8 }}
+    <MarkdownTextPrimitive
+      uiTextView
+      selectable
+      className="font-normal text-foreground"
+      style={{
+        fontFamily: REVIEW_MONO_FONT_FAMILY,
+        fontSize: codeSurface.fontSize,
+        lineHeight: codeSurface.rowHeight,
+      }}
     >
-      <NativeText
-        selectable
-        className="px-3 font-normal text-foreground"
-        style={{
-          fontFamily: REVIEW_MONO_FONT_FAMILY,
-          fontSize: codeSurface.fontSize,
-          lineHeight: codeSurface.rowHeight,
-        }}
-      >
-        {lines.map((line, index) => {
-          const lineTokens = tokens?.[index] ?? null;
-          // Nested `Text` keeps one selection range across the whole file while still
-          // colouring each token, so highlighting survives the move off the list.
-          const body =
-            lineTokens && lineTokens.length > 0
-              ? lineTokens.map((token, tokenIndex) => (
-                  <NativeText
-                    key={`${index}:${tokenIndex}`}
-                    style={{
-                      color: token.color ?? undefined,
-                      fontWeight:
-                        token.fontStyle !== null && (token.fontStyle & 2) === 2 ? "700" : "400",
-                      fontStyle:
-                        token.fontStyle !== null && (token.fontStyle & 1) === 1
-                          ? "italic"
-                          : "normal",
-                    }}
-                  >
-                    {token.content}
-                  </NativeText>
-                ))
-              : line;
-          return (
-            <NativeText key={index}>
-              {body}
-              {index < lines.length - 1 ? "\n" : ""}
-            </NativeText>
-          );
-        })}
-      </NativeText>
-    </ScrollView>
+      {lines.map((line, index) => {
+        const lineTokens = tokens?.[index] ?? null;
+        const body =
+          lineTokens && lineTokens.length > 0
+            ? lineTokens.map((token, tokenIndex) => (
+                <NativeText
+                  key={`${index}:${tokenIndex}`}
+                  style={{
+                    color: token.color ?? undefined,
+                    fontWeight:
+                      token.fontStyle !== null && (token.fontStyle & 2) === 2 ? "700" : "400",
+                    fontStyle:
+                      token.fontStyle !== null && (token.fontStyle & 1) === 1 ? "italic" : "normal",
+                  }}
+                >
+                  {token.content}
+                </NativeText>
+              ))
+            : line;
+        return (
+          <NativeText key={index}>
+            {body}
+            {index < lines.length - 1 ? "\n" : ""}
+          </NativeText>
+        );
+      })}
+    </MarkdownTextPrimitive>
   );
 
   const list = (
@@ -326,29 +313,39 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
     />
   );
 
-  if (selectableAsOneBlock) {
-    return (
-      <View className="relative flex-1 bg-sheet">
-        <SourceHighlightStatusView status={status} />
-        {codeWordBreak ? (
-          selectableBlock
-        ) : (
-          <ScrollView horizontal bounces={false} className="flex-1">
-            {selectableBlock}
-          </ScrollView>
-        )}
-      </View>
-    );
-  }
+  // Jumping to a line needs a list that can scroll to an index, so a deep link into a
+  // specific line keeps the virtualised rows. Everything else takes the selectable text.
+  const usesLineTarget = targetIndex !== null;
+  const padded = (
+    <ScrollView
+      className="flex-1"
+      contentContainerStyle={{
+        paddingBottom: codeSurface.rowHeight,
+        paddingHorizontal: 12,
+        paddingTop: 8,
+      }}
+    >
+      {selectableBlock}
+    </ScrollView>
+  );
 
   return (
     <View className="relative flex-1 bg-sheet">
       <SourceHighlightStatusView status={status} />
-      {codeWordBreak ? (
-        list
+      {usesLineTarget ? (
+        codeWordBreak ? (
+          list
+        ) : (
+          <ScrollView horizontal bounces={false} className="flex-1">
+            {list}
+          </ScrollView>
+        )
+      ) : codeWordBreak ? (
+        padded
       ) : (
+        // Without wrapping the text keeps its natural width and the reader pans to it.
         <ScrollView horizontal bounces={false} className="flex-1">
-          {list}
+          {padded}
         </ScrollView>
       )}
     </View>
