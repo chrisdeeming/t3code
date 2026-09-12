@@ -116,8 +116,11 @@ class T3ComposerEditorModule : Module() {
       Prop("spellCheck") { view: T3ComposerEditorView, spellCheck: Boolean ->
         view.setSpellCheck(spellCheck)
       }
-      Prop("interceptTextPastes") { view: T3ComposerEditorView, intercept: Boolean ->
-        view.setInterceptTextPastes(intercept)
+      Prop("textPasteThresholdBytes") { view: T3ComposerEditorView, threshold: Int ->
+        view.setTextPasteThresholdBytes(threshold)
+      }
+      Prop("maxInputChars") { view: T3ComposerEditorView, maxInputChars: Int ->
+        view.setMaxInputChars(maxInputChars)
       }
 
       Events(

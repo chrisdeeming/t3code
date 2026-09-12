@@ -3,6 +3,15 @@ import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS } from "@t3tools/contracts";
 
 const files = new Map<string, { base64: string; deleted: boolean; text?: string }>();
 
+const clipboard = vi.hoisted(() => ({
+  hasImageAsync: vi.fn(),
+  getImageAsync: vi.fn(),
+  hasStringAsync: vi.fn(),
+  getStringAsync: vi.fn(),
+}));
+
+vi.mock("expo-clipboard", () => clipboard);
+
 vi.mock("expo-file-system", () => ({
   File: class {
     readonly uri: string;
@@ -70,7 +79,54 @@ import {
   convertPastedImagesToAttachments,
   createPastedTextComposerAttachment,
   isOwnedPastedImageUri,
+  pasteComposerClipboard,
 } from "./composerImages";
+
+describe("composer clipboard paste", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clipboard.hasImageAsync.mockResolvedValue(false);
+    clipboard.hasStringAsync.mockResolvedValue(true);
+    clipboard.getStringAsync.mockResolvedValue("clipboard text");
+    clipboard.getImageAsync.mockResolvedValue({ data: "data:image/png;base64,aGVsbG8=" });
+  });
+
+  it("returns only the image when the clipboard contains both image and text", async () => {
+    clipboard.hasImageAsync.mockResolvedValue(true);
+    const result = await pasteComposerClipboard({ existingCount: 0 });
+    expect(result).toEqual({
+      images: [expect.objectContaining({ type: "image", name: "pasted-image.png" })],
+      text: null,
+      error: null,
+    });
+    expect(clipboard.getStringAsync).not.toHaveBeenCalled();
+  });
+
+  it("does not paste alternate text when the image cannot fit", async () => {
+    clipboard.hasImageAsync.mockResolvedValue(true);
+    expect(
+      await pasteComposerClipboard({ existingCount: PROVIDER_SEND_TURN_MAX_ATTACHMENTS }),
+    ).toEqual({ images: [], text: null, error: expect.stringContaining("up to") });
+    expect(clipboard.getStringAsync).not.toHaveBeenCalled();
+  });
+
+  it("returns plain text without image chips", async () => {
+    expect(await pasteComposerClipboard({ existingCount: 0 })).toEqual({
+      images: [],
+      text: "clipboard text",
+      error: null,
+    });
+  });
+
+  it("reports an empty text clipboard", async () => {
+    clipboard.getStringAsync.mockResolvedValue("");
+    expect(await pasteComposerClipboard({ existingCount: 0 })).toEqual({
+      images: [],
+      text: null,
+      error: "Clipboard is empty.",
+    });
+  });
+});
 
 describe("native pasted image cleanup", () => {
   beforeEach(() => {

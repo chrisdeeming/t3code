@@ -91,7 +91,8 @@ private final class ComposerTextView: UITextView {
   var onAttributedMutation: (() -> Void)?
   var onSubmit: (() -> Void)?
   var isReadOnly = false
-  var interceptTextPastes = false
+  var textPasteThresholdBytes = 0
+  var maxInputChars = Int.max
   private var bypassTextPasteInterception = false
 
   override var keyCommands: [UIKeyCommand]? {
@@ -104,7 +105,7 @@ private final class ComposerTextView: UITextView {
     submit.discoverabilityTitle = "Send Message"
     submit.wantsPriorityOverSystemBehavior = true
     commands.append(submit)
-    if interceptTextPastes {
+    if textPasteThresholdBytes > 0 {
       let pasteAsText = UIKeyCommand(
         input: "v",
         modifierFlags: [.command, .shift],
@@ -172,12 +173,26 @@ private final class ComposerTextView: UITextView {
         return
       }
     }
-    if interceptTextPastes, !bypassTextPasteInterception,
-       let text = pasteboard.string, !text.isEmpty {
+    if !bypassTextPasteInterception,
+       let text = pasteboard.string, shouldInterceptTextPaste(text) {
       onPasteText?(text, selectedRange)
       return
     }
     super.paste(sender)
+  }
+
+  private func shouldInterceptTextPaste(_ text: String) -> Bool {
+    guard textPasteThresholdBytes > 0, !text.isEmpty else { return false }
+    let pastedLength = (text as NSString).length
+    if pastedLength >= textPasteThresholdBytes || text.utf8.count >= textPasteThresholdBytes {
+      return true
+    }
+    // Chips occupy one display character but expand to their source in the
+    // submitted message. Measure that source, including the replaced selection.
+    let sourceLength = sourceOffset(forDisplayOffset: attributedText.length)
+    let selectedLength = sourceOffset(forDisplayOffset: NSMaxRange(selectedRange)) -
+      sourceOffset(forDisplayOffset: selectedRange.location)
+    return sourceLength - selectedLength + pastedLength > maxInputChars
   }
 
   override func deleteBackward() {
@@ -642,8 +657,12 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     textView.spellCheckingType = spellCheck ? .yes : .no
   }
 
-  func setInterceptTextPastes(_ intercept: Bool) {
-    textView.interceptTextPastes = intercept
+  func setTextPasteThresholdBytes(_ threshold: Int) {
+    textView.textPasteThresholdBytes = threshold
+  }
+
+  func setMaxInputChars(_ maxInputChars: Int) {
+    textView.maxInputChars = maxInputChars
   }
 
   func focusEditor() {

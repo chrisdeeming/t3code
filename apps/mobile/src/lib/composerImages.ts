@@ -519,11 +519,19 @@ export async function pickComposerMedia(input: {
   };
 }
 
-export async function pasteComposerClipboard(input: { readonly existingCount: number }): Promise<{
-  readonly images: ReadonlyArray<DraftComposerImageAttachment>;
-  readonly text: string | null;
-  readonly error: string | null;
-}> {
+/** Clipboard images take priority over their alternate text representation. */
+export async function pasteComposerClipboard(input: { readonly existingCount: number }): Promise<
+  | {
+      readonly images: ReadonlyArray<DraftComposerImageAttachment>;
+      readonly text: null;
+      readonly error: string | null;
+    }
+  | {
+      readonly images: readonly [];
+      readonly text: string;
+      readonly error: null;
+    }
+> {
   let clipboard: Awaited<ReturnType<typeof loadClipboard>>;
   try {
     clipboard = await loadClipboard();
@@ -585,8 +593,7 @@ export async function pasteComposerClipboard(input: { readonly existingCount: nu
     const text = await clipboard.getStringAsync();
     return {
       images: [],
-      text: text.length > 0 ? text : null,
-      error: text.length > 0 ? null : "Clipboard is empty.",
+      ...(text.length > 0 ? { text, error: null } : { text: null, error: "Clipboard is empty." }),
     };
   }
 

@@ -18,7 +18,7 @@ describe("appearancePreferences", () => {
       baseFontSize: DEFAULT_BASE_FONT_SIZE,
       terminalFontSize: null,
       codeFontSize: null,
-      codeWordBreak: true,
+      codeWordBreak: false,
     });
   });
 
@@ -90,12 +90,10 @@ describe("appearancePreferences", () => {
     expect(resolveAppearancePreferences({ codeWordBreak: true }).codeWordBreak).toBe(true);
   });
 
-  it("wraps by default, and honours a reader who turned wrapping off", () => {
-    // Matches web's `wordWrap`, which also defaults on. Only an explicit `false` opts out,
-    // so an existing no-wrap choice survives the change of default.
-    expect(resolveAppearancePreferences(undefined).codeWordBreak).toBe(true);
-    expect(resolveAppearancePreferences({}).codeWordBreak).toBe(true);
-    expect(resolveAppearancePreferences({ codeWordBreak: null }).codeWordBreak).toBe(true);
+  it("preserves the no-wrap default unless wrapping is explicitly enabled", () => {
+    expect(resolveAppearancePreferences(undefined).codeWordBreak).toBe(false);
+    expect(resolveAppearancePreferences({}).codeWordBreak).toBe(false);
+    expect(resolveAppearancePreferences({ codeWordBreak: null }).codeWordBreak).toBe(false);
     expect(resolveAppearancePreferences({ codeWordBreak: false }).codeWordBreak).toBe(false);
   });
 

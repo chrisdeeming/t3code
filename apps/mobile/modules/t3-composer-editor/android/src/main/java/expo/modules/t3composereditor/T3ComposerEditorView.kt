@@ -327,8 +327,12 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
     updateInputFlags()
   }
 
-  fun setInterceptTextPastes(intercept: Boolean) {
-    editor.interceptTextPastes = intercept
+  fun setTextPasteThresholdBytes(threshold: Int) {
+    editor.textPasteThresholdBytes = threshold
+  }
+
+  fun setMaxInputChars(maxInputChars: Int) {
+    editor.maxInputChars = maxInputChars
   }
 
   fun focusEditor() {
@@ -579,7 +583,8 @@ private class SelectionAwareEditText(context: Context) : EditText(context) {
   var pasteImagesListener: ((List<String>) -> Unit)? = null
   var pasteContextListener: ((Map<String, String>) -> Unit)? = null
   var pasteTextListener: ((String, Int, Int) -> Unit)? = null
-  var interceptTextPastes = false
+  var textPasteThresholdBytes = 0
+  var maxInputChars = Int.MAX_VALUE
   var clipboardFragment = ""
 
   private fun deleteChip(backwards: Boolean): Boolean {
@@ -692,14 +697,18 @@ private class SelectionAwareEditText(context: Context) : EditText(context) {
   }
 
   private fun pasteInterceptedText(clip: ClipData?): Boolean {
-    val text = if (interceptTextPastes) clip?.plainText() else null
+    val text = if (textPasteThresholdBytes > 0) clip?.plainText() else null
     if (text.isNullOrEmpty()) return false
-    pasteTextListener?.invoke(
-      text,
-      selectionStart.coerceAtLeast(0),
-      selectionEnd.coerceAtLeast(0),
-    )
-    return true
+    val start = minOf(selectionStart, selectionEnd).coerceIn(0, length())
+    val end = maxOf(selectionStart, selectionEnd).coerceIn(start, length())
+    val exceedsInputLimit = length().toLong() - (end - start) + text.length > maxInputChars
+    val shouldIntercept = exceedsInputLimit || text.length >= textPasteThresholdBytes ||
+      text.toByteArray(Charsets.UTF_8).size >= textPasteThresholdBytes
+    if (shouldIntercept) {
+      pasteTextListener?.invoke(text, start, end)
+    }
+    // Let EditText perform ordinary pastes, retaining its native undo history.
+    return shouldIntercept
   }
 
   // coerceToText opens content: URIs synchronously. Leave URI-backed
@@ -715,7 +724,7 @@ private class SelectionAwareEditText(context: Context) : EditText(context) {
 
   override fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean {
     if (keyCode == KeyEvent.KEYCODE_V && event.isCtrlPressed && event.isShiftPressed) {
-      return super.onTextContextMenuItem(android.R.id.pasteAsPlainText)
+      return !readOnly && super.onTextContextMenuItem(android.R.id.pasteAsPlainText)
     }
     return super.onKeyShortcut(keyCode, event)
   }
