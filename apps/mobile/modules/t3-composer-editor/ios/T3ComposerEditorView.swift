@@ -415,12 +415,22 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
       self?.onComposerPasteImages(["uris": urls])
     }
     textView.onPasteContext = { [weak self] context in
-      self?.onComposerPasteContext(context)
+      guard let self else { return }
+      let selection = self.sourceSelection()
+      self.nativeEventCount += 1
+      var payload: [String: Any] = context
+      payload["value"] = self.textView.serializedText()
+      payload["eventCount"] = self.nativeEventCount
+      payload["selection"] = ["start": selection.start, "end": selection.end]
+      self.onComposerPasteContext(payload)
     }
     textView.onPasteText = { [weak self] text, _ in
       guard let self else { return }
       let selection = self.sourceSelection()
+      self.nativeEventCount += 1
       self.onComposerPasteText([
+        "value": self.textView.serializedText(),
+        "eventCount": self.nativeEventCount,
         "text": text,
         "selection": ["start": selection.start, "end": selection.end],
       ])

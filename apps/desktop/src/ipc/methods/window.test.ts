@@ -6,8 +6,14 @@ import { vi } from "vite-plus/test";
 
 import type * as Electron from "electron";
 
-const focusedWebContents = vi.hoisted(() => vi.fn());
-vi.mock("electron", () => ({ webContents: { getFocusedWebContents: focusedWebContents } }));
+const { focusedWebContents, ownerWindow } = vi.hoisted(() => ({
+  focusedWebContents: vi.fn(),
+  ownerWindow: vi.fn(),
+}));
+vi.mock("electron", () => ({
+  webContents: { getFocusedWebContents: focusedWebContents },
+  BrowserWindow: { fromWebContents: ownerWindow },
+}));
 
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
@@ -165,8 +171,10 @@ describe("pasteAsText", () => {
       const mainPaste = vi.fn();
       const window = {
         webContents: { id: 42, paste: mainPaste },
+        isDestroyed: () => false,
       } as unknown as Electron.BrowserWindow;
       focusedWebContents.mockReturnValue({ paste, isDestroyed: () => false });
+      ownerWindow.mockReturnValue(window);
 
       return Effect.gen(function* () {
         yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
@@ -174,6 +182,16 @@ describe("pasteAsText", () => {
         assert.equal(mainPaste.mock.calls.length, 0);
 
         yield* pasteAsText.handler(undefined, { sender: { id: 99 } });
+        assert.equal(paste.mock.calls.length, 1);
+        ownerWindow.mockReturnValue({}); // A focused PiP/other BrowserWindow.
+        yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
+        assert.equal(paste.mock.calls.length, 1);
+        ownerWindow.mockReturnValue(null); // Detached contents.
+        yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
+        assert.equal(paste.mock.calls.length, 1);
+        ownerWindow.mockReturnValue(window);
+        focusedWebContents.mockReturnValue({ paste, isDestroyed: () => true });
+        yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
         assert.equal(paste.mock.calls.length, 1);
         focusedWebContents.mockReturnValue(null);
         yield* pasteAsText.handler(undefined, { sender: { id: 42 } });

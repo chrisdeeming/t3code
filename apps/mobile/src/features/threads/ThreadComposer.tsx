@@ -1,3 +1,4 @@
+import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useAtomValue } from "@effect/atom-react";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
@@ -50,7 +51,10 @@ import Animated, {
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
 import { scopedThreadKey } from "../../lib/scopedEntities";
-import { composerContextImportsAtom } from "../../state/use-composer-drafts";
+import {
+  composerContextImportsAtom,
+  countComposerDraftAttachmentsAfterSelection,
+} from "../../state/use-composer-drafts";
 import type { ComposerDocumentAttachment } from "../../lib/composerContext";
 import { useProject } from "../../state/entities";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
@@ -138,7 +142,7 @@ export interface ThreadComposerProps {
   readonly onPickDraftMedia: () => Promise<void>;
   readonly onPickDraftFiles: () => Promise<void>;
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
-  readonly onNativePasteText: (text: string) => Promise<void>;
+  readonly onNativePasteText: (paste: ComposerTextPaste) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
   readonly onStopThread: () => void;
   readonly onSendMessage: () => Promise<MessageId | null>;
@@ -752,14 +756,13 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 onPasteText={(paste) => {
                   const insertPaste = () => {
                     const insertion = replaceTextSelection({
-                      value: props.draftMessage,
+                      value: paste.value,
                       selection: paste.selection,
                       text: paste.text,
                     });
                     const selection = { start: insertion.cursor, end: insertion.cursor };
                     props.onChangeDraftMessage(insertion.value);
                     composerMenu.onSelectionChange(selection);
-                    requestAnimationFrame(() => inputRef.current?.setSelection(selection));
                   };
                   const capabilities = props.serverConfig?.environment.capabilities;
                   const advertisedMax =
@@ -771,13 +774,16 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                       ? null
                       : clampFileAttachmentUploadBytes(advertisedMax);
                   const wouldExceedInputLimit =
-                    props.draftMessage.length -
+                    paste.value.length -
                       Math.max(0, paste.selection.end - paste.selection.start) +
                       paste.text.length >
                     PROVIDER_SEND_TURN_MAX_INPUT_CHARS;
                   const canAttach =
                     maxBytes !== null &&
-                    props.draftAttachments.length < PROVIDER_SEND_TURN_MAX_ATTACHMENTS &&
+                    countComposerDraftAttachmentsAfterSelection(composerOwnerKey, {
+                      text: paste.value,
+                      ...paste.selection,
+                    }) < PROVIDER_SEND_TURN_MAX_ATTACHMENTS &&
                     new TextEncoder().encode(paste.text).byteLength <= maxBytes;
                   if (
                     pastedTextDisposition({
@@ -800,10 +806,8 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                           pendingPastedTextAttachmentCountRef.current,
                         );
                       };
-                      void props
-                        .onNativePasteText(paste.text)
-                        .then(finishAttachment, finishAttachment);
-                    } else if (maxBytes === null && !wouldExceedInputLimit) {
+                      void props.onNativePasteText(paste).then(finishAttachment, finishAttachment);
+                    } else if (!wouldExceedInputLimit) {
                       insertPaste();
                     } else {
                       Alert.alert(

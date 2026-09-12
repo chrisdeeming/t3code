@@ -92,6 +92,8 @@ import {
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
 import {
   clearComposerDraftContent,
+  captureComposerDraftInsertion,
+  countComposerDraftAttachmentsAfterSelection,
   getComposerDraftSnapshot,
   mergeComposerDraftContent,
   restoreComposerDraftSnapshot,
@@ -913,15 +915,19 @@ export function NewTaskDraftScreen(props: {
       return;
     }
     const capabilities = selectedEnvironmentServerConfig?.environment.capabilities;
+    const insertion = flow.draftKey ? captureComposerDraftInsertion(flow.draftKey) : undefined;
     const result = await pickComposerMedia({
-      existingCount: flow.attachments.length,
+      existingCount:
+        flow.draftKey && insertion
+          ? countComposerDraftAttachmentsAfterSelection(flow.draftKey, insertion)
+          : flow.attachments.length,
       maxVideoBytes:
         capabilities?.attachmentUploads === true
           ? capabilities.fileAttachments?.maxUploadBytes
           : undefined,
     });
     const rejectedCount =
-      result.attachments.length > 0 ? flow.appendAttachments(result.attachments) : 0;
+      result.attachments.length > 0 ? flow.appendAttachments(result.attachments, insertion) : 0;
     const problems = [
       ...(result.error ? [result.error] : []),
       ...(rejectedCount > 0
@@ -943,11 +949,16 @@ export function NewTaskDraftScreen(props: {
       Alert.alert("File attachments are not available on this server.");
       return;
     }
+    const insertion = flow.draftKey ? captureComposerDraftInsertion(flow.draftKey) : undefined;
     const result = await pickComposerFiles({
-      existingCount: flow.attachments.length,
+      existingCount:
+        flow.draftKey && insertion
+          ? countComposerDraftAttachmentsAfterSelection(flow.draftKey, insertion)
+          : flow.attachments.length,
       maxBytes,
     });
-    const rejectedCount = result.files.length > 0 ? flow.appendAttachments(result.files) : 0;
+    const rejectedCount =
+      result.files.length > 0 ? flow.appendAttachments(result.files, insertion) : 0;
     // The picker error and the live-cap rejection can both happen in one
     // pick; report both in a single alert.
     const problems = [
@@ -964,12 +975,16 @@ export function NewTaskDraftScreen(props: {
   const handleNativePasteImages = useCallback(
     async (uris: ReadonlyArray<string>) => {
       try {
+        const insertion = flow.draftKey ? captureComposerDraftInsertion(flow.draftKey) : undefined;
         const images = await convertPastedImagesToAttachments({
           uris,
-          existingCount: flow.attachments.length,
+          existingCount:
+            flow.draftKey && insertion
+              ? countComposerDraftAttachmentsAfterSelection(flow.draftKey, insertion)
+              : flow.attachments.length,
         });
         if (images.length > 0) {
-          flow.appendAttachments(images);
+          flow.appendAttachments(images, insertion);
         }
       } catch (error) {
         console.error("[native paste] error converting images", error);
@@ -980,16 +995,18 @@ export function NewTaskDraftScreen(props: {
 
   const handleNativePasteText = useCallback(
     async (paste: ComposerTextPaste) => {
+      const draftKey = flow.draftKey;
+      if (!draftKey) return;
+      const insertion = { text: paste.value, ...paste.selection };
       const insertPaste = () => {
         const insertion = replaceTextSelection({
-          value: flow.prompt,
+          value: paste.value,
           selection: paste.selection,
           text: paste.text,
         });
         const selection = { start: insertion.cursor, end: insertion.cursor };
         flow.setPrompt(insertion.value);
         composerMenu.onSelectionChange(selection);
-        requestAnimationFrame(() => promptInputRef.current?.setSelection(selection));
       };
       const capabilities = selectedEnvironmentServerConfig?.environment.capabilities;
       const advertisedMax =
@@ -999,13 +1016,14 @@ export function NewTaskDraftScreen(props: {
       const maxBytes =
         advertisedMax === undefined ? null : clampFileAttachmentUploadBytes(advertisedMax);
       const wouldExceedInputLimit =
-        flow.prompt.length -
+        paste.value.length -
           Math.max(0, paste.selection.end - paste.selection.start) +
           paste.text.length >
         PROVIDER_SEND_TURN_MAX_INPUT_CHARS;
       const canAttach =
         maxBytes !== null &&
-        flow.attachments.length < PROVIDER_SEND_TURN_MAX_ATTACHMENTS &&
+        countComposerDraftAttachmentsAfterSelection(draftKey, insertion) <
+          PROVIDER_SEND_TURN_MAX_ATTACHMENTS &&
         new TextEncoder().encode(paste.text).byteLength <= maxBytes;
       if (
         pastedTextDisposition({
@@ -1015,7 +1033,6 @@ export function NewTaskDraftScreen(props: {
         }) === "attachment"
       ) {
         if (canAttach && maxBytes !== null) {
-          const draftKey = flow.draftKey;
           pendingPastedTextAttachmentCountRef.current += 1;
           setPendingPastedTextAttachmentCount(pendingPastedTextAttachmentCountRef.current);
           try {
@@ -1035,7 +1052,7 @@ export function NewTaskDraftScreen(props: {
               await removePersistedComposerAttachmentFile(attachment.fileUri);
               return;
             }
-            if (flow.appendAttachments([attachment]) > 0) {
+            if (flow.appendAttachments([attachment], insertion) > 0) {
               await removePersistedComposerAttachmentFile(attachment.fileUri);
               Alert.alert(
                 "Could not attach pasted text",
@@ -1054,7 +1071,7 @@ export function NewTaskDraftScreen(props: {
             );
             setPendingPastedTextAttachmentCount(pendingPastedTextAttachmentCountRef.current);
           }
-        } else if (maxBytes === null && !wouldExceedInputLimit) {
+        } else if (!wouldExceedInputLimit) {
           insertPaste();
         } else {
           Alert.alert(

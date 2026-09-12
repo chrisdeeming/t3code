@@ -100,7 +100,7 @@ function AttachmentDocumentBody(props: {
             </Text>
           </View>
         ) : null}
-        {table && document.rendered ? (
+        {table && document.activeMode === "table" ? (
           <ScrollView className="flex-1">
             {table.truncated ? (
               <View className="border-b border-warning-border bg-warning px-4 py-2">
@@ -138,7 +138,7 @@ function AttachmentDocumentBody(props: {
               </View>
             </ScrollView>
           </ScrollView>
-        ) : document.kind === "markdown" && document.rendered && props.environmentId ? (
+        ) : document.activeMode === "markdown" && props.environmentId ? (
           <FileMarkdownPreview
             cwd=""
             relativePath=""
@@ -251,7 +251,7 @@ export function AttachmentFileScreen(props: AttachmentFileScreenProps) {
     handleBack();
   }, [draftKey, handleBack, params.attachmentId]);
 
-  const { content, renderedMode, rendered, setRendered, share, sharing } = document;
+  const { content, renderedMode, activeMode, setRendered, share, sharing } = document;
   const menuActions = useMemo(
     () =>
       [
@@ -273,10 +273,7 @@ export function AttachmentFileScreen(props: AttachmentFileScreenProps) {
               onPress: () => setRendered(false),
             } as const)
           : null,
-        // Only the source body wraps; a rendered table or Markdown lays itself out. `rendered`
-        // starts true even when nothing can be rendered, so ask what is actually on screen:
-        // the body falls through to the source surface unless one of those two is showing.
-        content && !(renderedMode !== null && rendered)
+        content && activeMode === "source"
           ? ({
               id: "word-wrap",
               title: appearance.codeWordBreak ? "Disable word wrap" : "Enable word wrap",
@@ -332,7 +329,7 @@ export function AttachmentFileScreen(props: AttachmentFileScreenProps) {
       content,
       draftKey,
       removeFromDraft,
-      rendered,
+      activeMode,
       renderedMode,
       setRendered,
       share,
@@ -340,17 +337,17 @@ export function AttachmentFileScreen(props: AttachmentFileScreenProps) {
       uri,
     ],
   );
-  const activeMode = rendered ? "preview" : "source";
+  const selectedAction = activeMode === "source" ? "source" : "preview";
   const androidMenuActions = useMemo<MenuAction[]>(
     () =>
       menuActions.map((action) => ({
         id: action.id,
         title: action.title,
         image: action.icon,
-        state: action.inline ? (action.id === activeMode ? "on" : "off") : undefined,
+        state: action.inline ? (action.id === selectedAction ? "on" : "off") : undefined,
         ...("destructive" in action ? { attributes: { destructive: true } } : {}),
       })),
-    [activeMode, menuActions],
+    [selectedAction, menuActions],
   );
   const handleAndroidMenuAction = useCallback(
     (event: { nativeEvent: { event: string } }) => {
@@ -398,7 +395,7 @@ export function AttachmentFileScreen(props: AttachmentFileScreenProps) {
                   <NativeHeaderToolbar.MenuAction
                     key={action.id}
                     icon={action.icon}
-                    isOn={action.id === activeMode}
+                    isOn={action.id === selectedAction}
                     onPress={action.onPress}
                   >
                     {action.title}

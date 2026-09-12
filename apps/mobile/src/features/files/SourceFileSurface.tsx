@@ -32,7 +32,7 @@ import {
 } from "./nativeSourceFileAdapter";
 import { MarkdownTextPrimitive } from "@t3tools/mobile-markdown-text/primitive";
 
-import { prepareSourceFileDocument } from "./source-file-document";
+import { boundedSelectableSourceTokens, prepareSourceFileDocument } from "./source-file-document";
 import { sourceHighlightAtom } from "./sourceHighlightingState";
 
 interface SourceFileSurfaceProps {
@@ -140,7 +140,7 @@ function useSourceFileModel(props: SourceFileSurfaceProps) {
       ? "ready"
       : "highlighting";
 
-  return { lines, rowsJson, status, targetIndex, theme, tokens };
+  return { normalizedContents, lines, rowsJson, status, targetIndex, theme, tokens };
 }
 
 function SourceHighlightStatusView(props: { readonly status: SourceHighlightStatus }) {
@@ -230,7 +230,11 @@ function NativeSourceFileSurface(
 function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
   const foreground = useUniwindTheme()["--color-foreground"];
   const { codeSurface, codeWordBreak } = useAppearanceCodeSurface();
-  const { lines, status, targetIndex, tokens } = useSourceFileModel(props);
+  const { normalizedContents, lines, status, targetIndex, tokens } = useSourceFileModel(props);
+  const selectableTokens = useMemo(
+    () => (props.selectable ? boundedSelectableSourceTokens(tokens) : null),
+    [props.selectable, tokens],
+  );
   const listRef = useRef<FlatList<string>>(null);
   const { isPullRefreshing, handlePullToRefresh } = useSourceFileRefresh(props.onRefresh);
   const refreshControl = props.onRefresh ? (
@@ -266,7 +270,7 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
   // Android the primitive is an RN `Text`, which selects across its nested children. Either
   // way "select all" takes the file rather than a line, which a `FlatList` row can never do
   // because each row is its own selection scope.
-  const selectableBlock = (
+  const selectableBlock = props.selectable ? (
     <MarkdownTextPrimitive
       uiTextView
       selectable
@@ -277,34 +281,38 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
         lineHeight: codeSurface.rowHeight,
       }}
     >
-      {lines.map((line, index) => {
-        const lineTokens = tokens?.[index] ?? null;
-        const body =
-          lineTokens && lineTokens.length > 0
-            ? lineTokens.map((token, tokenIndex) => (
-                <MarkdownTextPrimitive
-                  key={`${index}:${tokenIndex}`}
-                  style={{
-                    color: token.color ?? foreground,
-                    fontWeight:
-                      token.fontStyle !== null && (token.fontStyle & 2) === 2 ? "700" : "400",
-                    fontStyle:
-                      token.fontStyle !== null && (token.fontStyle & 1) === 1 ? "italic" : "normal",
-                  }}
-                >
-                  {token.content}
-                </MarkdownTextPrimitive>
-              ))
-            : line;
-        return (
-          <MarkdownTextPrimitive key={index}>
-            {body}
-            {index < lines.length - 1 ? "\n" : ""}
-          </MarkdownTextPrimitive>
-        );
-      })}
+      {selectableTokens
+        ? lines.map((line, index) => {
+            const lineTokens = selectableTokens[index] ?? null;
+            const body =
+              lineTokens && lineTokens.length > 0
+                ? lineTokens.map((token, tokenIndex) => (
+                    <MarkdownTextPrimitive
+                      key={`${index}:${tokenIndex}`}
+                      style={{
+                        color: token.color ?? foreground,
+                        fontWeight:
+                          token.fontStyle !== null && (token.fontStyle & 2) === 2 ? "700" : "400",
+                        fontStyle:
+                          token.fontStyle !== null && (token.fontStyle & 1) === 1
+                            ? "italic"
+                            : "normal",
+                      }}
+                    >
+                      {token.content}
+                    </MarkdownTextPrimitive>
+                  ))
+                : line;
+            return (
+              <MarkdownTextPrimitive key={index}>
+                {body}
+                {index < lines.length - 1 ? "\n" : ""}
+              </MarkdownTextPrimitive>
+            );
+          })
+        : normalizedContents}
     </MarkdownTextPrimitive>
-  );
+  ) : null;
 
   const list = (
     <FlatList
@@ -333,9 +341,9 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
     />
   );
 
-  // Jumping to a line needs a list that can scroll to an index, so a deep link into a
-  // specific line keeps the virtualised rows. Everything else takes the selectable text.
-  const usesLineTarget = targetIndex !== null && !props.selectable;
+  // Workspace files retain their numbered, virtualized rows, with or without a line target.
+  // Attachments opt into one selection scope for the entire document.
+  const usesLineList = !props.selectable;
   const padded = (
     <ScrollView
       refreshControl={refreshControl}
@@ -353,7 +361,7 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
   return (
     <View className="relative flex-1 bg-sheet">
       <SourceHighlightStatusView status={status} />
-      {usesLineTarget ? (
+      {usesLineList ? (
         codeWordBreak ? (
           list
         ) : (

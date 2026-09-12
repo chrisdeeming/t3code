@@ -88,7 +88,14 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
     editor.pasteImagesListener = { uris ->
       onComposerPasteImages(mapOf("uris" to uris))
     }
-    editor.pasteContextListener = { payload -> onComposerPasteContext(payload) }
+    editor.pasteContextListener = { payload ->
+      nativeEventCount += 1
+      onComposerPasteContext(payload + mapOf(
+        "value" to editor.text.toString(),
+        "eventCount" to nativeEventCount,
+        "selection" to currentSelectionPayload(),
+      ))
+    }
     val contextGestures =
       GestureDetector(
         context,
@@ -123,8 +130,11 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
       false
     }
     editor.pasteTextListener = { text, start, end ->
+      nativeEventCount += 1
       onComposerPasteText(
         mapOf(
+          "value" to editor.text.toString(),
+          "eventCount" to nativeEventCount,
           "text" to text,
           "selection" to mapOf("start" to start, "end" to end),
         ),

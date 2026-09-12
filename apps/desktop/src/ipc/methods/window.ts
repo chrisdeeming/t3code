@@ -355,12 +355,19 @@ export const pasteAsText = DesktopIpc.makeIpcMethod({
     if (
       event === undefined ||
       Option.isNone(window) ||
+      window.value.isDestroyed() ||
       window.value.webContents.id !== event.sender.id
     ) {
       return;
     }
     const focused = Electron.webContents.getFocusedWebContents();
-    if (focused && !focused.isDestroyed()) focused.paste();
+    if (
+      focused &&
+      !focused.isDestroyed() &&
+      Electron.BrowserWindow.fromWebContents(focused) === window.value
+    ) {
+      focused.paste();
+    }
   }),
 });
 

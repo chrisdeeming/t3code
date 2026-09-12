@@ -9,6 +9,7 @@ import { elementContextToPreviewAnnotation } from "../../lib/elementContext";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import {
   questionAttachmentDraftId,
+  countQuestionAttachments,
   useQuestionAttachmentPreparation,
   changeQuestionAttachmentPreparation,
 } from "../../questionAttachments";
@@ -5093,6 +5094,28 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Callbacks: attachments
   // ------------------------------------------------------------------
+  const countReservedAttachments = () => {
+    const questionRequest = pendingUserInputs[0];
+    const otherQuestionKeys =
+      questionAttachmentTarget && questionRequest && activeThreadId
+        ? questionRequest.questions
+            .map((question) =>
+              questionAttachmentDraftId(
+                environmentId,
+                activeThreadId,
+                questionRequest.requestId,
+                question.id,
+              ),
+            )
+            .filter((key) => key !== questionAttachmentTarget)
+        : [];
+    return (
+      composerImagesRef.current.length +
+      composerFilesRef.current.length +
+      (pendingImageCompressionsRef.current.get(attachmentTargetKey) ?? 0) +
+      countQuestionAttachments(otherQuestionKeys)
+    );
+  };
   /** Resolves true when at least one chip was inserted for the accepted attachments. */
   const addComposerAttachments = async (
     files: File[],
@@ -5123,30 +5146,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     // accepted files reserve their attachment slots (via the pending counter)
     // before the first await, keeping the total under the limit.
     const pendingCount = pendingImageCompressionsRef.current.get(attachmentTargetKey) ?? 0;
-    const otherQuestionAttachments =
-      questionAttachmentTarget && pendingUserInputs[0]
-        ? pendingUserInputs[0].questions.reduce((count, question) => {
-            const target = questionAttachmentDraftId(
-              environmentId,
-              threadId,
-              pendingUserInputs[0]!.requestId,
-              question.id,
-            );
-            if (target === questionAttachmentTarget) return count;
-            const draft = getComposerDraft(target);
-            return (
-              count +
-              (draft?.images.length ?? 0) +
-              (draft?.files.length ?? 0) +
-              (useQuestionAttachmentPreparation.getState().counts[target] ?? 0)
-            );
-          }, 0)
-        : 0;
-    let reservedCount =
-      composerImagesRef.current.length +
-      composerFilesRef.current.length +
-      pendingCount +
-      otherQuestionAttachments;
+    let reservedCount = countReservedAttachments();
     // A pick that matches a needs-reattach marker replaces it in the draft, so
     // it must not consume a slot; a draft full of markers would otherwise hit
     // the capacity error before the replacement path could run.
@@ -5377,15 +5377,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectionOverride?: { start: number; end: number },
   ): boolean => {
     const questionCanAttach =
-      !activePendingProgress ||
+      pendingUserInputs.length === 0 ||
       (supportsQuestionAttachments &&
-        activePendingProgress.activeQuestion?.allowCustomAnswer !== false &&
+        activePendingProgress?.activeQuestion?.allowCustomAnswer !== false &&
         !activePendingIsResponding);
-    const hasAttachmentSlot =
-      composerImagesRef.current.length +
-        composerFilesRef.current.length +
-        (pendingImageCompressionsRef.current.get(attachmentTargetKey) ?? 0) <
-      PROVIDER_SEND_TURN_MAX_ATTACHMENTS;
+    const hasAttachmentSlot = countReservedAttachments() < PROVIDER_SEND_TURN_MAX_ATTACHMENTS;
     const selection = selectionOverride ?? composerEditorRef.current?.readSelectionRange();
     const wouldExceedInputLimit = wouldTextPasteExceedLimit({
       valueLength: promptRef.current.length,
@@ -5406,10 +5402,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
     const canStageAttachment =
       Boolean(activeThreadId) &&
+      !isRevertingCheckpointRef.current &&
       questionCanAttach &&
-      hasAttachmentSlot &&
-      fileStagingLimit !== null;
-    if (!canStageAttachment) {
+      hasAttachmentSlot;
+    if (!canStageAttachment || fileStagingLimit === null) {
       if (!wouldExceedInputLimit) {
         return false;
       }
@@ -5433,6 +5429,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       type: "text/plain;charset=utf-8",
     });
     if (foldedFile.size > fileStagingLimit) {
+      reservedNames.delete(foldedFileName);
+      if (!wouldExceedInputLimit) return false;
       toastManager.add({
         type: "error",
         title: "Pasted text is too large to attach",

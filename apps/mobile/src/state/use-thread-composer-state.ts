@@ -1,3 +1,4 @@
+import type { ComposerTextPaste } from "../native/T3ComposerEditor.types";
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "react-native";
@@ -47,7 +48,9 @@ import { appAtomRegistry } from "../state/atom-registry";
 import { pendingThreadCreationMessage } from "./pending-thread-creation";
 import {
   appendComposerDraftAttachments,
-  appendComposerDraftText,
+  captureComposerDraftInsertion,
+  countComposerDraftAttachmentsAfterSelection,
+  insertComposerDraftText,
   insertComposerDraftContext,
   clearComposerDraftContent,
   composerDraftsAtom,
@@ -501,9 +504,10 @@ export function useThreadComposerState() {
     }
 
     const threadKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
+    const insertion = captureComposerDraftInsertion(threadKey);
     const capabilities = selectedEnvironmentRuntime?.serverConfig?.environment.capabilities;
     const result = await pickComposerMedia({
-      existingCount: composerDrafts[threadKey]?.attachments.length ?? 0,
+      existingCount: countComposerDraftAttachmentsAfterSelection(threadKey, insertion),
       maxVideoBytes:
         capabilities?.attachmentUploads === true
           ? capabilities.fileAttachments?.maxUploadBytes
@@ -511,6 +515,7 @@ export function useThreadComposerState() {
     });
     const rejectedCount = appendComposerDraftAttachments(threadKey, result.attachments, {
       appendReference: true,
+      insertion,
     });
     const problems = [
       ...(result.error ? [result.error] : []),
@@ -536,13 +541,15 @@ export function useThreadComposerState() {
     }
 
     const threadKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
+    const insertion = captureComposerDraftInsertion(threadKey);
     // pickComposerFiles clamps the advertised limit to the contract maximum.
     const result = await pickComposerFiles({
-      existingCount: composerDrafts[threadKey]?.attachments.length ?? 0,
+      existingCount: countComposerDraftAttachmentsAfterSelection(threadKey, insertion),
       maxBytes,
     });
     const rejectedCount = appendComposerDraftAttachments(threadKey, result.files, {
       appendReference: true,
+      insertion,
     });
     // The picker error and the live-cap rejection can both happen in one
     // pick; report both in a single alert.
@@ -563,14 +570,17 @@ export function useThreadComposerState() {
     }
 
     const threadKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
+    const insertion = captureComposerDraftInsertion(threadKey);
     const result = await pasteComposerClipboard({
-      existingCount: composerDrafts[threadKey]?.attachments.length ?? 0,
+      existingCount: countComposerDraftAttachmentsAfterSelection(threadKey, insertion),
     });
     const rejectedPasteCount = appendComposerDraftAttachments(threadKey, result.images, {
       appendReference: true,
+      insertion,
     });
     if (result.text) {
-      const currentAttachments = composerDrafts[threadKey]?.attachments ?? [];
+      const currentDraft = getComposerDraftSnapshot(threadKey);
+      const currentAttachments = currentDraft.attachments;
       const capabilities = selectedEnvironmentRuntime?.serverConfig?.environment.capabilities;
       const advertisedMax =
         capabilities?.attachmentUploads === true
@@ -579,7 +589,11 @@ export function useThreadComposerState() {
       const maxBytes =
         advertisedMax === undefined ? null : clampFileAttachmentUploadBytes(advertisedMax);
       const wouldExceedInputLimit =
-        (composerDrafts[threadKey]?.text.length ?? 0) + result.text.length >
+        currentDraft.text.length -
+          (currentDraft.text === insertion.text
+            ? Math.max(0, insertion.end - insertion.start)
+            : 0) +
+          result.text.length >
         PROVIDER_SEND_TURN_MAX_INPUT_CHARS;
       const shouldFold =
         pastedTextDisposition({
@@ -589,7 +603,8 @@ export function useThreadComposerState() {
         }) === "attachment";
       const canAttach =
         maxBytes !== null &&
-        currentAttachments.length < PROVIDER_SEND_TURN_MAX_ATTACHMENTS &&
+        countComposerDraftAttachmentsAfterSelection(threadKey, insertion) <
+          PROVIDER_SEND_TURN_MAX_ATTACHMENTS &&
         new TextEncoder().encode(result.text).byteLength <= maxBytes;
       if (shouldFold && canAttach && maxBytes !== null) {
         try {
@@ -604,7 +619,10 @@ export function useThreadComposerState() {
           // Same reference the pasted images above get: a folded paste is only visible
           // as its chip until the message is sent.
           if (
-            appendComposerDraftAttachments(threadKey, [attachment], { appendReference: true }) > 0
+            appendComposerDraftAttachments(threadKey, [attachment], {
+              appendReference: true,
+              insertion,
+            }) > 0
           ) {
             await removePersistedComposerAttachmentFile(attachment.fileUri);
             setPendingConnectionError(
@@ -616,8 +634,8 @@ export function useThreadComposerState() {
             error instanceof Error ? error.message : "Could not attach pasted text.",
           );
         }
-      } else if (shouldFold && maxBytes === null && !wouldExceedInputLimit) {
-        appendComposerDraftText(threadKey, result.text);
+      } else if (shouldFold && !wouldExceedInputLimit) {
+        insertComposerDraftText(threadKey, result.text, insertion);
       } else if (shouldFold) {
         setPendingConnectionError(
           wouldExceedInputLimit
@@ -625,7 +643,7 @@ export function useThreadComposerState() {
             : "Could not attach pasted text. Remove an attachment or use a smaller paste, then try again.",
         );
       } else {
-        appendComposerDraftText(threadKey, result.text);
+        insertComposerDraftText(threadKey, result.text, insertion);
       }
     }
     if (result.error) {
@@ -649,13 +667,14 @@ export function useThreadComposerState() {
       }
 
       const threadKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
+      const insertion = captureComposerDraftInsertion(threadKey);
       try {
         const images = await convertPastedImagesToAttachments({
           uris,
-          existingCount: composerDrafts[threadKey]?.attachments.length ?? 0,
+          existingCount: countComposerDraftAttachmentsAfterSelection(threadKey, insertion),
         });
         if (images.length > 0) {
-          appendComposerDraftAttachments(threadKey, images, { appendReference: true });
+          appendComposerDraftAttachments(threadKey, images, { appendReference: true, insertion });
         }
       } catch (error) {
         console.error("[native paste] error converting images", {
@@ -670,7 +689,7 @@ export function useThreadComposerState() {
   );
 
   const onNativePasteText = useCallback(
-    async (text: string) => {
+    async (paste: ComposerTextPaste) => {
       if (!selectedThreadShell) return;
       const capabilities = selectedEnvironmentRuntime?.serverConfig?.environment.capabilities;
       const advertisedMax =
@@ -680,10 +699,11 @@ export function useThreadComposerState() {
       if (advertisedMax === undefined) return;
 
       const threadKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
-      const currentAttachments = composerDrafts[threadKey]?.attachments ?? [];
+      const insertion = { text: paste.value, ...paste.selection };
+      const currentAttachments = getComposerDraftSnapshot(threadKey).attachments;
       try {
         const attachment = await createPastedTextComposerAttachment({
-          text,
+          text: paste.text,
           name: reservePastedTextFileName(
             threadKey,
             currentAttachments.map((item) => item.name),
@@ -695,6 +715,7 @@ export function useThreadComposerState() {
         // through its ordinary attach path, which always writes a reference; match that.
         const rejectedCount = appendComposerDraftAttachments(threadKey, [attachment], {
           appendReference: true,
+          insertion,
         });
         if (rejectedCount > 0) {
           await removePersistedComposerAttachmentFile(attachment.fileUri);

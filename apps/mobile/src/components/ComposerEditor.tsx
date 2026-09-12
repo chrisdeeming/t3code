@@ -11,15 +11,13 @@ import {
   createComposerDraftContextHistory,
   getComposerDraftSnapshot,
   insertComposerDraftContext,
+  insertComposerDraftText,
   rememberComposerDraftSelection,
   setComposerDraftContext,
   setComposerContextImporting,
   useComposerDraft,
 } from "../state/use-composer-drafts";
-import {
-  importComposerContextClipboard,
-  type NativeContextClipboard,
-} from "../lib/composerContextClipboard";
+import { importComposerContextClipboard } from "../lib/composerContextClipboard";
 import { ComposerContextSheet } from "./ComposerContextSheet";
 import { AppText as Text } from "./AppText";
 import {
@@ -78,8 +76,11 @@ export function ComposerEditor({
     },
     [draftKey],
   );
-  const pasteContext = async (clipboard: NativeContextClipboard) => {
+  const pasteContext = async (
+    clipboard: Parameters<NonNullable<NativeComposerEditorProps["onPasteContext"]>>[0],
+  ) => {
     if (!draftKey || importRef.current || props.readOnly || props.editable === false) return;
+    const insertion = { text: clipboard.value, ...clipboard.selection };
     const controller = new AbortController();
     importRef.current = controller;
     setImporting(true);
@@ -92,25 +93,26 @@ export function ComposerEditor({
         getComposerDraftSnapshot(draftKey).context?.records.length ?? 0,
       );
       if (!result) {
-        insertComposerDraftContext(draftKey, {
-          text: clipboard.text,
-          context: { version: 1, records: [] },
-        });
+        insertComposerDraftText(draftKey, clipboard.text, insertion);
         return;
       }
       const rejected = appendComposerDraftAttachments(draftKey, result.attachments);
       const ids = new Set(
         getComposerDraftSnapshot(draftKey).attachments.map((attachment) => attachment.id),
       );
-      insertComposerDraftContext(draftKey, {
-        text: result.text,
-        context: {
-          version: 1,
-          records: result.context.records.filter(
-            (record) => !("attachmentId" in record) || ids.has(record.attachmentId),
-          ),
+      insertComposerDraftContext(
+        draftKey,
+        {
+          text: result.text,
+          context: {
+            version: 1,
+            records: result.context.records.filter(
+              (record) => !("attachmentId" in record) || ids.has(record.attachmentId),
+            ),
+          },
         },
-      });
+        insertion,
+      );
       if (result.failures.length > 0 || rejected > 0)
         Alert.alert(
           "Some attachments could not be copied",
@@ -188,7 +190,12 @@ export function ComposerEditor({
           setSelected(selection);
         }}
         onSelectionChange={(selection) => {
-          if (draftKey) rememberComposerDraftSelection(draftKey, props.value, selection);
+          if (draftKey)
+            rememberComposerDraftSelection(
+              draftKey,
+              getComposerDraftSnapshot(draftKey).text,
+              selection,
+            );
           props.onSelectionChange?.(selection);
         }}
       />

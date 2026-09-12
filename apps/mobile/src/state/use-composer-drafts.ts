@@ -97,6 +97,83 @@ export function readComposerDraftSelection(
   return { start: lastComposerSelection.start, end: lastComposerSelection.end };
 }
 
+export interface ComposerDraftInsertion {
+  readonly text: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+/** Capture the paste target before any clipboard reads, downloads, or file writes. */
+export function captureComposerDraftInsertion(
+  draftKey: string,
+  selection?: { start: number; end: number },
+): ComposerDraftInsertion {
+  const { text } = getComposerDraftSnapshot(draftKey);
+  return {
+    text,
+    ...(selection ??
+      readComposerDraftSelection(draftKey, text) ?? { start: text.length, end: text.length }),
+  };
+}
+
+function contextInsertionRange(
+  draftKey: string,
+  draft: ComposerDraft,
+  target?: ComposerDraftInsertion,
+) {
+  const captured =
+    target ?? (lastComposerSelection?.draftKey === draftKey ? lastComposerSelection : null);
+  // Edits made during a file write must not be replaced using stale offsets. A changed
+  // draft receives the file at its end; moving only the caret preserves the captured range.
+  const selection = captured?.text === draft.text ? captured : null;
+  const start = Math.max(0, Math.min(selection?.start ?? draft.text.length, draft.text.length));
+  return { start, end: Math.max(start, Math.min(selection?.end ?? start, draft.text.length)) };
+}
+
+function draftWithoutInsertionSelection(
+  draftKey: string,
+  draft: ComposerDraft,
+  target?: ComposerDraftInsertion,
+) {
+  const { start, end } = contextInsertionRange(draftKey, draft, target);
+  const text = `${draft.text.slice(0, start)} ${draft.text.slice(end)}`;
+  return withReferencedContextFiles(draft, text, referencedComposerContext(text, draft.context));
+}
+
+export function countComposerDraftAttachmentsAfterSelection(
+  draftKey: string,
+  target: ComposerDraftInsertion,
+): number {
+  return draftWithoutInsertionSelection(draftKey, getComposerDraftSnapshot(draftKey), target)
+    .attachments.length;
+}
+
+function withReferencedContextFiles(
+  draft: ComposerDraft,
+  text: string,
+  context: OrchestrationMessageContext | undefined,
+): ComposerDraft {
+  const previousIds = new Set(
+    draft.context?.records.flatMap((record) =>
+      record.kind === "file" && "attachmentId" in record ? [record.attachmentId] : [],
+    ),
+  );
+  const retainedIds = new Set(
+    context?.records.flatMap((record) => ("attachmentId" in record ? [record.attachmentId] : [])),
+  );
+  return {
+    ...draft,
+    text,
+    context,
+    attachments: draft.attachments.filter(
+      (attachment) =>
+        attachment.type === "image" ||
+        !previousIds.has(attachment.id) ||
+        retainedIds.has(attachment.id),
+    ),
+  };
+}
+
 /** Retains file bytes while native text undo can restore their references. */
 export function createComposerDraftContextHistory() {
   const restoreContext = createComposerContextHistory();
@@ -165,15 +242,19 @@ export function setComposerDraftContext(
 export function insertComposerDraftContext(
   draftKey: string,
   content: { text: string; context: OrchestrationMessageContext },
+  target?: ComposerDraftInsertion,
 ): boolean {
   let inserted = false;
+  let removed: ReadonlyArray<DraftComposerAttachment> = [];
   updateComposerDrafts((current) => {
     const draft = normalizeDraft(current[draftKey]);
-    const nextDraft = draftWithInsertedContext(draftKey, draft, content);
+    const nextDraft = draftWithInsertedContext(draftKey, draft, content, target);
     if (!nextDraft) return current;
     inserted = true;
+    removed = draft.attachments.filter((attachment) => !nextDraft.attachments.includes(attachment));
     return { ...current, [draftKey]: nextDraft };
   });
+  scheduleUnusedComposerAttachmentCleanup(removed);
   return inserted;
 }
 
@@ -181,13 +262,9 @@ function draftWithInsertedContext(
   draftKey: string,
   draft: ComposerDraft,
   content: { text: string; context: OrchestrationMessageContext },
+  target?: ComposerDraftInsertion,
 ): ComposerDraft | null {
-  const selection =
-    lastComposerSelection?.draftKey === draftKey && lastComposerSelection.text === draft.text
-      ? lastComposerSelection
-      : null;
-  const start = Math.max(0, Math.min(selection?.start ?? draft.text.length, draft.text.length));
-  const end = Math.max(start, Math.min(selection?.end ?? start, draft.text.length));
+  const { start, end } = contextInsertionRange(draftKey, draft, target);
   const before = draft.text.slice(0, start);
   const after = draft.text.slice(end);
   const insertion = `${before.length > 0 && !/\s$/.test(before) && !/^\s/.test(content.text) ? " " : ""}${content.text}${!/\s$/.test(content.text) && (after.length === 0 || !/^\s/.test(after)) ? " " : ""}`;
@@ -202,7 +279,7 @@ function draftWithInsertedContext(
     start: start + insertion.length,
     end: start + insertion.length,
   };
-  return { ...draft, text, context };
+  return withReferencedContextFiles(draft, text, context);
 }
 
 export class ComposerDraftPersistenceError extends Schema.TaggedError<ComposerDraftPersistenceError>()(
@@ -1154,26 +1231,26 @@ export function setComposerDraftText(draftKey: string, value: string): void {
   updateComposerDrafts((current) => {
     const existing = normalizeDraft(current[draftKey]);
     const context = referencedComposerContext(value, existing.context);
-    const retainedIds = new Set(context?.records.map((record) => record.contextId));
-    const removedFileIds = new Set(
-      existing.context?.records.flatMap((record) =>
-        record.kind === "file" && "attachmentId" in record && !retainedIds.has(record.contextId)
-          ? [record.attachmentId]
-          : [],
-      ),
-    );
-    removed = existing.attachments.filter(
-      (attachment) => attachment.type !== "image" && removedFileIds.has(attachment.id),
-    );
-    const draft = {
-      ...existing,
-      text: value,
-      context,
-      attachments: existing.attachments.filter((attachment) => !removed.includes(attachment)),
-    };
+    const draft = withReferencedContextFiles(existing, value, context);
+    removed = existing.attachments.filter((attachment) => !draft.attachments.includes(attachment));
     return withComposerDraft(current, draftKey, draft);
   });
   scheduleUnusedComposerAttachmentCleanup(removed);
+}
+
+export function insertComposerDraftText(
+  draftKey: string,
+  value: string,
+  target: ComposerDraftInsertion,
+): void {
+  const draft = getComposerDraftSnapshot(draftKey);
+  const { start, end } = contextInsertionRange(draftKey, draft, target);
+  const text = draft.text.slice(0, start) + value + draft.text.slice(end);
+  setComposerDraftText(draftKey, text);
+  rememberComposerDraftSelection(draftKey, text, {
+    start: start + value.length,
+    end: start + value.length,
+  });
 }
 
 export function appendComposerDraftText(draftKey: string, value: string): void {
@@ -1202,6 +1279,7 @@ export function appendComposerDraftAttachments(
   options?: {
     readonly allowOverflow?: boolean;
     readonly appendReference?: boolean;
+    readonly insertion?: ComposerDraftInsertion;
     readonly maxAttachments?: number;
   },
 ): number {
@@ -1209,8 +1287,12 @@ export function appendComposerDraftAttachments(
     return 0;
   }
   let rejected: ReadonlyArray<DraftComposerAttachment> = [];
+  let removed: ReadonlyArray<DraftComposerAttachment> = [];
   updateComposerDrafts((current) => {
     const existing = normalizeDraft(current[draftKey]);
+    const retained = options?.appendReference
+      ? draftWithoutInsertionSelection(draftKey, existing, options.insertion)
+      : existing;
     const remaining = options?.allowOverflow
       ? attachments.length
       : Math.max(
@@ -1218,10 +1300,10 @@ export function appendComposerDraftAttachments(
           Math.min(
             PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
             options?.maxAttachments ?? PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
-          ) - existing.attachments.length,
+          ) - retained.attachments.length,
         );
     const contextCapacity = options?.appendReference
-      ? Math.max(0, COMPOSER_CONTEXT_MAX_RECORDS - (existing.context?.records.length ?? 0))
+      ? Math.max(0, COMPOSER_CONTEXT_MAX_RECORDS - (retained.context?.records.length ?? 0))
       : attachments.length;
     const accepted = attachments.slice(0, Math.min(remaining, contextCapacity));
     rejected = attachments.slice(accepted.length);
@@ -1231,22 +1313,30 @@ export function appendComposerDraftAttachments(
     let draft = { ...existing, attachments: [...existing.attachments, ...accepted] };
     if (options?.appendReference) {
       const records = accepted.map((attachment) => attachmentContextRecord(attachment));
-      const inserted = draftWithInsertedContext(draftKey, draft, {
-        text: records.map(formatComposerContextReference).join(" "),
-        context: { version: 1, records },
-      });
+      const inserted = draftWithInsertedContext(
+        draftKey,
+        draft,
+        {
+          text: records.map(formatComposerContextReference).join(" "),
+          context: { version: 1, records },
+        },
+        options?.insertion,
+      );
       if (!inserted) {
         rejected = attachments;
         return current;
       }
       draft = { ...inserted, attachments: [...inserted.attachments] };
+      removed = existing.attachments.filter(
+        (attachment) => !draft.attachments.includes(attachment),
+      );
     }
     return {
       ...current,
       [draftKey]: draft,
     };
   });
-  scheduleUnusedComposerAttachmentCleanup(rejected);
+  scheduleUnusedComposerAttachmentCleanup([...rejected, ...removed]);
   return rejected.length;
 }
 

@@ -152,6 +152,8 @@ import { appAtomRegistry } from "./atom-registry";
 import { threadOutboxManager } from "./thread-outbox";
 import {
   appendComposerDraftAttachments,
+  captureComposerDraftInsertion,
+  countComposerDraftAttachmentsAfterSelection,
   archiveCloudComposerDrafts,
   clearComposerDraftContent,
   clearComposerDraftContentState,
@@ -181,6 +183,7 @@ import {
   retargetNewTaskDraft,
   setComposerDraftText,
   insertComposerDraftContext,
+  insertComposerDraftText,
   rememberComposerDraftSelection,
   setComposerDraftAttachmentUpload,
   waitForComposerDraftsLoaded,
@@ -605,6 +608,116 @@ describe("mobile composer drafts", () => {
     expect(getComposerDraftSnapshot(key)).toEqual(before);
     await cleanup.promise;
   });
+  it.each(["environment-1:thread", "environment-1:new-task:draft"])(
+    "preserves the captured paste selection across async writes in %s",
+    async (key) => {
+      const file = {
+        id: "paste",
+        type: "file" as const,
+        name: "pasted-text.txt",
+        mimeType: "text/plain",
+        sizeBytes: 40_000,
+        fileUri: "file:///paste.txt",
+      };
+      setComposerDraftText(key, "before selected after");
+      const insertion = captureComposerDraftInsertion(key, { start: 7, end: 15 });
+      const write = Promise.withResolvers<typeof file>();
+      const pending = write.promise.then((attachment) =>
+        appendComposerDraftAttachments(key, [attachment], { appendReference: true, insertion }),
+      );
+      rememberComposerDraftSelection(key, insertion.text, { start: 0, end: 6 });
+      rememberComposerDraftSelection("another-draft", "unrelated", { start: 0, end: 9 });
+      write.resolve(file);
+      expect(await pending).toBe(0);
+      const draft = getComposerDraftSnapshot(key);
+      expect(draft.text).toBe("before [pasted-text.txt](t3-context://v1/file/paste) after");
+      expect(draft.attachments).toEqual([file]);
+    },
+  );
+
+  it("preserves edits made while a paste is pending instead of deleting stale offsets", async () => {
+    const key = "environment-1:typing-during-paste";
+    setComposerDraftText(key, "old selection");
+    const insertion = captureComposerDraftInsertion(key, { start: 0, end: 13 });
+    const write = Promise.withResolvers<void>();
+    const pending = write.promise.then(() => insertComposerDraftText(key, " pasted", insertion));
+    setComposerDraftText(key, "keep newly typed text");
+    write.resolve();
+    await pending;
+    expect(getComposerDraftSnapshot(key).text).toBe("keep newly typed text pasted");
+  });
+
+  it.each(["attachment", "context"])(
+    "releases a selected file when replaced by %s",
+    async (kind) => {
+      const outboxLoad = vi.spyOn(threadOutboxManager, "load").mockResolvedValue(true);
+      onTestFinished(() => outboxLoad.mockRestore());
+      const cleanup = Promise.withResolvers<void>();
+      composerAttachmentCleanupMocks.remove.mockImplementationOnce(async () => {
+        cleanup.resolve();
+        return undefined;
+      });
+      const key = "environment-1:replace-file";
+      const files = Array.from({ length: 8 }, (_, index) => ({
+        id: `file-${index}`,
+        type: "file" as const,
+        name: `notes-${index}.txt`,
+        mimeType: "text/plain",
+        sizeBytes: 4,
+        fileUri: `file:///notes-${index}.txt`,
+      }));
+      appendComposerDraftAttachments(key, files, { appendReference: true });
+      const firstLink = "[notes-0.txt](t3-context://v1/file/file-0)";
+      const insertion = captureComposerDraftInsertion(key, { start: 0, end: firstLink.length });
+      expect(countComposerDraftAttachmentsAfterSelection(key, insertion)).toBe(7);
+      if (kind === "attachment") {
+        expect(
+          appendComposerDraftAttachments(
+            key,
+            [{ ...files[0]!, id: "replacement", fileUri: "file:///replacement.txt" }],
+            { appendReference: true, insertion },
+          ),
+        ).toBe(0);
+      } else {
+        insertComposerDraftContext(
+          key,
+          { text: "replacement", context: { version: 1, records: [] } },
+          insertion,
+        );
+      }
+      const draft = getComposerDraftSnapshot(key);
+      expect(draft.attachments.map((file) => file.id)).not.toContain("file-0");
+      expect(draft.attachments.slice(0, 7)).toEqual(files.slice(1));
+      expect(draft.context?.records.some((record) => record.contextId === "file-0")).toBe(false);
+      await cleanup.promise;
+      expect(composerAttachmentCleanupMocks.remove).toHaveBeenCalledWith(files[0]!.fileUri);
+    },
+  );
+
+  it("retains a file when replacing only one of its repeated references", () => {
+    const key = "environment-1:repeat-reference";
+    const file = {
+      id: "repeat",
+      type: "file" as const,
+      name: "notes.txt",
+      mimeType: "text/plain",
+      sizeBytes: 4,
+      fileUri: "file:///repeat.txt",
+    };
+    appendComposerDraftAttachments(key, [file], { appendReference: true });
+    const link = getComposerDraftSnapshot(key).text;
+    setComposerDraftText(key, `${link} ${link}`);
+    const insertion = captureComposerDraftInsertion(key, { start: 0, end: link.length });
+    expect(countComposerDraftAttachmentsAfterSelection(key, insertion)).toBe(1);
+    insertComposerDraftContext(
+      key,
+      { text: "replaced", context: { version: 1, records: [] } },
+      insertion,
+    );
+    expect(getComposerDraftSnapshot(key).attachments).toEqual([file]);
+    expect(getComposerDraftSnapshot(key).text).toBe(`replaced ${link}`);
+  });
+
   it("inserts context at the saved caret and retains its payload through persistence and restore", () => {
     const draftKey = "context-environment:context-thread";
     const record = {
