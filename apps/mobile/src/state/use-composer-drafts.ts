@@ -144,8 +144,14 @@ export function countComposerDraftAttachmentsAfterSelection(
   draftKey: string,
   target: ComposerDraftInsertion,
 ): number {
-  return draftWithoutInsertionSelection(draftKey, getComposerDraftSnapshot(draftKey), target)
-    .attachments.length;
+  return getComposerDraftAfterSelection(draftKey, target).attachments.length;
+}
+
+export function getComposerDraftAfterSelection(
+  draftKey: string,
+  target: ComposerDraftInsertion,
+): ComposerDraft {
+  return draftWithoutInsertionSelection(draftKey, getComposerDraftSnapshot(draftKey), target);
 }
 
 function withReferencedContextFiles(
@@ -241,20 +247,36 @@ export function setComposerDraftContext(
 
 export function insertComposerDraftContext(
   draftKey: string,
-  content: { text: string; context: OrchestrationMessageContext },
+  content: {
+    text: string;
+    context: OrchestrationMessageContext;
+    attachments?: ReadonlyArray<DraftComposerAttachment>;
+  },
   target?: ComposerDraftInsertion,
 ): boolean {
   let inserted = false;
   let removed: ReadonlyArray<DraftComposerAttachment> = [];
   updateComposerDrafts((current) => {
     const draft = normalizeDraft(current[draftKey]);
-    const nextDraft = draftWithInsertedContext(draftKey, draft, content, target);
+    const attachments = content.attachments ?? [];
+    const retained = draftWithoutInsertionSelection(draftKey, draft, target);
+    if (
+      attachments.length > 0 &&
+      retained.attachments.length + attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS
+    )
+      return current;
+    const nextDraft = draftWithInsertedContext(
+      draftKey,
+      { ...draft, attachments: [...draft.attachments, ...attachments] },
+      content,
+      target,
+    );
     if (!nextDraft) return current;
     inserted = true;
     removed = draft.attachments.filter((attachment) => !nextDraft.attachments.includes(attachment));
     return { ...current, [draftKey]: nextDraft };
   });
-  scheduleUnusedComposerAttachmentCleanup(removed);
+  scheduleUnusedComposerAttachmentCleanup(inserted ? removed : (content.attachments ?? []));
   return inserted;
 }
 

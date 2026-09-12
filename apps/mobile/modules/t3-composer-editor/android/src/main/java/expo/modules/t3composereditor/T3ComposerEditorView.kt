@@ -138,7 +138,7 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
           "value" to editor.text.toString(),
           "eventCount" to nativeEventCount,
           "text" to text,
-          "selection" to mapOf("start" to start, "end" to end),
+          "selection" to currentSelectionPayload(start, end),
         ),
       )
     }
@@ -391,10 +391,13 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
     editor.highlightColor = defaultHighlightColor
   }
 
-  private fun currentSelectionPayload(): Map<String, Int> =
+  private fun currentSelectionPayload(
+    start: Int = editor.selectionStart,
+    end: Int = editor.selectionEnd
+  ): Map<String, Int> =
     mapOf(
-      "start" to editor.selectionStart.coerceAtLeast(0),
-      "end" to editor.selectionEnd.coerceAtLeast(0),
+      "start" to minOf(start, end).coerceAtLeast(0),
+      "end" to maxOf(start, end).coerceAtLeast(0),
     )
 
   private fun emitSelectionChange(start: Int, end: Int) {
@@ -405,7 +408,7 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
     onComposerSelectionChange(
       mapOf(
         "value" to editor.text.toString(),
-        "selection" to mapOf("start" to start, "end" to end),
+        "selection" to currentSelectionPayload(start, end),
         "eventCount" to nativeEventCount,
       ),
     )

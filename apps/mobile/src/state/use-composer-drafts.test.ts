@@ -148,12 +148,14 @@ vi.mock("../features/sharing/incoming-share-storage", () => ({
 }));
 
 import type { DraftComposerAttachment } from "../lib/composerImages";
+import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import { appAtomRegistry } from "./atom-registry";
 import { threadOutboxManager } from "./thread-outbox";
 import {
   appendComposerDraftAttachments,
   captureComposerDraftInsertion,
   countComposerDraftAttachmentsAfterSelection,
+  getComposerDraftAfterSelection,
   archiveCloudComposerDrafts,
   clearComposerDraftContent,
   clearComposerDraftContentState,
@@ -647,7 +649,7 @@ describe("mobile composer drafts", () => {
     expect(getComposerDraftSnapshot(key).text).toBe("keep newly typed text pasted");
   });
 
-  it.each(["attachment", "context"])(
+  it.each(["attachment", "context", "imported context"])(
     "releases a selected file when replaced by %s",
     async (kind) => {
       const outboxLoad = vi.spyOn(threadOutboxManager, "load").mockResolvedValue(true);
@@ -670,14 +672,39 @@ describe("mobile composer drafts", () => {
       const firstLink = "[notes-0.txt](t3-context://v1/file/file-0)";
       const insertion = captureComposerDraftInsertion(key, { start: 0, end: firstLink.length });
       expect(countComposerDraftAttachmentsAfterSelection(key, insertion)).toBe(7);
+      expect(getComposerDraftAfterSelection(key, insertion).context?.records).toHaveLength(7);
+      const replacement = { ...files[0]!, id: "replacement", fileUri: "file:///replacement.txt" };
       if (kind === "attachment") {
         expect(
-          appendComposerDraftAttachments(
-            key,
-            [{ ...files[0]!, id: "replacement", fileUri: "file:///replacement.txt" }],
-            { appendReference: true, insertion },
-          ),
+          appendComposerDraftAttachments(key, [replacement], { appendReference: true, insertion }),
         ).toBe(0);
+      } else if (kind === "imported context") {
+        const record = {
+          version: 1 as const,
+          kind: "file" as const,
+          contextId: ComposerContextId.make("replacement"),
+          attachmentId: replacement.id,
+          label: replacement.name,
+          name: replacement.name,
+          mimeType: replacement.mimeType,
+          sizeBytes: replacement.sizeBytes,
+        };
+        expect(
+          insertComposerDraftContext(
+            key,
+            {
+              text: formatComposerContextReference(record),
+              context: { version: 1, records: [record] },
+              attachments: [replacement],
+            },
+            insertion,
+          ),
+        ).toBe(true);
+        expect(getComposerDraftSnapshot(key).attachments).toHaveLength(8);
+        expect(getComposerDraftSnapshot(key).context?.records).toContainEqual(record);
+        expect(getComposerDraftSnapshot(key).text).toBe(
+          `${formatComposerContextReference(record)}${insertion.text.slice(firstLink.length)}`,
+        );
       } else {
         insertComposerDraftContext(
           key,
@@ -693,6 +720,55 @@ describe("mobile composer drafts", () => {
       expect(composerAttachmentCleanupMocks.remove).toHaveBeenCalledWith(files[0]!.fileUri);
     },
   );
+
+  it("rejects an imported file atomically when edits during import use up its replacement slot", async () => {
+    const outboxLoad = vi.spyOn(threadOutboxManager, "load").mockResolvedValue(true);
+    onTestFinished(() => outboxLoad.mockRestore());
+    const cleanup = Promise.withResolvers<void>();
+    composerAttachmentCleanupMocks.remove.mockImplementationOnce(async () => {
+      cleanup.resolve();
+      return undefined;
+    });
+    const key = "environment-1:concurrent-import";
+    const files = Array.from({ length: 8 }, (_, index) => ({
+      id: `existing-${index}`,
+      type: "file" as const,
+      name: `notes-${index}.txt`,
+      mimeType: "text/plain",
+      sizeBytes: 4,
+      fileUri: `file:///notes-${index}.txt`,
+    }));
+    appendComposerDraftAttachments(key, files, { appendReference: true });
+    const firstLink = "[notes-0.txt](t3-context://v1/file/existing-0)";
+    const insertion = captureComposerDraftInsertion(key, { start: 0, end: firstLink.length });
+    setComposerDraftText(key, `New edit ${insertion.text}`);
+    const edited = getComposerDraftSnapshot(key);
+    const imported = { ...files[0]!, id: "imported", fileUri: "file:///imported.txt" };
+    const record = {
+      version: 1 as const,
+      kind: "file" as const,
+      contextId: ComposerContextId.make("imported"),
+      attachmentId: imported.id,
+      label: imported.name,
+      name: imported.name,
+      mimeType: imported.mimeType,
+      sizeBytes: imported.sizeBytes,
+    };
+    expect(
+      insertComposerDraftContext(
+        key,
+        {
+          text: formatComposerContextReference(record),
+          context: { version: 1, records: [record] },
+          attachments: [imported],
+        },
+        insertion,
+      ),
+    ).toBe(false);
+    expect(getComposerDraftSnapshot(key)).toEqual(edited);
+    await cleanup.promise;
+    expect(composerAttachmentCleanupMocks.remove).toHaveBeenCalledWith(imported.fileUri);
+  });
 
   it("retains a file when replacing only one of its repeated references", () => {
     const key = "environment-1:repeat-reference";

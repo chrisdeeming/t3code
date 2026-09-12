@@ -9,6 +9,7 @@ import type { ComposerEditorProps as NativeComposerEditorProps } from "../native
 import {
   appendComposerDraftAttachments,
   createComposerDraftContextHistory,
+  getComposerDraftAfterSelection,
   getComposerDraftSnapshot,
   insertComposerDraftContext,
   insertComposerDraftText,
@@ -86,34 +87,25 @@ export function ComposerEditor({
     setImporting(true);
     setComposerContextImporting(draftKey, true);
     try {
+      const retained = getComposerDraftAfterSelection(draftKey, insertion);
       const result = await importComposerContextClipboard(
         clipboard,
-        getComposerDraftSnapshot(draftKey).attachments.length,
+        retained.attachments.length,
         controller.signal,
-        getComposerDraftSnapshot(draftKey).context?.records.length ?? 0,
+        retained.context?.records.length ?? 0,
       );
       if (!result) {
         insertComposerDraftText(draftKey, clipboard.text, insertion);
         return;
       }
-      const rejected = appendComposerDraftAttachments(draftKey, result.attachments);
-      const ids = new Set(
-        getComposerDraftSnapshot(draftKey).attachments.map((attachment) => attachment.id),
-      );
-      insertComposerDraftContext(
-        draftKey,
-        {
-          text: result.text,
-          context: {
-            version: 1,
-            records: result.context.records.filter(
-              (record) => !("attachmentId" in record) || ids.has(record.attachmentId),
-            ),
-          },
-        },
-        insertion,
-      );
-      if (result.failures.length > 0 || rejected > 0)
+      if (!insertComposerDraftContext(draftKey, result, insertion)) {
+        Alert.alert(
+          "Could not paste context",
+          "Remove some attachments or context items from the draft, then paste again.",
+        );
+        return;
+      }
+      if (result.failures.length > 0)
         Alert.alert(
           "Some attachments could not be copied",
           "Reconnect to the source environment and copy them again. References without their files are marked unavailable.",
