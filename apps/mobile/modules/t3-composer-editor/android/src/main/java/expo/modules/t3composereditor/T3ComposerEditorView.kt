@@ -90,11 +90,13 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
     }
     editor.pasteContextListener = { payload ->
       nativeEventCount += 1
-      onComposerPasteContext(payload + mapOf(
-        "value" to editor.text.toString(),
-        "eventCount" to nativeEventCount,
-        "selection" to currentSelectionPayload(),
-      ))
+      onComposerPasteContext(
+        payload + mapOf(
+          "value" to editor.text.toString(),
+          "eventCount" to nativeEventCount,
+          "selection" to currentSelectionPayload(),
+        )
+      )
     }
     val contextGestures =
       GestureDetector(
