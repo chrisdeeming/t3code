@@ -303,6 +303,30 @@ describe("mobile composer drafts", () => {
     expect(reloaded?.context?.records[0]?.label.length).toBeLessThanOrEqual(200);
   });
 
+  it("gives a folded paste a chip that survives the send", () => {
+    const key = "environment-1:thread-1";
+    // What `createPastedTextComposerAttachment` produces for a long paste.
+    const pasted = {
+      type: "file" as const,
+      id: "pasted-1",
+      name: "pasted-text.txt",
+      mimeType: "text/plain",
+      sizeBytes: 40_000,
+      fileUri: "file:///pasted-text.txt",
+    };
+    appendComposerDraftAttachments(key, [pasted], { appendReference: true });
+
+    const draft = getComposerDraftSnapshot(key);
+    // Visible in the composer before sending, not only once the message lands.
+    expect(draft.text).toContain("pasted-text.txt");
+    expect(draft.context?.records).toMatchObject([
+      { kind: "file", attachmentId: pasted.id, name: pasted.name },
+    ]);
+    // The reference points at the record, so the chip stays a chip in the sent message.
+    const [record] = draft.context?.records ?? [];
+    expect(draft.text).toContain(String(record?.contextId));
+  });
+
   it("drops chips and records for attachments a replace no longer keeps", () => {
     const key = "new-task:draft-1";
     const kept = {

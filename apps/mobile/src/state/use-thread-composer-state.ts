@@ -601,7 +601,11 @@ export function useThreadComposerState() {
             ),
             maxBytes,
           });
-          if (appendComposerDraftAttachments(threadKey, [attachment]) > 0) {
+          // Same reference the pasted images above get: a folded paste is only visible
+          // as its chip until the message is sent.
+          if (
+            appendComposerDraftAttachments(threadKey, [attachment], { appendReference: true }) > 0
+          ) {
             await removePersistedComposerAttachmentFile(attachment.fileUri);
             setPendingConnectionError(
               `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} files per message.`,
@@ -686,7 +690,12 @@ export function useThreadComposerState() {
           ),
           maxBytes: clampFileAttachmentUploadBytes(advertisedMax),
         });
-        const rejectedCount = appendComposerDraftAttachments(threadKey, [attachment]);
+        // The chip is how a folded paste stays visible: without it the attachment is in the
+        // draft but nothing in the composer says so until the message is sent. Web folds
+        // through its ordinary attach path, which always writes a reference; match that.
+        const rejectedCount = appendComposerDraftAttachments(threadKey, [attachment], {
+          appendReference: true,
+        });
         if (rejectedCount > 0) {
           await removePersistedComposerAttachmentFile(attachment.fileUri);
           setPendingConnectionError(
