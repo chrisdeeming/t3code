@@ -20,6 +20,7 @@ import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { removeComposerDraftAttachment, useComposerDraft } from "../../state/use-composer-drafts";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { SourceFileSurface } from "./SourceFileSurface";
 import { WorkspaceFileWebPreview } from "./WorkspaceFileWebPreview";
 
@@ -175,6 +176,7 @@ function AttachmentDocumentBody(props: {
 
 export function AttachmentFileScreen(props: AttachmentFileScreenProps) {
   const navigation = useNavigation();
+  const { appearance, setCodeWordBreak } = useAppearancePreferences();
   const iconColor = useUniwindTheme()["--color-icon"];
   const isAndroid = Platform.OS === "android";
   const params = props.route.params;
@@ -271,6 +273,16 @@ export function AttachmentFileScreen(props: AttachmentFileScreenProps) {
               onPress: () => setRendered(false),
             } as const)
           : null,
+        // Only the source body wraps; a rendered preview lays itself out.
+        content && !rendered
+          ? ({
+              id: "word-wrap",
+              title: appearance.codeWordBreak ? "Disable word wrap" : "Enable word wrap",
+              icon: "text.alignleft",
+              inline: false,
+              onPress: () => setCodeWordBreak(!appearance.codeWordBreak),
+            } as const)
+          : null,
         content
           ? ({
               id: "copy",
@@ -312,7 +324,19 @@ export function AttachmentFileScreen(props: AttachmentFileScreenProps) {
             } as const)
           : null,
       ].filter((action) => action !== null),
-    [content, draftKey, removeFromDraft, renderedMode, setRendered, share, sharing, uri],
+    [
+      appearance.codeWordBreak,
+      setCodeWordBreak,
+      content,
+      draftKey,
+      removeFromDraft,
+      rendered,
+      renderedMode,
+      setRendered,
+      share,
+      sharing,
+      uri,
+    ],
   );
   const activeMode = rendered ? "preview" : "source";
   const androidMenuActions = useMemo<MenuAction[]>(

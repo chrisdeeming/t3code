@@ -583,6 +583,7 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
   useAdaptiveWorkspacePaneRole("inspector");
   const navigation = useNavigation();
   const { fileInspector, panes, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
+  const { appearance, setCodeWordBreak } = useAppearancePreferences();
   const iconColor = useUniwindTheme()["--color-icon"];
   const isAndroid = Platform.OS === "android";
   const params = props.route.params;
@@ -763,6 +764,16 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
             onPress: () => setModeOverride({ path: relativePath, mode: "source" }),
           } as const)
         : null,
+      // Only the source body wraps; a rendered preview lays itself out.
+      resolvedActiveMode === "source"
+        ? ({
+            id: "word-wrap",
+            title: appearance.codeWordBreak ? "Disable word wrap" : "Enable word wrap",
+            icon: "text.alignleft",
+            inline: false,
+            onPress: () => setCodeWordBreak(!appearance.codeWordBreak),
+          } as const)
+        : null,
       ...(mediaSource
         ? mediaActions.actions
             .filter(({ id }) => id !== "open-file")
@@ -821,6 +832,8 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
         : null,
     ].filter((action) => action !== null);
   }, [
+    appearance.codeWordBreak,
+    setCodeWordBreak,
     assetPreviewUri,
     assetPreview.refresh,
     previewUri,
