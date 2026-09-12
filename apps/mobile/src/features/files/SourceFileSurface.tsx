@@ -32,6 +32,8 @@ interface SourceFileSurfaceProps {
   readonly contents: string;
   readonly path: string;
   readonly initialLine?: number | null;
+  /** Keep the entire document in one native text-selection scope. */
+  readonly selectable?: boolean;
   /** Enables native pull-to-refresh on the source surface. */
   readonly onRefresh?: () => Promise<void> | void;
 }
@@ -214,6 +216,7 @@ function NativeSourceFileSurface(
 }
 
 function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
+  const foreground = useUniwindTheme()["--color-foreground"];
   const { codeSurface, codeWordBreak } = useAppearanceCodeSurface();
   const { lines, status, targetIndex, tokens } = useSourceFileModel(props);
   const listRef = useRef<FlatList<string>>(null);
@@ -251,8 +254,8 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
     <MarkdownTextPrimitive
       uiTextView
       selectable
-      className="font-normal text-foreground"
       style={{
+        color: foreground,
         fontFamily: REVIEW_MONO_FONT_FAMILY,
         fontSize: codeSurface.fontSize,
         lineHeight: codeSurface.rowHeight,
@@ -263,10 +266,10 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
         const body =
           lineTokens && lineTokens.length > 0
             ? lineTokens.map((token, tokenIndex) => (
-                <NativeText
+                <MarkdownTextPrimitive
                   key={`${index}:${tokenIndex}`}
                   style={{
-                    color: token.color ?? undefined,
+                    color: token.color ?? foreground,
                     fontWeight:
                       token.fontStyle !== null && (token.fontStyle & 2) === 2 ? "700" : "400",
                     fontStyle:
@@ -274,14 +277,14 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
                   }}
                 >
                   {token.content}
-                </NativeText>
+                </MarkdownTextPrimitive>
               ))
             : line;
         return (
-          <NativeText key={index}>
+          <MarkdownTextPrimitive key={index}>
             {body}
             {index < lines.length - 1 ? "\n" : ""}
-          </NativeText>
+          </MarkdownTextPrimitive>
         );
       })}
     </MarkdownTextPrimitive>
@@ -315,7 +318,7 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
 
   // Jumping to a line needs a list that can scroll to an index, so a deep link into a
   // specific line keeps the virtualised rows. Everything else takes the selectable text.
-  const usesLineTarget = targetIndex !== null;
+  const usesLineTarget = targetIndex !== null && !props.selectable;
   const padded = (
     <ScrollView
       className="flex-1"
@@ -355,10 +358,10 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
 export function SourceFileSurface(props: SourceFileSurfaceProps) {
   const NativeView = resolveNativeReviewDiffView();
   const { codeWordBreak } = useAppearanceCodeSurface();
-  // The native canvas draws every source line with `drawSingleLineText`, so it cannot wrap:
-  // narrowing its content width clips the line instead of folding it. The JavaScript surface
-  // wraps properly, so wrapping renders there until the native view can fold a line itself.
-  return NativeView && !codeWordBreak ? (
+  // The native canvas draws source lines without text selection or wrapping. Attachments
+  // need one selectable text view in either wrap mode; workspace line navigation can still
+  // use the canvas when wrapping is disabled.
+  return NativeView && !codeWordBreak && !props.selectable ? (
     <NativeSourceFileSurface {...props} NativeView={NativeView} />
   ) : (
     <JavaScriptSourceFileSurface {...props} />

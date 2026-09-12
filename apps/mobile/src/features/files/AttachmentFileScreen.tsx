@@ -148,7 +148,7 @@ function AttachmentDocumentBody(props: {
             captured
           />
         ) : (
-          <SourceFileSurface contents={content.text} path={props.name} />
+          <SourceFileSurface contents={content.text} path={props.name} selectable />
         )}
       </View>
     );
