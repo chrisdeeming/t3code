@@ -34,6 +34,14 @@ export type ComposerEditorProps = NativeComposerEditorProps & {
   readonly onOpenMention?: (path: string) => void;
   /** Documents open in the file screen; pictures, video and PDF keep their native viewers. */
   readonly onOpenAttachment?: (attachment: ComposerDocumentAttachment) => void;
+  /**
+   * A resting composer is a target to type in, not a document to navigate. Its chips go inert
+   * so a draft full of them can still be tapped anywhere to start writing; the caller focuses
+   * the editor instead. Chips become live again once the composer is open.
+   */
+  readonly chipsInert?: boolean;
+  /** Called instead of opening a chip while `chipsInert` is set. */
+  readonly onInertChipPress?: () => void;
 };
 
 export function ComposerEditor({
@@ -41,6 +49,8 @@ export function ComposerEditor({
   environmentId,
   onOpenMention,
   onOpenAttachment,
+  chipsInert,
+  onInertChipPress,
   ...props
 }: ComposerEditorProps) {
   const draft = useComposerDraft(draftKey ?? null);
@@ -161,6 +171,10 @@ export function ComposerEditor({
         onPasteContext={(clipboard) => void pasteContext(clipboard)}
         context={draft.context}
         onContextPress={(selection) => {
+          if (chipsInert) {
+            onInertChipPress?.();
+            return;
+          }
           const path = composerMentionPath(selection.source, draft.context);
           if (path && onOpenMention) {
             onOpenMention(path);

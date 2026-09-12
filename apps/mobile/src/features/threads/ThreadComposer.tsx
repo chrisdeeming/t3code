@@ -736,6 +736,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   });
                 }}
                 onOpenAttachment={openDraftDocument}
+                // A rested composer full of chips left almost nowhere to tap to start typing:
+                // every chip opened its file instead. Collapsed, they focus the editor.
+                chipsInert={!isExpanded}
+                onInertChipPress={() => inputRef.current?.focus()}
                 ref={inputRef}
                 multiline
                 value={props.draftMessage}
