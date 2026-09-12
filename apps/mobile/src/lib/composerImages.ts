@@ -79,20 +79,22 @@ export async function createPastedTextComposerAttachment(input: {
 export type DraftComposerAttachment = DraftComposerImageAttachment | DraftComposerFileAttachment;
 
 /**
- * What the strip above the composer shows. Media previews there because a thumbnail is the
- * only way to see it; every other file is already legible as its inline chip, so it only
- * falls back to the strip when the prompt carries no reference to it. Mirrors web's
- * `composerOtherFilesForPresentation`.
+ * What the strip above the composer shows: media, and nothing else. A thumbnail is the only
+ * way to see a picture or a video, so those always preview there. Everything else reads as
+ * its inline chip, which carries the name, the type and the size in the line of prose the
+ * file belongs to — a square tile showing a generic document glyph says strictly less.
+ *
+ * The chip is not optional for a non-media file. Every path that attaches one also writes
+ * its reference, so a file with no chip means the draft lost it rather than that the strip
+ * should stand in. Which attachments carry a chip is therefore not consulted at all; surfaces
+ * whose attachments never get chips (a question answer) pass them to the strip directly
+ * instead of through this filter.
  */
 export function composerStripAttachments(
   attachments: ReadonlyArray<DraftComposerAttachment>,
-  inlineAttachmentIds: ReadonlySet<string>,
 ): ReadonlyArray<DraftComposerAttachment> {
   return attachments.filter(
-    (attachment) =>
-      isComposerImageAttachment(attachment) ||
-      videoMimeType(attachment) !== null ||
-      !inlineAttachmentIds.has(attachment.id),
+    (attachment) => isComposerImageAttachment(attachment) || videoMimeType(attachment) !== null,
   );
 }
 

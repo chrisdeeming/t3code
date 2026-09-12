@@ -76,7 +76,6 @@ import {
   type DraftComposerAttachment,
   type DraftComposerFileAttachment,
 } from "../../lib/composerImages";
-import { collectComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import {
   buildModelOptions,
   groupByProvider,
@@ -298,19 +297,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const [previewFile, setPreviewFile] = useState<FilePreviewSource | null>(null);
   const [previewVideo, setPreviewVideo] = useState<VideoPreviewSource | null>(null);
   const hasContent = props.draftMessage.trim().length > 0 || props.draftAttachments.length > 0;
-  // Attachment context ids are the attachment id, so the prompt alone says which attachments
-  // already read as an inline chip and need no strip tile.
+  // Only media belongs above the composer; every other file reads as its inline chip.
   const stripAttachments = useMemo(
-    () =>
-      composerStripAttachments(
-        props.draftAttachments,
-        new Set(
-          collectComposerContextReferences(props.draftMessage).map(
-            (occurrence) => occurrence.contextId as string,
-          ),
-        ),
-      ),
-    [props.draftAttachments, props.draftMessage],
+    () => composerStripAttachments(props.draftAttachments),
+    [props.draftAttachments],
   );
   const showStopAction =
     !hasContent &&

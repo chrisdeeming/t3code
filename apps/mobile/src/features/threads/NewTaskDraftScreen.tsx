@@ -52,7 +52,6 @@ import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
 import { composerStripAttachments } from "../../lib/composerImages";
-import { collectComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import {
   composerAttachmentUploadBlockReason,
@@ -363,16 +362,8 @@ export function NewTaskDraftScreen(props: {
       : (flow.selectedWorktreePath ?? selectedProject?.workspaceRoot)) || null;
   // Media needs its thumbnail; every other file already reads as its inline chip.
   const stripAttachments = useMemo(
-    () =>
-      composerStripAttachments(
-        flow.attachments,
-        new Set(
-          collectComposerContextReferences(flow.prompt).map(
-            (occurrence) => occurrence.contextId as string,
-          ),
-        ),
-      ),
-    [flow.attachments, flow.prompt],
+    () => composerStripAttachments(flow.attachments),
+    [flow.attachments],
   );
   const composerMenu = useComposerCommandMenu({
     draftMessage: flow.prompt,

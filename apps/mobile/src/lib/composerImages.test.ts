@@ -173,21 +173,39 @@ describe("composerStripAttachments", () => {
     fileUri: "file:///notes.txt",
   };
 
-  it("keeps media even when it already has an inline chip", async () => {
+  it("keeps media, because a thumbnail is the only way to see it", async () => {
     const { composerStripAttachments } = await import("./composerImages");
-    const kept = composerStripAttachments([image, video] as never, new Set(["img-1", "vid-1"]));
-    // A thumbnail is the only way to see media, so it stays regardless of the chip.
+    const kept = composerStripAttachments([image, video] as never);
     expect(kept.map((a) => a.id)).toEqual(["img-1", "vid-1"]);
   });
 
-  it("drops a plain file once its inline chip represents it", async () => {
+  it("never shows a non-media file above the composer", async () => {
     const { composerStripAttachments } = await import("./composerImages");
-    expect(composerStripAttachments([doc] as never, new Set(["doc-1"]))).toEqual([]);
+    // A document reads as its inline chip. A tile with a generic glyph says less than the
+    // chip does, so it is not a fallback worth having, chip present or not.
+    expect(composerStripAttachments([doc] as never)).toEqual([]);
   });
 
-  it("keeps a plain file that has no inline chip", async () => {
+  it("keeps media beside a document rather than dropping the whole strip", async () => {
     const { composerStripAttachments } = await import("./composerImages");
-    expect(composerStripAttachments([doc] as never, new Set()).map((a) => a.id)).toEqual(["doc-1"]);
+    expect(composerStripAttachments([doc, image, video] as never).map((a) => a.id)).toEqual([
+      "img-1",
+      "vid-1",
+    ]);
+  });
+
+  it("treats a picture picked through the document picker as media", async () => {
+    const { composerStripAttachments } = await import("./composerImages");
+    // The document picker types every pick as a plain file; what it *is* decides the strip.
+    const pickedImage = {
+      id: "pick-1",
+      type: "file" as const,
+      name: "photo.png",
+      mimeType: "image/png",
+      sizeBytes: 30,
+      fileUri: "file:///photo.png",
+    };
+    expect(composerStripAttachments([pickedImage] as never).map((a) => a.id)).toEqual(["pick-1"]);
   });
 });
 
