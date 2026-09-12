@@ -161,7 +161,7 @@ function withReferencedContextFiles(
 ): ComposerDraft {
   const previousIds = new Set(
     draft.context?.records.flatMap((record) =>
-      record.kind === "file" && "attachmentId" in record ? [record.attachmentId] : [],
+      "attachmentId" in record ? [record.attachmentId] : [],
     ),
   );
   const retainedIds = new Set(

@@ -530,41 +530,57 @@ describe("mobile composer drafts", () => {
     expect(reloaded.cloudDrafts.signedOut).toEqual({});
   });
 
-  it("removes a file only after its last reference is deleted, while retaining images", async () => {
-    const outboxLoad = vi.spyOn(threadOutboxManager, "load").mockResolvedValue(true);
-    onTestFinished(() => outboxLoad.mockRestore());
-    const cleanup = Promise.withResolvers<void>();
-    composerAttachmentCleanupMocks.remove.mockImplementationOnce(async () => {
-      cleanup.resolve();
-    });
-    const key = "environment-1:remove-context-files";
-    const file = {
-      id: "file-1",
-      type: "file" as const,
-      name: "notes.txt",
-      mimeType: "text/plain",
-      sizeBytes: 4,
-      fileUri: "file:///notes.txt",
-    };
-    const image = {
-      ...file,
-      id: "image-1",
-      type: "image" as const,
-      name: "image.png",
-      mimeType: "image/png",
-      fileUri: "file:///image.png",
-      previewUri: "file:///image.png",
-    };
-    appendComposerDraftAttachments(key, [file, image], { appendReference: true });
-    const fileLink = "[notes.txt](t3-context://v1/file/file-1)";
-    setComposerDraftText(key, `${fileLink} ${fileLink}`);
-    expect(getComposerDraftSnapshot(key).attachments).toEqual([file, image]);
-    setComposerDraftText(key, fileLink);
-    expect(getComposerDraftSnapshot(key).attachments).toEqual([file, image]);
-    setComposerDraftText(key, "plain text");
-    expect(getComposerDraftSnapshot(key).attachments).toEqual([image]);
-    await cleanup.promise;
-  });
+  it.each([
+    { name: "notes.txt", mimeType: "text/plain" },
+    { name: "document-photo.png", mimeType: "image/png" },
+    { name: "recording.mp4", mimeType: "video/mp4" },
+  ])(
+    "removes $name after its last reference is deleted, while retaining native images",
+    async ({ name, mimeType }) => {
+      const outboxLoad = vi.spyOn(threadOutboxManager, "load").mockResolvedValue(true);
+      onTestFinished(() => outboxLoad.mockRestore());
+      const cleanup = Promise.withResolvers<void>();
+      composerAttachmentCleanupMocks.remove.mockImplementationOnce(async () => {
+        cleanup.resolve();
+      });
+      const key = "environment-1:remove-context-files";
+      const file = {
+        id: "file-1",
+        type: "file" as const,
+        name,
+        mimeType,
+        sizeBytes: 4,
+        fileUri: `file:///${name}`,
+      };
+      const image = {
+        ...file,
+        id: "image-1",
+        type: "image" as const,
+        name: "image.png",
+        mimeType: "image/png",
+        fileUri: "file:///image.png",
+        previewUri: "file:///image.png",
+      };
+      appendComposerDraftAttachments(key, [file, image], { appendReference: true });
+      const fileLink = formatComposerContextReference(
+        getComposerDraftSnapshot(key).context!.records[0]!,
+      );
+      setComposerDraftText(key, `${fileLink} ${fileLink}`);
+      expect(getComposerDraftSnapshot(key).attachments).toEqual([file, image]);
+      setComposerDraftText(key, fileLink);
+      expect(getComposerDraftSnapshot(key).attachments).toEqual([file, image]);
+      expect(
+        countComposerDraftAttachmentsAfterSelection(key, {
+          text: fileLink,
+          start: 0,
+          end: fileLink.length,
+        }),
+      ).toBe(1);
+      setComposerDraftText(key, "plain text");
+      expect(getComposerDraftSnapshot(key).attachments).toEqual([image]);
+      await cleanup.promise;
+    },
+  );
 
   it("rejects attachments atomically when no context slots remain", async () => {
     const outboxLoad = vi.spyOn(threadOutboxManager, "load").mockResolvedValue(true);
