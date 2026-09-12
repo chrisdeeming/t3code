@@ -577,7 +577,7 @@ private fun parseTokens(value: String): List<ComposerToken> = try {
   emptyList()
 }
 
-private class SelectionAwareEditText(context: Context) : EditText(context) {
+internal class SelectionAwareEditText(context: Context) : EditText(context) {
   var readOnly = false
   var selectionListener: ((Int, Int) -> Unit)? = null
   var pasteImagesListener: ((List<String>) -> Unit)? = null
@@ -650,6 +650,10 @@ private class SelectionAwareEditText(context: Context) : EditText(context) {
     }
     val handled = when {
       id == android.R.id.copy || id == android.R.id.cut -> copyContext(id == android.R.id.cut)
+      id == android.R.id.pasteAsPlainText -> {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        pasteInterceptedText(clipboard?.primaryClip, foldLargeText = false)
+      }
       pasting -> pasteContextOrImages()
       else -> false
     }
@@ -696,14 +700,17 @@ private class SelectionAwareEditText(context: Context) : EditText(context) {
     }
   }
 
-  private fun pasteInterceptedText(clip: ClipData?): Boolean {
+  private fun pasteInterceptedText(clip: ClipData?, foldLargeText: Boolean = true): Boolean {
     val text = if (textPasteThresholdBytes > 0) clip?.plainText() else null
     if (text.isNullOrEmpty()) return false
     val start = minOf(selectionStart, selectionEnd).coerceIn(0, length())
     val end = maxOf(selectionStart, selectionEnd).coerceIn(start, length())
     val exceedsInputLimit = length().toLong() - (end - start) + text.length > maxInputChars
-    val shouldIntercept = exceedsInputLimit || text.length >= textPasteThresholdBytes ||
-      text.toByteArray(Charsets.UTF_8).size >= textPasteThresholdBytes
+    val shouldFold = foldLargeText && (
+      text.length >= textPasteThresholdBytes ||
+        text.toByteArray(Charsets.UTF_8).size >= textPasteThresholdBytes
+      )
+    val shouldIntercept = exceedsInputLimit || shouldFold
     if (shouldIntercept) {
       pasteTextListener?.invoke(text, start, end)
     }
@@ -724,7 +731,7 @@ private class SelectionAwareEditText(context: Context) : EditText(context) {
 
   override fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean {
     if (keyCode == KeyEvent.KEYCODE_V && event.isCtrlPressed && event.isShiftPressed) {
-      return !readOnly && super.onTextContextMenuItem(android.R.id.pasteAsPlainText)
+      return onTextContextMenuItem(android.R.id.pasteAsPlainText)
     }
     return super.onKeyShortcut(keyCode, event)
   }
