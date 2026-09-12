@@ -273,8 +273,10 @@ export function AttachmentFileScreen(props: AttachmentFileScreenProps) {
               onPress: () => setRendered(false),
             } as const)
           : null,
-        // Only the source body wraps; a rendered preview lays itself out.
-        content && !rendered
+        // Only the source body wraps; a rendered table or Markdown lays itself out. `rendered`
+        // starts true even when nothing can be rendered, so ask what is actually on screen:
+        // the body falls through to the source surface unless one of those two is showing.
+        content && !(renderedMode !== null && rendered)
           ? ({
               id: "word-wrap",
               title: appearance.codeWordBreak ? "Disable word wrap" : "Enable word wrap",

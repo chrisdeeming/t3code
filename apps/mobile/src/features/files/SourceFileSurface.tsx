@@ -282,7 +282,11 @@ function JavaScriptSourceFileSurface(props: SourceFileSurfaceProps) {
 
 export function SourceFileSurface(props: SourceFileSurfaceProps) {
   const NativeView = resolveNativeReviewDiffView();
-  return NativeView ? (
+  const { codeWordBreak } = useAppearanceCodeSurface();
+  // The native canvas draws every source line with `drawSingleLineText`, so it cannot wrap:
+  // narrowing its content width clips the line instead of folding it. The JavaScript surface
+  // wraps properly, so wrapping renders there until the native view can fold a line itself.
+  return NativeView && !codeWordBreak ? (
     <NativeSourceFileSurface {...props} NativeView={NativeView} />
   ) : (
     <JavaScriptSourceFileSurface {...props} />
