@@ -395,6 +395,7 @@ export function useThreadComposerState() {
     );
     const reconnectMcpCommand =
       attachments.length === 0 &&
+      (draft.context?.records.length ?? 0) === 0 &&
       (provider?.driver === "codex" || thread.session?.providerName === "codex") &&
       isReconnectMcpCommand(text);
     if (reconnectMcpCommand) {
@@ -419,7 +420,11 @@ export function useThreadComposerState() {
       });
       if (result._tag === "Failure") {
         const currentDraft = getComposerDraftSnapshot(threadKey);
-        if (currentDraft.text.length === 0 && currentDraft.attachments.length === 0) {
+        if (
+          currentDraft.text.length === 0 &&
+          currentDraft.attachments.length === 0 &&
+          (currentDraft.context?.records.length ?? 0) === 0
+        ) {
           setComposerDraftText(threadKey, text);
         }
         if (!isAtomCommandInterrupted(result)) {
