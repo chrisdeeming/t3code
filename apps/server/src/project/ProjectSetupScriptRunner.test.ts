@@ -96,7 +96,14 @@ describe("ProjectSetupScriptRunner", () => {
         logsDir: cwd,
         ptyAdapter: yield* PtyAdapter.PtyAdapter,
         shellResolver: () => "/bin/sh",
-        env: { ...process.env, NO_COLOR: undefined, SHELL: "/bin/sh" },
+        env: {
+          ...process.env,
+          NO_COLOR: undefined,
+          SHELL: "/bin/sh",
+          // dash can emit prompts on the same line as the script's output.
+          PS1: "",
+          PS2: "",
+        },
       });
       const project = {
         ...makeProject([
