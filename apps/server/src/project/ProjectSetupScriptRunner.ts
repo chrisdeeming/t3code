@@ -338,10 +338,15 @@ export const make = Effect.gen(function* () {
 
     const terminalId = input.preferredTerminalId ?? `setup-${script.id}`;
     const cwd = input.worktreePath;
-    const env = projectScriptRuntimeEnv({
-      project: { cwd: project.workspaceRoot },
-      worktreePath: input.worktreePath,
-    });
+    const env = {
+      ...projectScriptRuntimeEnv({
+        project: { cwd: project.workspaceRoot },
+        worktreePath: input.worktreePath,
+      }),
+      // Setup runs before a terminal renderer is attached. Tools such as vp
+      // otherwise query terminal colours and can wait indefinitely for a reply.
+      NO_COLOR: "1",
+    };
     const observe = input.observeCompletion;
     const completionToken = observe ? NodeCrypto.randomUUID().replaceAll("-", "") : null;
     const commandLine =

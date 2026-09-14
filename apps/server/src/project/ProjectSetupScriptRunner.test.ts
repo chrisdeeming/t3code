@@ -1,14 +1,19 @@
 import { describe, expect, it, vi } from "@effect/vitest";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { type OrchestrationProject, ProjectId, type TerminalEvent } from "@t3tools/contracts";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ProcessRunner from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
+import * as NodePtyAdapter from "../terminal/NodePtyAdapter.ts";
+import * as PtyAdapter from "../terminal/PtyAdapter.ts";
 import * as ProjectSetupScriptRunner from "./ProjectSetupScriptRunner.ts";
 
 const isProjectSetupScriptOperationError = Schema.is(
@@ -82,6 +87,63 @@ const testLayer = (
   );
 
 describe("ProjectSetupScriptRunner", () => {
+  it.live("completes setup in a real POSIX terminal without a renderer", () => {
+    return Effect.gen(function* () {
+      if ((yield* HostProcessPlatform) === "win32") return;
+      const fs = yield* FileSystem.FileSystem;
+      const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-setup-terminal-" });
+      const manager = yield* TerminalManager.makeWithOptions({
+        logsDir: cwd,
+        ptyAdapter: yield* PtyAdapter.PtyAdapter,
+        shellResolver: () => "/bin/sh",
+        env: { ...process.env, NO_COLOR: undefined, SHELL: "/bin/sh" },
+      });
+      const project = {
+        ...makeProject([
+          {
+            id: "setup",
+            name: "Setup",
+            // Colour detection in tools like vp can wait for renderer replies.
+            // Run a real shell to verify setup requests plain output instead.
+            command: 'test "$NO_COLOR" = 1 && printf "setup complete\\n"',
+            icon: "configure",
+            runOnWorktreeCreate: true,
+          },
+        ]),
+        workspaceRoot: cwd,
+      };
+      const runner = yield* ProjectSetupScriptRunner.make.pipe(
+        Effect.provide(makeProjectionSnapshotQueryLayer(project)),
+        Effect.provideService(TerminalManager.TerminalManager, manager),
+        Effect.provide(ServerSettings.layerTest()),
+        Effect.provideService(HostProcessEnvironment, { SHELL: "/bin/sh" }),
+      );
+      const lines: string[] = [];
+      const result = yield* runner.runForThread({
+        threadId: "thread-1",
+        projectId: project.id,
+        worktreePath: cwd,
+        observeCompletion: {
+          onOutputLine: (line) => Effect.sync(() => void lines.push(line)),
+        },
+      });
+      expect(result.status).toBe("started");
+      if (result.status !== "started") return;
+      expect(result.completion).toBeDefined();
+      if (!result.completion) return;
+      const completion = yield* result.completion;
+      expect(completion.exitCode).toBe(0);
+      expect(lines).toContain("setup complete");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(NodePtyAdapter.layer, ProcessRunner.layer).pipe(
+          Layer.provideMerge(NodeServices.layer),
+        ),
+      ),
+    );
+  });
+
   it.effect("runs the inherited machine setup action in the checkout's worktree", () => {
     const open = vi.fn(() =>
       Effect.succeed({
@@ -112,7 +174,11 @@ describe("ProjectSetupScriptRunner", () => {
         terminalId: "setup-default-setup",
         cwd: "/repo/worktrees/a",
         worktreePath: "/repo/worktrees/a",
-        env: { T3CODE_PROJECT_ROOT: "/repo/project", T3CODE_WORKTREE_PATH: "/repo/worktrees/a" },
+        env: {
+          T3CODE_PROJECT_ROOT: "/repo/project",
+          T3CODE_WORKTREE_PATH: "/repo/worktrees/a",
+          NO_COLOR: "1",
+        },
       });
       expect(write).toHaveBeenCalledWith({
         threadId: "thread-1",
@@ -212,6 +278,7 @@ describe("ProjectSetupScriptRunner", () => {
           env: {
             T3CODE_PROJECT_ROOT: "/repo/project",
             T3CODE_WORKTREE_PATH: "/repo/worktrees/a",
+            NO_COLOR: "1",
           },
         });
         expect(write).toHaveBeenCalledWith({
