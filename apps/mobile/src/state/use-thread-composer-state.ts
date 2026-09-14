@@ -432,8 +432,8 @@ export function useThreadComposerState() {
         return null;
       }
       Alert.alert(
-        "MCP servers disconnected",
-        "They will reconnect with fresh tool schemas on your next message.",
+        "MCP reconnect requested",
+        "Wait for the session to stop, then send a message to reconnect with fresh tool schemas. Any stop failure appears in the thread.",
       );
       return null;
     }

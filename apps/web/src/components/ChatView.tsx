@@ -7128,9 +7128,10 @@ export default function ChatView(props: ChatViewProps) {
       }
       toastManager.add(
         stackedThreadToast({
-          type: "success",
-          title: "MCP servers disconnected",
-          description: "They will reconnect with fresh tool schemas on your next message.",
+          type: "info",
+          title: "MCP reconnect requested",
+          description:
+            "Wait for the session to stop, then send a message to reconnect with fresh tool schemas. Any stop failure appears in the thread.",
         }),
       );
       return;
