@@ -50,6 +50,14 @@ rule lists use for a marker change. Lists and nested quotes are not parsed
 inside a quote and the list input rules refuse to fire there: a quote holds
 prose lines, and the serializer would have nowhere to put anything else.
 
+A thematic break is a `horizontalRule` node carrying its exact source line. The
+parser tries it before lists and before inline parsing, which is what keeps
+`- - -` from becoming a bullet and `***` from becoming an empty bold span. It
+owns no document characters, so offsets inside its source clamp to whatever
+follows; a draft that ends on a rule has no caret position after it, which the
+input rule avoids by inserting through `setHorizontalRule`, which appends a
+paragraph when nothing follows.
+
 Fenced code blocks are real `codeBlock` nodes rather than literal text. They keep
 their exact delimiters in attributes — `fence`, `language` and `close` — so a
 fence round-trips byte-identically, including tilde fences, long fences and a
