@@ -20,6 +20,13 @@ text and appear beside the styled words when your cursor is on them, so nothing
 you typed is ever hidden from you. Task lists come from `- [ ]` and get
 checkboxes you can click.
 
+Lists render as lists: `- `, `* ` or `+ ` starts a bulleted item and `1. ` or
+`1) ` a numbered one. Inside an item, **Shift+Enter** continues the list (a
+numbered list counts up), Shift+Enter on an empty item leaves the list, and
+**Tab** nests the item. Enter still sends. Typing `[ ] ` at the start of a
+bulleted item turns it into a task. The list is stored exactly as you wrote it:
+the marker you typed and the numbers you used are what the agent receives.
+
 Start a fenced code block with three backticks, optionally followed by a
 language, then press Enter or Space. Inside a fence:
 
