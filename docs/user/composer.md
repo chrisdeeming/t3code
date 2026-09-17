@@ -31,6 +31,10 @@ the marker you typed and the numbers you used are what the agent receives.
 Shift+Enter continues the quote and Shift+Enter on an empty line leaves it.
 Quotes hold prose: list markers and further `>` marks inside one stay literal.
 
+Three dashes on their own line become a horizontal rule as you type them;
+`***` or `___` followed by a space do the same. The rule is stored as the
+characters you typed.
+
 Start a fenced code block with three backticks, optionally followed by a
 language, then press Enter or Space. Inside a fence:
 
