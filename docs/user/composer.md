@@ -30,6 +30,11 @@ language, then press Enter or Space. Inside a fence:
 Code is syntax highlighted using your current theme, and the language you
 declared is named in the corner of the block.
 
+Use **Edit the Markdown source** in the composer controls to switch to literal
+Markdown, with every marker shown as you typed it and nothing styled. Chips,
+attachments and your cursor survive the switch, so you can move between the two
+freely. The same switch lives in Settings as the rich text composer option.
+
 ## Attach files
 
 Attach up to eight files per message. Images can be up to 10 MB; other files can

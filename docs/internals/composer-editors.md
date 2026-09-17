@@ -53,3 +53,28 @@ Enter keeps the current indent, Tab shifts whole lines, and two trailing blank
 lines exit the block, which is the only way out of a fence at the end of a prompt.
 Highlighting is Shiki decorations over the editable text, per block and cached by
 content, so a keystroke re-tokenizes only the block that changed.
+
+The source toggle is not a second editor. It writes `composerRichTextEnabled`,
+which remounts the same engine with the mark extensions off, so the draft and its
+chips survive the flip. The surface does not change font: plain mode is the same
+prose the user was already looking at, minus the styling.
+
+The caret survives it too. A collapsed cursor means the same offset in both modes,
+because markers are literal characters in the stored value either way, so the
+remounted editor restores it from the stored cursor. Two traps sit in the way.
+The flip has to be signalled by the control that was clicked rather than derived
+from the setting: adjusting state during render makes React discard that render
+pass including its children, so a flag computed that way never reaches the
+editor being mounted, and flipping the setting from Settings should not pull
+focus into the composer anyway. And `useEditor` returns null on its first render
+and builds the instance in an effect, then can rebuild it once more right after,
+which replaces the focused DOM node and drops focus to the body. So the restore
+waits for the instance and applies to whichever instance is current, not only
+the first; a one-shot guard restores into an editor that is about to be thrown
+away. Placing the caret must end with ProseMirror's own `view.focus()`, not the
+DOM's: only that writes the selection into the DOM. Left unsynced, the first chip
+node view to mount makes ProseMirror re-read the DOM selection from the start,
+which moves the caret and reports a cursor of 0 to the store — so a draft with
+a chip lost its caret while plain prose kept it. A caret that was sitting between two markers has no
+position in rich mode and clamps to the styled text, which moves it by a marker's
+width at most.

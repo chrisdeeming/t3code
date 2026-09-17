@@ -428,6 +428,37 @@ describe("composer rich text document model", () => {
     }
   });
 
+  // Flipping the rich text setting remounts the editor, and the caret is
+  // restored from the stored collapsed cursor. That only works because the
+  // coordinate means the same thing on both sides of the flip.
+  it.each([
+    "plain prose with no styling at all",
+    "a chip @README.md counts one character in both modes",
+    "$my-skill leads the line",
+    "trailing newline\n",
+  ])("resolves a collapsed cursor identically in both modes for %s", (value) => {
+    const rich = roundTrip(value);
+    const plain = roundTripPlain(value);
+    expect(rich.value).toBe(value);
+    expect(plain.value).toBe(value);
+    for (let collapsed = 0; collapsed <= value.length; collapsed += 1) {
+      expect(flatToMarkdown(rich, collapsedToFlat(rich, collapsed))).toBe(
+        flatToMarkdown(plain, collapsedToFlat(plain, collapsed)),
+      );
+    }
+  });
+
+  it("clamps a cursor that was sitting inside a marker onto the styled text", () => {
+    const value = "a **bold** c";
+    const plain = roundTripPlain(value);
+    const rich = roundTrip(value);
+    // Between the two asterisks: a real caret position in plain mode, and no
+    // position at all in rich mode, where it lands on the first styled
+    // character instead. The flip moves the caret by a marker's width at most.
+    expect(flatToMarkdown(plain, collapsedToFlat(plain, 3))).toBe(3);
+    expect(flatToMarkdown(rich, collapsedToFlat(rich, 3))).toBe(4);
+  });
+
   it("maps markdown offsets at styled edges onto document text", () => {
     const value = "a **bold** c";
     const map = roundTrip(value);
