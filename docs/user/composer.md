@@ -35,6 +35,10 @@ Three dashes on their own line become a horizontal rule as you type them;
 `***` or `___` followed by a space do the same. The rule is stored as the
 characters you typed.
 
+`# ` through `###### ` at the start of a line make a heading; the space after
+the hashes is what makes it one, so `#1234` still looks up a pull request.
+Shift+Enter after a heading starts an ordinary line.
+
 Start a fenced code block with three backticks, optionally followed by a
 language, then press Enter or Space. Inside a fence:
 
