@@ -583,6 +583,41 @@ const blockquoteInputRule = new InputRule({
   },
 });
 
+/**
+ * `---` becomes a rule as the third dash lands; `***` and `___` need a space
+ * after them so typing bold or an underscore is not interrupted, matching
+ * Tiptap's own rule. Only at a top-level paragraph: the list and quote
+ * serializers have no line to write a rule into. The typed characters are
+ * kept as the rule's source, and `setHorizontalRule` adds a paragraph after a
+ * rule at the end so the caret has somewhere to go.
+ */
+const horizontalRuleInputRule = new InputRule({
+  find: /^(---|\*\*\*|___)\s?$/,
+  handler: ({ state, range, match, chain }) => {
+    const source = match[1] ?? "---";
+    if (source !== "---" && !/\s$/.test(match[0] ?? "")) return null;
+    const $from = state.doc.resolve(range.from);
+    if ($from.parent.type.name !== "paragraph" || $from.depth !== 1) return null;
+    chain()
+      .deleteRange(range)
+      .setHorizontalRule()
+      .command(({ tr }) => {
+        // The rule is the block before the caret's paragraph.
+        const $pos = tr.selection.$from;
+        const index = $pos.index(0) - 1;
+        if (index < 0) return true;
+        const rulePos = $pos.posAtIndex(index, 0);
+        const rule = tr.doc.nodeAt(rulePos);
+        if (rule?.type.name === "horizontalRule") {
+          tr.setNodeMarkup(rulePos, undefined, { ...rule.attrs, source });
+        }
+        return true;
+      })
+      .run();
+    return undefined;
+  },
+});
+
 /** Whether the caret sits inside a fenced code block. */
 function isInCodeBlock(view: EditorView): boolean {
   return view.state.selection.$from.parent.type.spec.code === true;
@@ -881,7 +916,13 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
                         return [blockquoteInputRule];
                       },
                     })
-                  : extension,
+                  : extension.name === "horizontalRule"
+                    ? extension.extend({
+                        addInputRules() {
+                          return [horizontalRuleInputRule];
+                        },
+                      })
+                    : extension,
               ),
               ...ComposerListExtensions.map((extension) =>
                 extension.name === "listItem"

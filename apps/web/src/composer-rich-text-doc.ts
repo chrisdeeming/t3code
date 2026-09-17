@@ -1,6 +1,7 @@
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Blockquote } from "@tiptap/extension-blockquote";
 import { CodeBlock } from "@tiptap/extension-code-block";
+import { HorizontalRule } from "@tiptap/extension-horizontal-rule";
 import { BulletList, ListItem, OrderedList } from "@tiptap/extension-list";
 import { TaskItem } from "@tiptap/extension-task-item";
 
@@ -130,8 +131,22 @@ export const ComposerBlockquoteExtension = Blockquote.extend({
   },
 });
 
+/**
+ * A rule keeps the exact line it was written as (`---`, `* * *`, `_____`), so
+ * it round-trips byte-identically. It owns no document characters: offsets
+ * inside its source clamp to the block after it.
+ */
+export const ComposerHorizontalRuleExtension = HorizontalRule.extend({
+  addAttributes() {
+    return { ...this.parent?.(), source: { default: "---" } };
+  },
+});
+
 /** Block-level nodes beyond lists and fences, in the order the parser tries them. */
-export const ComposerBlockExtensions = [ComposerBlockquoteExtension];
+export const ComposerBlockExtensions = [
+  ComposerBlockquoteExtension,
+  ComposerHorizontalRuleExtension,
+];
 
 function randomNodeKey(): string {
   return `tiptap-${Math.random().toString(36).slice(2)}`;
@@ -374,6 +389,7 @@ export function buildTiptapContent(
   const sourceLines = text.split("\n");
   const entries: (
     | { code: Record<string, unknown> }
+    | { rule: string }
     | { quote: { prefix: string; inline: InlineJson[] } }
     | { line: DocLine }
   )[] = [];
@@ -388,6 +404,12 @@ export function buildTiptapContent(
     const line = sourceLines[index]!;
     const opening = styling ? parseOpeningFence(line) : null;
     if (!opening) {
+      // A thematic break outranks a list: `- - -` and `* * *` are rules, and
+      // `***` on its own line is a rule rather than an empty bold span.
+      if (styling && /^([-*_])(?:[ \t]*\1){2,}[ \t]*$/.test(line)) {
+        entries.push({ rule: line });
+        continue;
+      }
       const quote = styling ? /^(>[ \t]*)(.*)$/.exec(line) : null;
       if (quote) entries.push({ quote: { prefix: quote[1]!, inline: buildInline(quote[2]!) } });
       else entries.push({ line: buildDocLine(line) });
@@ -458,6 +480,11 @@ export function buildTiptapContent(
     if ("code" in entry) {
       flushLists();
       blocks.push(entry.code);
+      continue;
+    }
+    if ("rule" in entry) {
+      flushLists();
+      blocks.push({ type: "horizontalRule", attrs: { source: entry.rule } });
       continue;
     }
     const line = entry.line;
@@ -869,6 +896,24 @@ export function serializeEditorDoc(doc: ProseMirrorNode): RichDocMap {
       appendCodeBlockRun(block, pmBlockStart + 1, acc);
     } else if (block.type.name === "blockquote") {
       walkBlockquote(block, pmBlockStart, acc);
+    } else if (block.type.name === "horizontalRule") {
+      const attrs = block.attrs as Record<string, unknown>;
+      const source = typeof attrs.source === "string" && attrs.source ? attrs.source : "---";
+      acc.runs.push({
+        kind: "prefix",
+        flatStart: acc.flat,
+        docLen: 0,
+        collapsedLen: source.length,
+        mdLen: source.length,
+        openLen: 0,
+        closeLen: 0,
+        pmPos: pmBlockStart + block.nodeSize,
+        mdStart: acc.md,
+        collapsedStart: acc.collapsed,
+      });
+      acc.value += source;
+      acc.collapsed += source.length;
+      acc.md += source.length;
     } else if (block.type.name === "paragraph") {
       appendInlineRuns(block, pmBlockStart + 1, acc);
     }
