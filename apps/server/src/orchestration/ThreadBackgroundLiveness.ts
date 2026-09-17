@@ -48,9 +48,11 @@ export class ThreadBackgroundLivenessService extends Context.Service<
      * Feed one task lifecycle transition. taskType may be absent on
      * synthesized rows (workflow members, Codex children) — those count as
      * agents. agentId marks a task launched from inside a subagent: its
-     * internal shells are covered by the owning agent's liveness, but a
-     * NESTED AGENT (agentId + agent-flavored taskType) still counts — it
-     * can outlive its parent and must keep the thread Working.
+     * known internal shells and monitors are tracked independently: the owner
+     * can finish while a child remains live and must still block an idle
+     * session stop. Untyped internal rows remain covered by their owner;
+     * nested agents (agentId + agent-flavored taskType) count as working and
+     * can likewise outlive their parent.
      */
     readonly recordTaskLiveness: (input: {
       readonly threadId: string;
@@ -108,17 +110,12 @@ export function make(): ThreadBackgroundLivenessService["Service"] {
         drop(input.threadId, input.taskId);
         return;
       }
-      // A subagent's internal non-agent work (its own shells/monitors) is
-      // covered by the owning agent's liveness. Nested agents fall through:
-      // they can outlive their parent (review finding).
-      if (
-        input.agentId !== undefined &&
-        (taskType === undefined || MONITOR_TASK_TYPES.has(taskType))
-      ) {
+      // Untyped internal work has no reliable bucket of its own; retain the
+      // owner's liveness coverage until a typed lifecycle row arrives.
+      if (input.agentId !== undefined && taskType === undefined) {
         drop(input.threadId, input.taskId);
         return;
       }
-
       // Idle counts as not-live: a resting (resumable) Codex child isn't
       // doing anything, and an all-idle fleet must not pin Working.
       const terminal =

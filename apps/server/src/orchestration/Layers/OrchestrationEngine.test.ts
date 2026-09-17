@@ -618,6 +618,7 @@ describe("OrchestrationEngine", () => {
           taskType,
           kind: "started",
           status: "running",
+          ...(taskType === "local_bash" ? { agentId: "subagent-owner" } : {}),
         });
         const sequence = yield* engine.latestSequence;
         const error = yield* engine
@@ -647,6 +648,7 @@ describe("OrchestrationEngine", () => {
           taskType,
           kind: "completed",
           status: "completed",
+          ...(taskType === "local_bash" ? { agentId: "subagent-owner" } : {}),
         });
       }
       yield* engine.dispatch({

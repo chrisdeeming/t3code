@@ -351,6 +351,9 @@ interface ClaudeSessionContext {
   readonly workflowMemberFingerprints: Map<string, string>;
   /** Task ids that have started and not yet reached a terminal state. */
   readonly liveTaskIds: Set<string>;
+  /** Task ids that reached a terminal transition; late progress must not
+   * resurrect them in the shutdown set. */
+  readonly terminalTaskIds: Set<string>;
   turnState: ClaudeTurnState | undefined;
   lastKnownContextWindow: number | undefined;
   lastKnownTokenUsage: ThreadTokenUsageSnapshot | undefined;
@@ -3576,6 +3579,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           model,
           effort,
         });
+        context.terminalTaskIds.delete(message.task_id);
         context.liveTaskIds.add(message.task_id);
         yield* offerRuntimeEvent({
           ...base,
@@ -3596,6 +3600,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         return;
       }
       case "task_progress": {
+        if (!context.terminalTaskIds.has(message.task_id)) {
+          context.liveTaskIds.add(message.task_id);
+        }
         yield* emitThreadTokenUsage(
           context,
           normalizeClaudeTaskProgressTokenUsage(message.usage, context),
@@ -3638,7 +3645,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         const status =
           patch.status !== undefined ? CLAUDE_TASK_PATCH_STATUS[patch.status] : undefined;
         if (status === "completed" || status === "failed" || status === "cancelled") {
+          context.terminalTaskIds.add(message.task_id);
           context.liveTaskIds.delete(message.task_id);
+        } else if (!context.terminalTaskIds.has(message.task_id)) {
+          context.liveTaskIds.add(message.task_id);
         }
         const endedAt =
           typeof patch.end_time === "number" && Number.isFinite(patch.end_time)
@@ -3662,6 +3672,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         return;
       }
       case "task_notification": {
+        context.terminalTaskIds.add(message.task_id);
         context.liveTaskIds.delete(message.task_id);
         yield* emitThreadTokenUsage(
           context,
@@ -4259,6 +4270,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const pendingTaskModels = new Map<string, string>();
       const workflowMemberFingerprints = new Map<string, string>();
       const liveTaskIds = new Set<string>();
+      const terminalTaskIds = new Set<string>();
 
       const contextRef = yield* Ref.make<ClaudeSessionContext | undefined>(undefined);
 
@@ -4849,6 +4861,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         pendingTaskModels,
         workflowMemberFingerprints,
         liveTaskIds,
+        terminalTaskIds,
         turnState: undefined,
         lastKnownContextWindow: initialContextWindow,
         lastKnownTokenUsage: undefined,

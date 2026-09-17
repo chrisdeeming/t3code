@@ -139,7 +139,7 @@ describe("ThreadBackgroundLiveness", () => {
     expect(liveness.getThreadBackgroundLiveness(threadId)).toBeNull();
   });
 
-  it("untyped rows count as agents; idle is not live; agent-owned tasks are ignored", () => {
+  it("untyped rows count as agents; idle is not live; agent-owned tasks remain live", () => {
     const liveness = ThreadBackgroundLiveness.make();
     const threadId = "t-live-3";
     liveness.recordTaskLiveness({
@@ -164,6 +164,15 @@ describe("ThreadBackgroundLiveness", () => {
       taskType: "local_bash",
       status: undefined,
       kind: "started",
+      agentId: "owner",
+    });
+    expect(liveness.getThreadBackgroundLiveness(threadId)).toBe("monitoring");
+    liveness.recordTaskLiveness({
+      threadId,
+      taskId: "sh:1",
+      taskType: "local_bash",
+      status: "completed",
+      kind: "completed",
       agentId: "owner",
     });
     expect(liveness.getThreadBackgroundLiveness(threadId)).toBeNull();
@@ -191,7 +200,8 @@ describe("ThreadBackgroundLiveness", () => {
       kind: "progress",
     });
     expect(liveness.getThreadBackgroundLiveness(threadId)).toBe("monitoring");
-    // Turning out to be inert or agent-owned drops the prior entry too.
+    // Turning out to be inert drops the prior entry too; an agent-owned shell
+    // remains independently live until its own terminal transition.
     liveness.recordTaskLiveness({
       threadId,
       taskId: "x1",
@@ -200,7 +210,7 @@ describe("ThreadBackgroundLiveness", () => {
       kind: "progress",
       agentId: "owner",
     });
-    expect(liveness.getThreadBackgroundLiveness(threadId)).toBeNull();
+    expect(liveness.getThreadBackgroundLiveness(threadId)).toBe("monitoring");
   });
 
   it("plan tasks are inert; clear removes everything; instances are isolated", () => {

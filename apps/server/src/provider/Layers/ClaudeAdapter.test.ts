@@ -3048,6 +3048,81 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("keeps progress-only child tasks live after their owner completes", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const taskEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type.startsWith("task.")),
+        Stream.take(3),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "spawn a background shell",
+        attachments: [],
+      });
+
+      harness.query.emit({
+        type: "system",
+        subtype: "task_started",
+        task_id: "owner-task",
+        description: "Agent owner",
+        task_type: "local_agent",
+        uuid: "owner-started-uuid",
+        session_id: "sdk-session",
+      } as unknown as SDKMessage);
+      // Claude can report a child shell through progress before a dedicated
+      // task_started row. It must still be stopped with the session.
+      harness.query.emit({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "child-shell",
+        description: "Background shell",
+        usage: { total_tokens: 1, tool_uses: 1, duration_ms: 1 },
+        uuid: "child-progress-uuid",
+        session_id: "sdk-session",
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "system",
+        subtype: "task_notification",
+        task_id: "owner-task",
+        status: "completed",
+        summary: "owner done",
+        uuid: "owner-completed-uuid",
+        session_id: "sdk-session",
+      } as unknown as SDKMessage);
+
+      yield* Fiber.join(taskEventsFiber);
+      const stoppedTaskEventFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "task.completed"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.interruptTurn(session.threadId);
+
+      const stoppedTaskEvents = Array.from(yield* Fiber.join(stoppedTaskEventFiber));
+      assert.equal(stoppedTaskEvents.length, 1);
+      const stoppedTaskEvent = stoppedTaskEvents[0];
+      assert.equal(stoppedTaskEvent?.type, "task.completed");
+      if (stoppedTaskEvent?.type === "task.completed") {
+        assert.equal(String(stoppedTaskEvent.payload.taskId), "child-shell");
+        assert.equal(stoppedTaskEvent.payload.status, "stopped");
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("keeps the session available when process close fails", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
