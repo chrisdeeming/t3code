@@ -1,10 +1,9 @@
 import { decodeHtmlEntities, type Editor, type JSONContent } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { liftEmptyBlock, splitBlock } from "@tiptap/pm/commands";
 import { Fragment } from "@tiptap/pm/model";
-import { splitListItem } from "@tiptap/pm/schema-list";
 import { AllSelection, type EditorState, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
+import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 import {
   useCallback,
   useEffect,
@@ -183,6 +182,15 @@ export function replaceChangedSpan(
     suffix += 1;
   }
 
+  // Autocomplete often preserves the text already typed: `$pinch` becoming
+  // `$pinchtab ` has a minimal changed span of only `tab `. Reparse the whole
+  // token in that case so the Markdown tokenizer can promote it to an atom.
+  const changedEnd = nextValue.length - suffix;
+  const completedToken = collectComposerInlineTokens(nextValue).find(
+    (token) => token.start <= prefix && token.start < changedEnd && token.end >= prefix,
+  );
+  if (completedToken) prefix = completedToken.start;
+
   const inserted = nextValue.slice(prefix, nextValue.length - suffix);
   // Block-level syntax changes the document's shape, which a span replacement
   // cannot express.
@@ -215,21 +223,6 @@ export function replaceChangedSpan(
   if (getTiptapComposerMarkdown(editor) === nextValue) return true;
   editor.commands.setContent(nextValue, { contentType: "markdown", emitUpdate: false });
   return true;
-}
-
-/**
- * Splits the current block, lifting out of an empty list item or quote first.
- *
- * Standard editor behaviour: Shift+Enter on an empty bullet leaves the list
- * rather than adding another empty one.
- */
-function splitComposerBlock(view: EditorView): boolean {
-  const dispatch = view.dispatch.bind(view);
-  return (
-    liftEmptyBlock(view.state, dispatch) ||
-    splitListItem(view.state.schema.nodes.listItem!)(view.state, dispatch) ||
-    splitBlock(view.state, dispatch)
-  );
 }
 
 function insertComposerHardBreak(view: EditorView): boolean {
@@ -388,21 +381,16 @@ export function TiptapComposerPromptEditor(props: ComposerPromptEditorProps) {
           event.preventDefault();
           return true;
         }
-        // Shift+Enter used to emit a hard break, which is a soft line *inside* a
-        // paragraph — and input rules only fire at the start of a block, so a
-        // user who broke a line that way found `- `, `> ` and fences no longer
-        // did anything. A new paragraph keeps Markdown working, which is the
-        // more useful default; the hard break moves to Mod+Shift+Enter.
-        if (event.key === "Enter" && event.shiftKey) {
+        // Match the standard chat-editor convention: Shift+Enter inserts a
+        // soft line break inside the current paragraph. Plain Enter remains
+        // the structural path for starting paragraphs and Markdown blocks.
+        if (event.key === "Enter" && event.shiftKey && !event.metaKey && !event.ctrlKey) {
           const inCode = view.state.selection.$from.parent.type.spec.code === true;
           // In a fence every Enter is a newline: splitting it into two blocks is
           // never wanted, and reaching for a modifier while typing code is not
           // a reasonable ask.
           if (inCode) return false;
-          const applied =
-            event.metaKey || event.ctrlKey
-              ? insertComposerHardBreak(view)
-              : splitComposerBlock(view);
+          const applied = insertComposerHardBreak(view);
           if (applied) {
             event.preventDefault();
             event.stopPropagation();

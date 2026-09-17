@@ -65,6 +65,25 @@ describe("composer controlled updates", () => {
     expect(chipCount(editor)).toBe(1);
   });
 
+  it("widens an autocomplete diff so a completed skill becomes a chip", () => {
+    const typed = "use $pinch";
+    const editor = typedEditor(typed);
+
+    replaceChangedSpan(editor, typed, "use $pinchtab ");
+
+    expect(chipCount(editor)).toBe(1);
+    expect(getTiptapComposerMarkdown(editor)).toBe("use $pinchtab ");
+  });
+
+  it("promotes a fully typed skill when autocomplete only adds its trailing space", () => {
+    const typed = "use $pinchtab";
+    const editor = typedEditor(typed);
+
+    replaceChangedSpan(editor, typed, "use $pinchtab ");
+
+    expect(chipCount(editor)).toBe(1);
+  });
+
   it("handles a pure insertion with no replaced text", () => {
     const typed = "hello world";
     const editor = typedEditor(typed);

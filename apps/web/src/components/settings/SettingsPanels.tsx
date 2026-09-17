@@ -1785,7 +1785,7 @@ function BetaFeaturesSection() {
           <div className="relative space-y-1 overflow-visible pt-3 text-foreground">
             <SettingsRow
               {...searchableSetting("composer-enter-behavior")}
-              description="What Enter does while writing a prompt. Sending keeps Enter as send and Shift+Enter as a new paragraph. Adding a new line moves sending to Cmd/Ctrl+Enter, which suits long multi-line prompts."
+              description="What Enter does while writing a prompt. Sending keeps Enter as send and Shift+Enter as a line break. Adding a new line moves sending to Cmd/Ctrl+Enter, which suits long multi-line prompts."
               control={
                 <Select
                   value={settings.composerEnterBehavior}
