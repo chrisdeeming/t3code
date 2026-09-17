@@ -243,6 +243,7 @@ import {
 } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
 import { useDebouncedValue } from "~/state/queries";
+import { ComposerSourceToggle } from "./ComposerSourceToggle";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
@@ -978,6 +979,7 @@ import {
 } from "@t3tools/client-runtime/providerSkills";
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useDelayedStatus } from "../../hooks/useDelayedStatus";
+import { useUpdateClientSettings } from "../../hooks/useSettings";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { usePanelAnimationSettings } from "../../panelAnimations";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -2133,6 +2135,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const hasWrappedPrompt = useComposerMultilinePrompt(composerMenuAnchor);
   const hasMultilinePrompt = prompt.includes("\n") || hasWrappedPrompt;
   const [isStashMenuOpen, setIsStashMenuOpen] = useState(false);
+  const updateClientSettings = useUpdateClientSettings();
+  // Flipping the setting remounts the editor, which drops focus. The token
+  // tells the new instance that the user asked for this from the composer and
+  // wants the caret back; changing the same setting from Settings leaves it
+  // alone. Rich text is a client setting rather than composer state, so both
+  // entry points drive the same switch.
+  const [pendingComposerFocusRestore, setPendingComposerFocusRestore] = useState(false);
+  const toggleComposerRichText = useCallback(() => {
+    setPendingComposerFocusRestore(true);
+    void updateClientSettings({ composerRichTextEnabled: !settings.composerRichTextEnabled });
+  }, [settings.composerRichTextEnabled, updateClientSettings]);
   const [isTasksDrawerOpen, setIsTasksDrawerOpen] = useState(false);
   const [stashPulse, setStashPulse] = useState<{ key: number; active: boolean }>({
     key: 0,
@@ -5016,6 +5029,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           data-resting-controls-separator="true"
         />
       ) : null}
+      <ComposerSourceToggle
+        richTextEnabled={settings.composerRichTextEnabled}
+        size={composerControlsInStrip ? "xs" : "sm"}
+        onToggle={toggleComposerRichText}
+      />
       <ProviderModelPicker
         isComposerOwned
         disabled={providerCatalogPending || isSendBusy}
@@ -6847,6 +6865,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   <ComposerPromptEditor
                     editorRef={composerEditorRef}
                     richTextEnabled={settings.composerRichTextEnabled}
+                    restoreFocusOnMount={pendingComposerFocusRestore}
+                    onFocusRestored={() => setPendingComposerFocusRestore(false)}
                     value={
                       isComposerApprovalState
                         ? ""
