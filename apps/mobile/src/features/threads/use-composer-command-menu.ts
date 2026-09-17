@@ -51,6 +51,8 @@ export function buildComposerSlashCommandItems(input: {
   readonly query: string;
   readonly atMessageStart: boolean;
   readonly hasThread: boolean;
+  /** Whether the thread has a provider session (false for threads with no message yet). */
+  readonly hasSession: boolean;
   readonly hasCompactableConversation?: boolean;
   /** Whether T3 itself offers /usage-limits for the selected provider. */
   readonly offersUsageLimits?: boolean;
@@ -85,7 +87,7 @@ export function buildComposerSlashCommandItems(input: {
       label: "/default",
       description: "Switch to default mode",
     },
-    ...(input.hasThread
+    ...(input.hasThread && input.hasSession
       ? [
           {
             id: "cmd:reconnect-mcp",
@@ -180,6 +182,7 @@ export function useComposerCommandMenu({
   pullRequestRepository = null,
   selectedProviderStatus,
   hasThread,
+  hasSession,
   hasCompactableConversation,
   offersUsageLimits = false,
   enabled = true,
@@ -195,6 +198,7 @@ export function useComposerCommandMenu({
   readonly pullRequestRepository?: string | null;
   readonly selectedProviderStatus: ServerProvider | null;
   readonly hasThread: boolean;
+  readonly hasSession: boolean;
   readonly hasCompactableConversation: boolean;
   /** Whether T3 itself offers /usage-limits for the selected provider. */
   readonly offersUsageLimits?: boolean;
@@ -346,6 +350,7 @@ export function useComposerCommandMenu({
         query: q,
         atMessageStart: trigger.rangeStart === 0,
         hasThread,
+        hasSession,
         hasCompactableConversation,
         offersUsageLimits,
         allowInteractionMode: onUpdateInteractionMode !== undefined,
@@ -465,6 +470,7 @@ export function useComposerCommandMenu({
     return [];
   }, [
     hasThread,
+    hasSession,
     hasCompactableConversation,
     onUpdateInteractionMode,
     pathSearch.entries,

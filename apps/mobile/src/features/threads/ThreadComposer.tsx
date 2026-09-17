@@ -388,6 +388,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     pullRequestRepository: project?.repositoryIdentity?.displayName ?? null,
     selectedProviderStatus,
     hasThread: true,
+    hasSession: props.selectedThread.session !== null,
     hasCompactableConversation: props.hasCompactableConversation,
     onChangeDraftMessage: props.onChangeDraftMessage,
     onUpdateInteractionMode:

@@ -37,6 +37,7 @@ describe("mobile slash commands", () => {
         query: "pl",
         atMessageStart: true,
         hasThread: true,
+        hasSession: true,
         allowInteractionMode,
         selectedProviderStatus: antigravity,
       });
@@ -62,6 +63,7 @@ describe("mobile slash commands", () => {
         query: "plan",
         atMessageStart: false,
         hasThread: false,
+        hasSession: false,
         allowInteractionMode: true,
         selectedProviderStatus: antigravity,
       }),
@@ -73,6 +75,7 @@ describe("mobile slash commands", () => {
       query: "plan",
       atMessageStart: true,
       hasThread: true,
+      hasSession: true,
       allowInteractionMode: true,
       selectedProviderStatus: {
         driver: ProviderDriverKind.make("codex"),
@@ -101,7 +104,7 @@ describe("mobile slash commands", () => {
     ).toEqual({ text: "/plan ", cursor: 6, interactionMode: null });
   });
 
-  it("offers MCP reconnect for existing threads on any provider", () => {
+  it("offers MCP reconnect only for threads with a session", () => {
     const claude = {
       driver: ProviderDriverKind.make("claudeAgent"),
       slashCommands: [],
@@ -111,6 +114,7 @@ describe("mobile slash commands", () => {
         query: "reconnect",
         atMessageStart: true,
         hasThread: true,
+        hasSession: true,
         allowInteractionMode: false,
         selectedProviderStatus: claude,
       }).map((item) => item.id),
@@ -119,7 +123,18 @@ describe("mobile slash commands", () => {
       buildComposerSlashCommandItems({
         query: "reconnect",
         atMessageStart: true,
+        hasThread: true,
+        hasSession: false,
+        allowInteractionMode: false,
+        selectedProviderStatus: claude,
+      }),
+    ).toEqual([]);
+    expect(
+      buildComposerSlashCommandItems({
+        query: "reconnect",
+        atMessageStart: true,
         hasThread: false,
+        hasSession: false,
         allowInteractionMode: false,
         selectedProviderStatus: claude,
       }),

@@ -383,6 +383,7 @@ export function NewTaskDraftScreen(props: {
     projectCwd: composerWorkspaceCwd,
     selectedProviderStatus: flow.selectedProviderStatus,
     hasThread: false,
+    hasSession: false,
     hasCompactableConversation: false,
     offersUsageLimits: offersUsageLimits,
     enabled: isComposerFocused && !isComposerInteractionLocked,
