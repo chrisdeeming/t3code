@@ -7462,9 +7462,26 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
       sendInFlightRef.current = true;
-      promptRef.current = "";
-      clearComposerDraftContent(composerDraftTarget);
-      composerRef.current?.resetCursorState();
+      const takenQueuedReconnectMessage = queuedMessage
+        ? activeThreadKey
+          ? useQueuedMessageStore
+              .getState()
+              .take(
+                activeThreadKey,
+                queuedMessage.id,
+                latestCompletedToolActivityId(threadActivities),
+              )
+          : null
+        : null;
+      if (queuedMessage && takenQueuedReconnectMessage === null) {
+        sendInFlightRef.current = false;
+        return;
+      }
+      if (!queuedMessage) {
+        promptRef.current = "";
+        clearComposerDraftContent(composerDraftTarget);
+        composerRef.current?.resetCursorState();
+      }
       const result = await stopThreadSession({
         environmentId,
         input: { threadId: activeThread.id, onlyIfIdle: true },
@@ -7472,11 +7489,22 @@ export default function ChatView(props: ChatViewProps) {
         sendInFlightRef.current = false;
       });
       if (result._tag === "Failure") {
+        if (takenQueuedReconnectMessage && activeThreadKey) {
+          useQueuedMessageStore
+            .getState()
+            .holdAtFront(activeThreadKey, takenQueuedReconnectMessage);
+        }
         if (
+          !queuedMessage &&
+          currentRouteThreadKeyRef.current === routeThreadKey &&
           promptRef.current.length === 0 &&
           composerImagesRef.current.length === 0 &&
           composerFilesRef.current.length === 0 &&
-          composerTerminalContextsRef.current.length === 0
+          composerTerminalContextsRef.current.length === 0 &&
+          (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)
+            ?.previewAnnotations.length ?? 0) === 0 &&
+          (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.reviewComments
+            .length ?? 0) === 0
         ) {
           promptRef.current = promptForSend;
           setComposerDraftPrompt(composerDraftTarget, promptForSend);
