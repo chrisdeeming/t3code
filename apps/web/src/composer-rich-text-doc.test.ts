@@ -7,6 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildDocJson,
   ComposerCodeBlockExtension,
+  ComposerListExtensions,
   collapsedToFlat,
   ComposerTaskItemExtension,
   flatToCollapsed,
@@ -60,6 +61,7 @@ const schema = getSchemaByResolvedExtensions(
     TaskList,
     ComposerTaskItemExtension,
     ComposerCodeBlockExtension,
+    ...ComposerListExtensions,
   ]),
 );
 
@@ -332,6 +334,69 @@ describe("composer rich text document model", () => {
     "**bold** then @README.md then *italic*",
   ])("round-trips %s byte-identically in plain mode", (value) => {
     expect(roundTripPlain(value).value).toBe(value);
+  });
+
+  it.each([
+    "- one\n- two",
+    "* star\n* star two",
+    "+ plus",
+    "* star\n+ plus",
+    "1. first\n2. second",
+    "1) paren\n2) paren",
+    "3. starts at three\n4. four",
+    "01. zero padded\n02. two",
+    "- parent\n  - child\n  - sibling\n- uncle",
+    "1. ordered\n   - bullet child\n2. next",
+    "- outer\n  1. inner ordered\n  2. more\n- outer again",
+    "-   wide space item",
+    "-",
+    "1.",
+    "- \n- second",
+    "- **bold** item with @README.md",
+    "- [ ] task\n- bullet after",
+    "- bullet\n- [x] task after",
+    "para\n- item\npara",
+    "\t- tab indented\n\t- again",
+    "  - leading indent only",
+    "- item\n\n- after a blank",
+    "- item one\n```ts\ncode\n```\n- item two",
+    "-no space stays literal",
+    "1.no space stays literal",
+    "10. ten\n11. eleven",
+  ])("round-trips the list %s through a real ProseMirror document", (value) => {
+    expect(roundTrip(value).value).toBe(value);
+  });
+
+  it.each([
+    "- one\n- two",
+    "1. first\n2. second",
+    "- parent\n  - child",
+    "* star\n+ plus",
+    "-no space stays literal",
+  ])("keeps the list %s literal in plain mode", (value) => {
+    expect(roundTripPlain(value).value).toBe(value);
+  });
+
+  it.each(["- one\n- two", "1. a\n   - b\n2. c", "- **bold** @README.md tail", "-"])(
+    "maps every document offset of the list %s through collapsed coordinates and back",
+    (value) => {
+      const map = roundTrip(value);
+      expect(map.value).toBe(value);
+      for (let flat = 0; flat <= map.docLength; flat += 1) {
+        expect(collapsedToFlat(map, flatToCollapsed(map, flat))).toBe(flat);
+      }
+    },
+  );
+
+  it("clamps offsets inside a list marker to the start of the item text", () => {
+    const value = "- item";
+    const map = roundTrip(value);
+    // The marker owns no document characters, like a checkbox.
+    for (let collapsed = 0; collapsed <= "- ".length; collapsed += 1) {
+      expect(collapsedToFlat(map, collapsed)).toBe(0);
+    }
+    expect(collapsedToFlat(map, "- it".length)).toBe(2);
+    expect(flatToCollapsed(map, 0)).toBe("- ".length);
   });
 
   it.each([

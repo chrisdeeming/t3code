@@ -26,6 +26,23 @@ the source and marker decorations are not content. Structured context records ac
 that text when available. Paste completes trailing chip delimiters and adds a leading
 boundary when inserting a chip directly after text.
 
+Bullet and ordered lists are real list nodes, but their items keep the exact
+source marker (`marker`: `-`, `*`, `+`, `3.`, `3)`), the whitespace after it and
+the leading indent as attributes, so a list round-trips byte-identically and is
+never renumbered. The line grammar is the one the plain-mode continuation in
+[composer-list-continuation](../../apps/web/src/composer-list-continuation.ts)
+uses, so both modes agree on what a list line is; keep them in step. Items of a
+different kind or marker at the same indent start a sibling list, which is what
+lets `* a` under `- b` keep its star and a task list follow a bullet list.
+
+Enter semantics are unchanged by rendering: `composerSubmissionIntentForEnter`
+has no list flag and runs first, so Enter sends and it is Shift+Enter that
+reaches the list branch. Rendered items split natively there (marks and chips
+survive), ordered items counting up the way the literal continuation does; Tab
+still goes through the literal store edit, which the rebuilt document reads back
+as nesting. The bullet input rule claims `- ` as soon as it is typed, so the
+task gesture is `[ ] ` inside a bullet item rather than `- [ ] ` in a paragraph.
+
 Fenced code blocks are real `codeBlock` nodes rather than literal text. They keep
 their exact delimiters in attributes — `fence`, `language` and `close` — so a
 fence round-trips byte-identically, including tilde fences, long fences and a

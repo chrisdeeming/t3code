@@ -1670,7 +1670,9 @@ code {
 .chat-markdown ol,
 .chat-markdown blockquote,
 .chat-markdown pre,
-.chat-markdown .chat-markdown-table-container {
+.chat-markdown .chat-markdown-table-container,
+.composer-tiptap ul,
+.composer-tiptap ol {
   margin: 0.65rem 0;
 }
 
@@ -1708,7 +1710,7 @@ code {
   color: var(--contrast-muted-foreground);
 }
 
-.chat-markdown ul {
+:is(.chat-markdown, .composer-tiptap) ul {
   /* Reset for nested uls under a widened ol. --list-gutter is an inherited
      custom property, so without this a task-list under a multi-digit ordered
      list would inherit the outer gutter instead of its own default. */
@@ -1722,25 +1724,25 @@ code {
    widest marker has multiple characters so it isn't clipped by list-style-position:
    outside painting the marker past the padding box. Reset it here too so a
    nested ol without its own widened marker doesn't inherit the outer one. */
-.chat-markdown ol {
+:is(.chat-markdown, .composer-tiptap) ol {
   --list-gutter: 1.25rem;
   padding-left: var(--list-gutter, 1.25rem);
   list-style-type: decimal;
 }
 
-.chat-markdown ol > li::marker {
+:is(.chat-markdown, .composer-tiptap) ol > li::marker {
   font-variant-numeric: tabular-nums;
 }
 
-.chat-markdown ul ul {
+:is(.chat-markdown, .composer-tiptap) ul ul {
   list-style-type: circle;
 }
 
-.chat-markdown ul ul ul {
+:is(.chat-markdown, .composer-tiptap) ul ul ul {
   list-style-type: square;
 }
 
-.chat-markdown ol ol {
+:is(.chat-markdown, .composer-tiptap) ol ol {
   list-style-type: lower-alpha;
 }
 

@@ -1,4 +1,4 @@
-import { Extension, Node, wrappingInputRule, type JSONContent } from "@tiptap/core";
+import { Extension, InputRule, Node, wrappingInputRule, type JSONContent } from "@tiptap/core";
 import { TaskList } from "@tiptap/extension-task-list";
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -45,6 +45,7 @@ import {
 import {
   buildDocJson,
   ComposerCodeBlockExtension,
+  ComposerListExtensions,
   buildTiptapContent,
   collapsedToFlat,
   ComposerTaskItemExtension,
@@ -60,6 +61,7 @@ import {
   indentCodeBlock,
   indentedNewlineInCodeBlock,
 } from "~/composer-code-block";
+import { nextOrderedMarkerText } from "~/composer-list-continuation";
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { cn, isMacPlatform } from "~/lib/utils";
@@ -512,6 +514,51 @@ function collectStyledRanges(doc: ProseMirrorNode): StyledRange[] {
   return ranges;
 }
 
+/**
+ * A typed marker becomes a list item that remembers the marker it was typed
+ * with, so the stored Markdown keeps `*` or `3)` rather than a canonical `-`.
+ */
+function listMarkerInputRule(find: RegExp, listType: "bulletList" | "orderedList"): InputRule {
+  return new InputRule({
+    find,
+    handler: ({ state, range, match, chain }) => {
+      const marker = match[1] ?? "-";
+      if (state.doc.resolve(range.from).parent.type.name !== "paragraph") return null;
+      chain()
+        .deleteRange(range)
+        .wrapInList(
+          listType,
+          listType === "orderedList" ? { start: Number.parseInt(marker, 10) || 1 } : {},
+        )
+        .updateAttributes("listItem", { marker, space: " " })
+        .run();
+      return undefined;
+    },
+  });
+}
+
+/**
+ * `[ ] ` at the start of a bullet item turns it into a task. The bullet rule
+ * takes `- ` the moment it is typed, so this is how the task gesture from a
+ * plain paragraph still lands where it always did.
+ */
+const bulletToTaskInputRule = new InputRule({
+  find: /^\[([ xX])\] $/,
+  handler: ({ state, range, match, chain }) => {
+    const $from = state.doc.resolve(range.from);
+    const item = $from.node(-1);
+    if ($from.parent.type.name !== "paragraph" || item?.type.name !== "listItem") return null;
+    if ((item.attrs as { marker?: string }).marker !== "-") return null;
+    const indent = typeof item.attrs.indent === "string" ? item.attrs.indent : "";
+    chain()
+      .deleteRange(range)
+      .toggleList("taskList", "taskItem")
+      .updateAttributes("taskItem", { checked: (match[1] ?? " ").toLowerCase() === "x", indent })
+      .run();
+    return undefined;
+  },
+});
+
 /** Whether the caret sits inside a fenced code block. */
 function isInCodeBlock(view: EditorView): boolean {
   return view.state.selection.$from.parent.type.spec.code === true;
@@ -803,6 +850,17 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
                     document.documentElement.classList.contains("dark") ? "dark" : "light",
                   ),
               }),
+              ...ComposerListExtensions.map((extension) =>
+                extension.name === "listItem"
+                  ? extension
+                  : extension.extend({
+                      addInputRules() {
+                        return this.name === "bulletList"
+                          ? [listMarkerInputRule(/^([-*+])\s$/, "bulletList")]
+                          : [listMarkerInputRule(/^(\d+[.)])\s$/, "orderedList")];
+                      },
+                    }),
+              ),
               TaskList,
               ComposerTaskItemExtension.extend({
                 addInputRules() {
@@ -812,6 +870,7 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
                       type: this.type,
                       getAttributes: (match) => ({ checked: match[1]?.toLowerCase() === "x" }),
                     }),
+                    bulletToTaskInputRule,
                   ];
                 },
               }),
@@ -962,7 +1021,8 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
           if (event.key === "Enter") {
             const instance = editorHolder.current;
             const isTaskItem = richText && (instance?.isActive("taskItem") ?? false);
-            const handled = handler?.("Enter", event, isTaskItem) ?? false;
+            const isListItem = richText && (instance?.isActive("listItem") ?? false);
+            const handled = handler?.("Enter", event, isTaskItem || isListItem) ?? false;
             if (handled) {
               event.preventDefault();
               event.stopPropagation();
@@ -977,6 +1037,23 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
                   instance.commands.liftListItem("taskItem")))
             ) {
               return true;
+            }
+            if (isListItem && instance) {
+              const item = view.state.selection.$from.node(-1);
+              const marker = typeof item?.attrs.marker === "string" ? item.attrs.marker : "-";
+              const isOrdered = /^\d+[.)]$/.test(marker);
+              if (
+                instance.commands.splitListItem(
+                  "listItem",
+                  isOrdered
+                    ? { marker: nextOrderedMarkerText(marker), space: " " }
+                    : { space: " " },
+                ) ||
+                (view.state.selection.$from.parent.content.size === 0 &&
+                  instance.commands.liftListItem("listItem"))
+              ) {
+                return true;
+              }
             }
             // Split the paragraph so a single newline visibly advances the caret.
             return splitBlockKeepMarks(view.state, (tr) => {

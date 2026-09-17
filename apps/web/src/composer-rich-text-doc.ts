@@ -1,5 +1,6 @@
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { CodeBlock } from "@tiptap/extension-code-block";
+import { BulletList, ListItem, OrderedList } from "@tiptap/extension-list";
 import { TaskItem } from "@tiptap/extension-task-item";
 
 import { splitPromptIntoComposerSegments } from "~/composer-editor-mentions";
@@ -96,6 +97,25 @@ export function codeBlockSource(node: ProseMirrorNode): {
   return { open: `${fence}${language}${content ? "\n" : ""}`, content, close };
 }
 
+/**
+ * Bullet and ordered items keep their exact source marker so a list
+ * round-trips byte-identically: `marker` is the literal `-`, `*`, `+`, `3.`
+ * or `3)`, `space` what followed it, and `indent` the leading whitespace.
+ * Numbering is not renumbered: what the user typed is what the agent gets.
+ */
+export const ComposerListItemExtension = ListItem.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      indent: { default: "" },
+      marker: { default: "-" },
+      space: { default: " " },
+    };
+  },
+});
+
+export const ComposerListExtensions = [BulletList, OrderedList, ComposerListItemExtension];
+
 function randomNodeKey(): string {
   return `tiptap-${Math.random().toString(36).slice(2)}`;
 }
@@ -148,10 +168,46 @@ function isClosingFence(line: string, fence: string): boolean {
   return run[0] === fence[0] && run.length >= fence.length;
 }
 
+type ListLinePrefix =
+  | ({ kind: "task" } & TaskLinePrefix)
+  | { kind: "bullet" | "ordered"; indent: string; marker: string; space: string };
+
+/**
+ * The same grammar the literal continuation uses, so plain and rich mode agree
+ * on what a list line is: a task first (it also looks like a bullet), then an
+ * ordered marker, then a bullet. A marker followed by nothing is an empty item.
+ */
+function parseListPrefix(line: string): { prefix: ListLinePrefix; markerLength: number } | null {
+  const task = parseTaskPrefix(line);
+  if (task) return { prefix: { kind: "task", ...task.prefix }, markerLength: task.markerLength };
+  const ordered = /^([ \t]*)(\d+[.)])((?:[ \t]+)|$)/.exec(line);
+  if (ordered) {
+    return {
+      prefix: { kind: "ordered", indent: ordered[1]!, marker: ordered[2]!, space: ordered[3]! },
+      markerLength: ordered[0].length,
+    };
+  }
+  const bullet = /^([ \t]*)([-*+])((?:[ \t]+)|$)/.exec(line);
+  if (bullet) {
+    return {
+      prefix: { kind: "bullet", indent: bullet[1]!, marker: bullet[2]!, space: bullet[3]! },
+      markerLength: bullet[0].length,
+    };
+  }
+  return null;
+}
+
+/** Items of one kind and marker family belong to one list; a change starts a sibling list. */
+function listKey(prefix: ListLinePrefix): string {
+  if (prefix.kind === "task") return "task";
+  if (prefix.kind === "ordered") return `ordered:${prefix.marker.slice(-1)}`;
+  return `bullet:${prefix.marker}`;
+}
+
 type InlineJson = Record<string, unknown>;
 
 interface DocLine {
-  task: TaskLinePrefix | null;
+  list: ListLinePrefix | null;
   inline: InlineJson[];
 }
 
@@ -193,28 +249,52 @@ function atomJsonForSegment(
   };
 }
 
-interface PendingTaskItem extends TaskLinePrefix {
+interface PendingItem {
+  prefix: ListLinePrefix;
   content: InlineJson[];
-  children: PendingTaskItem[];
+  /** Nested lists, in order; a parent can hold lists of different kinds. */
+  children: PendingList[];
 }
 
-function taskListJson(items: PendingTaskItem[]): InlineJson {
-  return {
-    type: "taskList",
-    content: items.map((item) => ({
-      type: "taskItem",
-      attrs: {
-        checked: item.checked,
-        indent: item.indent,
-        markerSpace: item.markerSpace,
-        contentSpace: item.contentSpace,
-      },
-      content: [
-        { type: "paragraph", content: item.content },
-        ...(item.children.length > 0 ? [taskListJson(item.children)] : []),
-      ],
-    })),
-  };
+interface PendingList {
+  key: string;
+  items: PendingItem[];
+}
+
+function listJson(list: PendingList): InlineJson {
+  const first = list.items[0]!.prefix;
+  const items = list.items.map((item) => {
+    const content = [
+      { type: "paragraph", content: item.content },
+      ...item.children.map((child) => listJson(child)),
+    ];
+    if (item.prefix.kind === "task") {
+      return {
+        type: "taskItem",
+        attrs: {
+          checked: item.prefix.checked,
+          indent: item.prefix.indent,
+          markerSpace: item.prefix.markerSpace,
+          contentSpace: item.prefix.contentSpace,
+        },
+        content,
+      };
+    }
+    return {
+      type: "listItem",
+      attrs: { indent: item.prefix.indent, marker: item.prefix.marker, space: item.prefix.space },
+      content,
+    };
+  });
+  if (first.kind === "task") return { type: "taskList", content: items };
+  if (first.kind === "ordered") {
+    return {
+      type: "orderedList",
+      attrs: { start: Number.parseInt(first.marker, 10) || 1 },
+      content: items,
+    };
+  }
+  return { type: "bulletList", content: items };
 }
 
 function textJsonForSpan(text: string, marks: RichTextMark[]): Record<string, unknown> {
@@ -253,7 +333,7 @@ export function buildTiptapContent(
     .join("");
   let atomIndex = 0;
   const buildDocLine = (line: string): DocLine => {
-    const parsed = styling ? parseTaskPrefix(line) : null;
+    const parsed = styling ? parseListPrefix(line) : null;
     const content = parsed ? line.slice(parsed.markerLength) : line;
     const spans = styling ? parseInlineMarkdown(content) : [{ text: content, marks: [] }];
     const inline: InlineJson[] = [];
@@ -266,7 +346,7 @@ export function buildTiptapContent(
         if (piece) inline.push(textJsonForSpan(piece, span.marks));
       });
     }
-    return { task: parsed?.prefix ?? null, inline };
+    return { list: parsed?.prefix ?? null, inline };
   };
 
   // Pass 1: fenced blocks claim their lines whole; everything else becomes an
@@ -313,64 +393,72 @@ export function buildTiptapContent(
     index = closed ? cursor : sourceLines.length;
   }
 
-  // Pass 2: consecutive task lines group into (possibly nested) task lists
-  // by indent prefix; everything else stays a paragraph.
+  // Pass 2: consecutive list lines group into (possibly nested) lists by
+  // indent prefix; everything else stays a paragraph. Items of a different
+  // kind or marker at the same indent start a sibling list, so `* a` under
+  // `- b` keeps its star and a task list can follow a bullet list.
   const blocks: Record<string, unknown>[] = [];
-  let stack: { indent: string; items: PendingTaskItem[] }[] = [];
-  const flushTasks = () => {
-    if (stack.length > 0) {
-      blocks.push(taskListJson(stack[0]!.items));
-      stack = [];
-    }
+  let rootLists: PendingList[] = [];
+  let stack: { indent: string; list: PendingList; container: PendingList[] }[] = [];
+  const flushLists = () => {
+    for (const list of rootLists) blocks.push(listJson(list));
+    rootLists = [];
+    stack = [];
+  };
+  const openList = (container: PendingList[], key: string): PendingList => {
+    const list = { key, items: [] };
+    container.push(list);
+    return list;
   };
   for (const entry of entries) {
     if ("code" in entry) {
-      flushTasks();
+      flushLists();
       blocks.push(entry.code);
       continue;
     }
     const line = entry.line;
-    if (!line.task) {
-      flushTasks();
+    if (!line.list) {
+      flushLists();
       blocks.push({ type: "paragraph", content: line.inline });
       continue;
     }
-    const item: PendingTaskItem = {
-      ...line.task,
-      content: line.inline,
-      children: [],
-    };
+    const item: PendingItem = { prefix: line.list, content: line.inline, children: [] };
+    const key = listKey(line.list);
+    const indent = line.list.indent;
     for (;;) {
       const top = stack[stack.length - 1];
       if (!top) {
         // A leading indented item with no parent flattens but keeps indent.
-        stack.push({ indent: item.indent, items: [] });
+        stack.push({ indent, list: openList(rootLists, key), container: rootLists });
         continue;
       }
-      if (top.indent === item.indent) {
-        top.items.push(item);
+      if (top.indent === indent) {
+        if (top.list.key !== key) top.list = openList(top.container, key);
+        top.list.items.push(item);
         break;
       }
-      if (top.indent !== "" && !item.indent.startsWith(top.indent)) {
+      if (top.indent !== "" && !indent.startsWith(top.indent)) {
         if (stack.length > 1) {
           stack.pop();
           continue;
         }
-        top.indent = item.indent;
-        top.items.push(item);
+        top.indent = indent;
+        if (top.list.key !== key) top.list = openList(top.container, key);
+        top.list.items.push(item);
         break;
       }
-      const parent = top.items[top.items.length - 1];
+      const parent = top.list.items[top.list.items.length - 1];
       if (!parent) {
-        top.items.push(item);
+        top.list.items.push(item);
         break;
       }
-      parent.children.push(item);
-      stack.push({ indent: item.indent, items: parent.children });
+      const list = openList(parent.children, key);
+      stack.push({ indent, list, container: parent.children });
+      list.items.push(item);
       break;
     }
   }
-  flushTasks();
+  flushLists();
   return blocks;
 }
 
@@ -599,7 +687,28 @@ function appendInlineRuns(
   }
 }
 
-function walkTaskList(list: ProseMirrorNode, listStart: number, acc: RichAccumulator): void {
+const LIST_NODE_NAMES = new Set(["taskList", "bulletList", "orderedList"]);
+
+/** The literal prefix an item serializes to. Empty items keep their exact spacing. */
+function listItemPrefix(item: ProseMirrorNode, empty: boolean): string {
+  const attrs = item.attrs as Record<string, unknown>;
+  const indent = typeof attrs.indent === "string" ? attrs.indent : "";
+  if (item.type.name === "taskItem") {
+    const markerSpace = typeof attrs.markerSpace === "string" ? attrs.markerSpace : " ";
+    const contentSpace =
+      typeof attrs.contentSpace === "string"
+        ? attrs.contentSpace || (empty ? "" : " ")
+        : empty
+          ? ""
+          : " ";
+    return `${indent}-${markerSpace}[${attrs.checked === true ? "x" : " "}]${contentSpace}`;
+  }
+  const marker = typeof attrs.marker === "string" && attrs.marker ? attrs.marker : "-";
+  const space = typeof attrs.space === "string" ? attrs.space : " ";
+  return `${indent}${marker}${space}`;
+}
+
+function walkList(list: ProseMirrorNode, listStart: number, acc: RichAccumulator): void {
   let itemPos = listStart + 1;
   let firstItem = true;
   list.content.forEach((item) => {
@@ -609,17 +718,8 @@ function walkTaskList(list: ProseMirrorNode, listStart: number, acc: RichAccumul
     const itemContentStart = itemPos + 1;
     const first = item.firstChild;
     const empty = first?.type.name === "paragraph" && first.content.childCount === 0;
-    const attrs = item.attrs as Record<string, unknown>;
-    const indent = typeof attrs.indent === "string" ? attrs.indent : "";
-    const markerSpace = typeof attrs.markerSpace === "string" ? attrs.markerSpace : " ";
-    const contentSpace =
-      typeof attrs.contentSpace === "string"
-        ? attrs.contentSpace || (empty ? "" : " ")
-        : empty
-          ? ""
-          : " ";
-    const prefix = `${indent}-${markerSpace}[${attrs.checked === true ? "x" : " "}]${contentSpace}`;
-    // The checkbox owns no document characters; every prefix offset clamps
+    const prefix = listItemPrefix(item, empty);
+    // The marker owns no document characters; every prefix offset clamps
     // to the start of the item text, exactly like style markers.
     acc.runs.push({
       kind: "prefix",
@@ -641,8 +741,8 @@ function walkTaskList(list: ProseMirrorNode, listStart: number, acc: RichAccumul
     item.content.forEach((child) => {
       if (!firstBlock) pushBreakRun(acc);
       firstBlock = false;
-      if (child.type.name === "taskList") {
-        walkTaskList(child, childPos, acc);
+      if (LIST_NODE_NAMES.has(child.type.name)) {
+        walkList(child, childPos, acc);
       } else if (child.type.name === "paragraph") {
         appendInlineRuns(child, childPos + 1, acc);
       }
@@ -689,8 +789,8 @@ export function serializeEditorDoc(doc: ProseMirrorNode): RichDocMap {
   let pmBlockStart = 0;
   blocks.forEach((block, blockIndex) => {
     if (blockIndex > 0) pushBreakRun(acc);
-    if (block.type.name === "taskList") {
-      walkTaskList(block, pmBlockStart, acc);
+    if (LIST_NODE_NAMES.has(block.type.name)) {
+      walkList(block, pmBlockStart, acc);
     } else if (block.type.name === "codeBlock") {
       appendCodeBlockRun(block, pmBlockStart + 1, acc);
     } else if (block.type.name === "paragraph") {
