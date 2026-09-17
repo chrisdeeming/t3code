@@ -1,4 +1,5 @@
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { Blockquote } from "@tiptap/extension-blockquote";
 import { CodeBlock } from "@tiptap/extension-code-block";
 import { BulletList, ListItem, OrderedList } from "@tiptap/extension-list";
 import { TaskItem } from "@tiptap/extension-task-item";
@@ -115,6 +116,22 @@ export const ComposerListItemExtension = ListItem.extend({
 });
 
 export const ComposerListExtensions = [BulletList, OrderedList, ComposerListItemExtension];
+
+/**
+ * A quote keeps the exact `>` prefix its lines were written with, applied to
+ * every line, so it round-trips byte-identically and a new line typed inside
+ * it gets the same prefix. One source line is one paragraph; a line whose
+ * prefix differs starts a sibling quote. Nested markers and list markers
+ * inside a quote stay literal text: the composer quotes prose, not documents.
+ */
+export const ComposerBlockquoteExtension = Blockquote.extend({
+  addAttributes() {
+    return { ...this.parent?.(), prefix: { default: "> " } };
+  },
+});
+
+/** Block-level nodes beyond lists and fences, in the order the parser tries them. */
+export const ComposerBlockExtensions = [ComposerBlockquoteExtension];
 
 function randomNodeKey(): string {
   return `tiptap-${Math.random().toString(36).slice(2)}`;
@@ -332,9 +349,7 @@ export function buildTiptapContent(
     })
     .join("");
   let atomIndex = 0;
-  const buildDocLine = (line: string): DocLine => {
-    const parsed = styling ? parseListPrefix(line) : null;
-    const content = parsed ? line.slice(parsed.markerLength) : line;
+  const buildInline = (content: string): InlineJson[] => {
     const spans = styling ? parseInlineMarkdown(content) : [{ text: content, marks: [] }];
     const inline: InlineJson[] = [];
     for (const span of spans) {
@@ -346,13 +361,22 @@ export function buildTiptapContent(
         if (piece) inline.push(textJsonForSpan(piece, span.marks));
       });
     }
-    return { list: parsed?.prefix ?? null, inline };
+    return inline;
+  };
+  const buildDocLine = (line: string): DocLine => {
+    const parsed = styling ? parseListPrefix(line) : null;
+    const content = parsed ? line.slice(parsed.markerLength) : line;
+    return { list: parsed?.prefix ?? null, inline: buildInline(content) };
   };
 
   // Pass 1: fenced blocks claim their lines whole; everything else becomes an
   // inline-parsed line. Fence bodies restore chip sources as literal text.
   const sourceLines = text.split("\n");
-  const entries: ({ code: Record<string, unknown> } | { line: DocLine })[] = [];
+  const entries: (
+    | { code: Record<string, unknown> }
+    | { quote: { prefix: string; inline: InlineJson[] } }
+    | { line: DocLine }
+  )[] = [];
   const restoreSources = (line: string) =>
     line.split(sentinel).reduce((joined, piece, index) => {
       if (index === 0) return piece;
@@ -364,7 +388,9 @@ export function buildTiptapContent(
     const line = sourceLines[index]!;
     const opening = styling ? parseOpeningFence(line) : null;
     if (!opening) {
-      entries.push({ line: buildDocLine(line) });
+      const quote = styling ? /^(>[ \t]*)(.*)$/.exec(line) : null;
+      if (quote) entries.push({ quote: { prefix: quote[1]!, inline: buildInline(quote[2]!) } });
+      else entries.push({ line: buildDocLine(line) });
       continue;
     }
     const body: string[] = [];
@@ -410,7 +436,25 @@ export function buildTiptapContent(
     container.push(list);
     return list;
   };
+  let openQuote: { prefix: string; content: InlineJson[][] } | null = null;
+  const flushQuote = () => {
+    if (!openQuote) return;
+    blocks.push({
+      type: "blockquote",
+      attrs: { prefix: openQuote.prefix },
+      content: openQuote.content.map((inline) => ({ type: "paragraph", content: inline })),
+    });
+    openQuote = null;
+  };
   for (const entry of entries) {
+    if ("quote" in entry) {
+      flushLists();
+      if (openQuote && openQuote.prefix !== entry.quote.prefix) flushQuote();
+      openQuote ??= { prefix: entry.quote.prefix, content: [] };
+      openQuote.content.push(entry.quote.inline);
+      continue;
+    }
+    flushQuote();
     if ("code" in entry) {
       flushLists();
       blocks.push(entry.code);
@@ -458,6 +502,7 @@ export function buildTiptapContent(
       break;
     }
   }
+  flushQuote();
   flushLists();
   return blocks;
 }
@@ -779,6 +824,35 @@ function appendCodeBlockRun(block: ProseMirrorNode, pmPos: number, acc: RichAccu
   acc.md += open.length + content.length + close.length;
 }
 
+/** Each paragraph of a quote is one source line behind the quote's prefix. */
+function walkBlockquote(quote: ProseMirrorNode, quoteStart: number, acc: RichAccumulator): void {
+  const attrs = quote.attrs as Record<string, unknown>;
+  const prefix = typeof attrs.prefix === "string" ? attrs.prefix : "> ";
+  let childPos = quoteStart + 1;
+  let firstLine = true;
+  quote.content.forEach((child) => {
+    if (!firstLine) pushBreakRun(acc);
+    firstLine = false;
+    acc.runs.push({
+      kind: "prefix",
+      flatStart: acc.flat,
+      docLen: 0,
+      collapsedLen: prefix.length,
+      mdLen: prefix.length,
+      openLen: 0,
+      closeLen: 0,
+      pmPos: childPos + 1,
+      mdStart: acc.md,
+      collapsedStart: acc.collapsed,
+    });
+    acc.value += prefix;
+    acc.collapsed += prefix.length;
+    acc.md += prefix.length;
+    if (child.type.name === "paragraph") appendInlineRuns(child, childPos + 1, acc);
+    childPos += child.nodeSize;
+  });
+}
+
 export function serializeEditorDoc(doc: ProseMirrorNode): RichDocMap {
   const acc: RichAccumulator = { runs: [], value: "", flat: 0, collapsed: 0, md: 0 };
   const blocks: ProseMirrorNode[] = [];
@@ -793,6 +867,8 @@ export function serializeEditorDoc(doc: ProseMirrorNode): RichDocMap {
       walkList(block, pmBlockStart, acc);
     } else if (block.type.name === "codeBlock") {
       appendCodeBlockRun(block, pmBlockStart + 1, acc);
+    } else if (block.type.name === "blockquote") {
+      walkBlockquote(block, pmBlockStart, acc);
     } else if (block.type.name === "paragraph") {
       appendInlineRuns(block, pmBlockStart + 1, acc);
     }

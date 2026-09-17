@@ -1783,10 +1783,17 @@ code {
   background-size: 4px 2px;
 }
 
-.chat-markdown blockquote {
+:is(.chat-markdown, .composer-tiptap) blockquote {
   border-left: 2px solid var(--contrast-border);
   padding-left: 0.8rem;
   color: var(--contrast-muted-foreground);
+}
+
+/* A quote in the composer is text the user is still writing; muting it reads
+   as disabled in an input, so the border alone carries the quote. */
+.composer-tiptap blockquote {
+  margin: 0.65rem 0;
+  color: var(--foreground);
 }
 
 .chat-markdown section[data-footnotes] {

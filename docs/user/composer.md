@@ -27,6 +27,10 @@ numbered list counts up), Shift+Enter on an empty item leaves the list, and
 bulleted item turns it into a task. The list is stored exactly as you wrote it:
 the marker you typed and the numbers you used are what the agent receives.
 
+`> ` at the start of a line opens a quote. Each line inside it is quoted, so
+Shift+Enter continues the quote and Shift+Enter on an empty line leaves it.
+Quotes hold prose: list markers and further `>` marks inside one stay literal.
+
 Start a fenced code block with three backticks, optionally followed by a
 language, then press Enter or Space. Inside a fence:
 

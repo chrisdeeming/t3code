@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildDocJson,
+  ComposerBlockExtensions,
   ComposerCodeBlockExtension,
   ComposerListExtensions,
   collapsedToFlat,
@@ -62,6 +63,7 @@ const schema = getSchemaByResolvedExtensions(
     ComposerTaskItemExtension,
     ComposerCodeBlockExtension,
     ...ComposerListExtensions,
+    ...ComposerBlockExtensions,
   ]),
 );
 
@@ -397,6 +399,52 @@ describe("composer rich text document model", () => {
     }
     expect(collapsedToFlat(map, "- it".length)).toBe(2);
     expect(flatToCollapsed(map, 0)).toBe("- ".length);
+  });
+
+  it.each([
+    "> quoted",
+    "> line one\n> line two",
+    ">no space",
+    ">  two spaces",
+    "> a\n>b",
+    ">",
+    "> **bold** and @README.md inside",
+    "> - looks like a list but stays quote text",
+    "> > nested stays literal inside the quote",
+    "before\n> quoted\nafter",
+    "> quote\n\n> another",
+    "- item\n> quote after list",
+  ])("round-trips the quote %s through a real ProseMirror document", (value) => {
+    expect(roundTrip(value).value).toBe(value);
+  });
+
+  it.each(["> quoted", "> a\n>b"])("keeps the block %s literal in plain mode", (value) => {
+    expect(roundTripPlain(value).value).toBe(value);
+  });
+
+  it("parses a quote as a blockquote of one paragraph per line", () => {
+    const json = buildDocJson("> a\n> b\n>c", (n) => ({ label: n, description: null }));
+    expect(json.content.map((block) => block.type)).toEqual(["blockquote", "blockquote"]);
+    expect((json.content[0] as { content: unknown[] }).content).toHaveLength(2);
+  });
+
+  it.each(["> a\n> b", "> **q** @README.md"])(
+    "maps every document offset of the block %s through collapsed coordinates and back",
+    (value) => {
+      const map = roundTrip(value);
+      expect(map.value).toBe(value);
+      for (let flat = 0; flat <= map.docLength; flat += 1) {
+        expect(collapsedToFlat(map, flatToCollapsed(map, flat))).toBe(flat);
+      }
+    },
+  );
+
+  it("clamps offsets inside a quote marker to the start of the text", () => {
+    const map = roundTrip("> quoted");
+    for (let collapsed = 0; collapsed <= "> ".length; collapsed += 1) {
+      expect(collapsedToFlat(map, collapsed)).toBe(0);
+    }
+    expect(flatToCollapsed(map, 0)).toBe("> ".length);
   });
 
   it.each([

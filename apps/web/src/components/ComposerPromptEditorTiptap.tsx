@@ -6,6 +6,7 @@ import { type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { exitCode, newlineInCode, splitBlockKeepMarks } from "@tiptap/pm/commands";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
+import type { ResolvedPos } from "@tiptap/pm/model";
 import type {
   AssistantCitation,
   ComposerContextClipboardFragment,
@@ -44,6 +45,7 @@ import {
 } from "~/composer-editor-mentions";
 import {
   buildDocJson,
+  ComposerBlockExtensions,
   ComposerCodeBlockExtension,
   ComposerListExtensions,
   buildTiptapContent,
@@ -523,7 +525,8 @@ function listMarkerInputRule(find: RegExp, listType: "bulletList" | "orderedList
     find,
     handler: ({ state, range, match, chain }) => {
       const marker = match[1] ?? "-";
-      if (state.doc.resolve(range.from).parent.type.name !== "paragraph") return null;
+      const $from = state.doc.resolve(range.from);
+      if ($from.parent.type.name !== "paragraph" || hasAncestor($from, "blockquote")) return null;
       chain()
         .deleteRange(range)
         .wrapInList(
@@ -555,6 +558,27 @@ const bulletToTaskInputRule = new InputRule({
       .toggleList("taskList", "taskItem")
       .updateAttributes("taskItem", { checked: (match[1] ?? " ").toLowerCase() === "x", indent })
       .run();
+    return undefined;
+  },
+});
+
+function hasAncestor($pos: ResolvedPos, name: string): boolean {
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    if ($pos.node(depth).type.name === name) return true;
+  }
+  return false;
+}
+
+/**
+ * `> ` at the start of a top-level paragraph opens a quote. Not inside a list:
+ * a quote holds prose lines, and a list item is not one.
+ */
+const blockquoteInputRule = new InputRule({
+  find: /^>\s$/,
+  handler: ({ state, range, chain }) => {
+    const $from = state.doc.resolve(range.from);
+    if ($from.parent.type.name !== "paragraph" || $from.depth !== 1) return null;
+    chain().deleteRange(range).wrapIn("blockquote", { prefix: "> " }).run();
     return undefined;
   },
 });
@@ -850,6 +874,15 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
                     document.documentElement.classList.contains("dark") ? "dark" : "light",
                   ),
               }),
+              ...ComposerBlockExtensions.map((extension) =>
+                extension.name === "blockquote"
+                  ? extension.extend({
+                      addInputRules() {
+                        return [blockquoteInputRule];
+                      },
+                    })
+                  : extension,
+              ),
               ...ComposerListExtensions.map((extension) =>
                 extension.name === "listItem"
                   ? extension
@@ -1035,6 +1068,15 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
               (instance.commands.splitListItem("taskItem", { checked: false }) ||
                 (view.state.selection.$from.parent.content.size === 0 &&
                   instance.commands.liftListItem("taskItem")))
+            ) {
+              return true;
+            }
+            if (
+              richText &&
+              instance &&
+              hasAncestor(view.state.selection.$from, "blockquote") &&
+              view.state.selection.$from.parent.content.size === 0 &&
+              instance.commands.lift("blockquote")
             ) {
               return true;
             }

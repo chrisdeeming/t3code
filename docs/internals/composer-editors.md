@@ -43,6 +43,13 @@ still goes through the literal store edit, which the rebuilt document reads back
 as nesting. The bullet input rule claims `- ` as soon as it is typed, so the
 task gesture is `[ ] ` inside a bullet item rather than `- [ ] ` in a paragraph.
 
+A quote is a `blockquote` node carrying the exact `>` prefix of its lines as an
+attribute, applied to every child paragraph on the way out; one source line is
+one paragraph, and a line whose prefix differs starts a sibling quote, the same
+rule lists use for a marker change. Lists and nested quotes are not parsed
+inside a quote and the list input rules refuse to fire there: a quote holds
+prose lines, and the serializer would have nowhere to put anything else.
+
 Fenced code blocks are real `codeBlock` nodes rather than literal text. They keep
 their exact delimiters in attributes — `fence`, `language` and `close` — so a
 fence round-trips byte-identically, including tilde fences, long fences and a
