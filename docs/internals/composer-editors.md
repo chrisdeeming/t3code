@@ -58,6 +58,15 @@ follows; a draft that ends on a rule has no caret position after it, which the
 input rule avoids by inserting through `setHorizontalRule`, which appends a
 paragraph when nothing follows.
 
+A heading is a `heading` node whose `space` attribute keeps the exact
+whitespace after the `#`s; closing `#`s stay literal text. The `#`s must be
+followed by whitespace, in the parser and in the input rule alike. That is the
+whole of the coexistence with pull request references: `detectComposerTrigger`
+matches `#` followed immediately by word characters as a token, and a heading
+needs the space that ends that token, so neither can ever claim the other's
+input. Headings, rules and quotes form only at a top-level paragraph; the list
+and quote serializers write paragraphs and lists and nothing else.
+
 Fenced code blocks are real `codeBlock` nodes rather than literal text. They keep
 their exact delimiters in attributes — `fence`, `language` and `close` — so a
 fence round-trips byte-identically, including tilde fences, long fences and a
