@@ -876,7 +876,7 @@ function MarkdownDetails({
  * icon (redundant next to its own name) and fall back to the language text
  * when no specific icon exists or it fails to load.
  */
-function MarkdownCodeBlockTitleContent({
+export function MarkdownCodeBlockTitleContent({
   fenceTitle,
   language,
   theme,

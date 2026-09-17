@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildDocJson,
+  ComposerCodeBlockExtension,
   collapsedToFlat,
   ComposerTaskItemExtension,
   flatToCollapsed,
@@ -58,6 +59,7 @@ const schema = getSchemaByResolvedExtensions(
     }),
     TaskList,
     ComposerTaskItemExtension,
+    ComposerCodeBlockExtension,
   ]),
 );
 
@@ -329,6 +331,91 @@ describe("composer rich text document model", () => {
     "@README.md explain this",
     "**bold** then @README.md then *italic*",
   ])("round-trips %s byte-identically in plain mode", (value) => {
+    expect(roundTripPlain(value).value).toBe(value);
+  });
+
+  it.each([
+    "```\ncode\n```",
+    "```ts\nconst a = 1;\n```",
+    "```ts\nconst a = 1;\n```\n",
+    "before\n```ts\nconst a = 1;\n```\nafter",
+    "```\n```",
+    "```ts\nline one\nline two\nline three\n```",
+    "```ts\n  indented\n    deeper\n```",
+    "```js title=example\ncode\n```",
+    "~~~py\ncode\n~~~",
+    "````\n```\n````",
+    "```ts\ncode without a closing fence",
+    "```",
+    "```ts\n**not bold** and @README.md stay literal\n```",
+    "```ts\ncode\n````",
+    "- [ ] task\n```ts\ncode\n```\n- [ ] after",
+    "  ```ts\nindented fence stays a paragraph\n  ```",
+  ])("round-trips the fenced block %s", (value) => {
+    expect(roundTrip(value).value).toBe(value);
+  });
+
+  it.each(["```ts\nconst a = 1;\n```", "```\n```", "before\n```ts\ncode\n```\nafter"])(
+    "maps every document offset of %s through collapsed coordinates and back",
+    (value) => {
+      const map = roundTrip(value);
+      expect(map.value).toBe(value);
+      for (let flat = 0; flat <= map.docLength; flat += 1) {
+        expect(collapsedToFlat(map, flatToCollapsed(map, flat))).toBe(flat);
+      }
+    },
+  );
+
+  it("keeps the end of the code inside the fence rather than after it", () => {
+    const value = "```ts\nfunc();\n```";
+    const map = roundTrip(value);
+    const endOfCode = "func();".length;
+    // Not the end of the string: the closing fence is a line of its own.
+    expect(flatToCollapsed(map, endOfCode)).toBe("```ts\nfunc();".length);
+    expect(flatToMarkdown(map, endOfCode)).toBe("```ts\nfunc();".length);
+    expect(collapsedToFlat(map, flatToCollapsed(map, endOfCode))).toBe(endOfCode);
+  });
+
+  it("keeps the caret inside an empty fence", () => {
+    const value = "before\n```\n```";
+    const map = roundTrip(value);
+    const inside = "before\n".length;
+    expect(flatToCollapsed(map, inside)).toBe("before\n```".length);
+    expect(collapsedToFlat(map, flatToCollapsed(map, inside))).toBe(inside);
+  });
+
+  it("still places the end of an inline mark after its markers", () => {
+    // The fence rule must not leak into inline marks, whose trailing edge is
+    // deliberately the position after the closing delimiter.
+    const map = roundTrip("a **bold** c");
+    expect(flatToMarkdown(map, 6)).toBe(10);
+  });
+
+  it("clamps offsets inside a fence to the edge of the code", () => {
+    const value = "```ts\nab\n```";
+    const map = roundTrip(value);
+    expect(map.value).toBe(value);
+    // The opening fence owns no document characters, so every offset in it
+    // lands on the first character of the code.
+    for (let collapsed = 0; collapsed <= "```ts\n".length; collapsed += 1) {
+      expect(collapsedToFlat(map, collapsed)).toBe(0);
+    }
+    expect(collapsedToFlat(map, "```ts\na".length)).toBe(1);
+    // Everything from the closing newline onwards clamps to the code's end.
+    for (let collapsed = "```ts\nab".length; collapsed <= value.length; collapsed += 1) {
+      expect(collapsedToFlat(map, collapsed)).toBe(2);
+    }
+  });
+
+  it.each([
+    ["```\n\n```", "```\n```"],
+    ["```\n", "```"],
+  ])("canonicalizes the empty fence %s", (value, expected) => {
+    expect(roundTrip(value).value).toBe(expected);
+  });
+
+  it("keeps fences literal in plain mode", () => {
+    const value = "```ts\nconst a = 1;\n```";
     expect(roundTripPlain(value).value).toBe(value);
   });
 

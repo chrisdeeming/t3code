@@ -1331,7 +1331,7 @@ html[data-theme-id] [data-chat-header] [data-slot="separator"] {
 /* Chat code blocks join the other code surfaces on the code tokens. The
    default look keeps its secondary/input tints; themed palettes tint those
    surfaces with the accent, which fights syntax highlighting. */
-html[data-theme-id] .chat-markdown .chat-markdown-codeblock {
+html[data-theme-id] :is(.chat-markdown, .composer-tiptap) .chat-markdown-codeblock {
   background-color: var(--code-background);
   border-color: var(--contrast-border);
   color: var(--code-foreground);
@@ -1342,11 +1342,11 @@ html[data-theme-id] .chat-markdown pre {
   color: var(--code-foreground);
 }
 
-html[data-theme-id] .chat-markdown .chat-markdown-codeblock pre {
+html[data-theme-id] :is(.chat-markdown, .composer-tiptap) .chat-markdown-codeblock pre {
   background-color: transparent;
 }
 
-html[data-theme-id] .chat-markdown .chat-markdown-codeblock-header,
+html[data-theme-id] :is(.chat-markdown, .composer-tiptap) .chat-markdown-codeblock-header,
 html[data-theme-id] .chat-markdown .chat-markdown-chrome-action {
   color: color-mix(in srgb, var(--code-foreground) 72%, transparent);
 }
@@ -1861,7 +1861,7 @@ code {
   background: color-mix(in srgb, var(--contrast-border) 78%, transparent);
 }
 
-.chat-markdown .chat-markdown-codeblock-header,
+:is(.chat-markdown, .composer-tiptap) .chat-markdown-codeblock-header,
 .chat-markdown .chat-markdown-chrome-action {
   color: color-mix(in srgb, var(--contrast-foreground) 72%, transparent);
 }
@@ -1875,19 +1875,19 @@ code {
   background: color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
 }
 
-.chat-markdown .chat-markdown-codeblock pre {
+:is(.chat-markdown, .composer-tiptap) .chat-markdown-codeblock pre {
   margin: 0;
   border: none;
   border-radius: 0;
   background: transparent;
 }
 
-.chat-markdown .chat-markdown-codeblock[data-wrap="true"] pre {
+:is(.chat-markdown, .composer-tiptap) .chat-markdown-codeblock[data-wrap="true"] pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.chat-markdown .chat-markdown-shiki .shiki {
+:is(.chat-markdown, .composer-tiptap) .chat-markdown-shiki .shiki {
   background: transparent !important;
 }
 
@@ -2143,6 +2143,28 @@ code {
   background: color-mix(in oklab, var(--muted-foreground) 12%, transparent);
   border-radius: 0.3em;
   padding: 0.05em 0.25em;
+}
+
+/* The fence node view reuses chat's code block markup and class names, so the
+   shared rules above carry the surface. What is left is what only an editable
+   fence needs: the code itself, and a caret that can sit on an empty line. */
+.composer-tiptap .chat-markdown-codeblock pre {
+  padding: 0.25rem 0.7rem 0.5rem;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.composer-tiptap .chat-markdown-codeblock pre code {
+  display: block;
+  min-height: 1lh;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-code, 0.92em);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .composer-rich-marker {

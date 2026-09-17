@@ -12,6 +12,24 @@ becomes an attachment when inserting it would exceed the message limit. On a
 hardware keyboard, use `Cmd+Shift+V` on Apple devices or `Ctrl+Shift+V` elsewhere
 to keep a large paste editable in the composer instead.
 
+## Formatting
+
+The composer writes Markdown and shows it styled as you type. Bold, italic,
+strikethrough and inline code are marked up as usual; the markers stay in the
+text and appear beside the styled words when your cursor is on them, so nothing
+you typed is ever hidden from you. Task lists come from `- [ ]` and get
+checkboxes you can click.
+
+Start a fenced code block with three backticks, optionally followed by a
+language, then press Enter or Space. Inside a fence:
+
+- **Enter** starts a new line at the current indentation.
+- **Tab** and **Shift+Tab** indent and outdent the lines your selection touches.
+- Two blank lines at the end leave the block and return to prose.
+
+Code is syntax highlighted using your current theme, and the language you
+declared is named in the corner of the block.
+
 ## Attach files
 
 Attach up to eight files per message. Images can be up to 10 MB; other files can

@@ -3,9 +3,9 @@ import { TaskList } from "@tiptap/extension-task-list";
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { type Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { splitBlockKeepMarks } from "@tiptap/pm/commands";
+import { exitCode, newlineInCode, splitBlockKeepMarks } from "@tiptap/pm/commands";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type {
   AssistantCitation,
   ComposerContextClipboardFragment,
@@ -44,6 +44,7 @@ import {
 } from "~/composer-editor-mentions";
 import {
   buildDocJson,
+  ComposerCodeBlockExtension,
   buildTiptapContent,
   collapsedToFlat,
   ComposerTaskItemExtension,
@@ -54,7 +55,13 @@ import {
   serializeEditorDoc,
   type SkillMeta,
 } from "~/composer-rich-text-doc";
+import {
+  convertCodeFenceOnEnter,
+  indentCodeBlock,
+  indentedNewlineInCodeBlock,
+} from "~/composer-code-block";
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
+import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { basenameOfPath } from "~/pierre-icons";
 import {
@@ -77,6 +84,8 @@ import {
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/providerSkills";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { ComposerCodeBlockNodeView } from "./chat/ComposerCodeBlockNodeView";
+import { composerCodeBlockHighlight } from "./composerCodeBlockHighlight";
 import { importPastedComposerText } from "./composerInlineTokenPaste";
 import { didComposerSelectionChangeVisibly } from "./composerSelection";
 import type { ComposerDraftContextRecords } from "./composerContextPresentation";
@@ -463,6 +472,9 @@ function collectStyledRanges(doc: ProseMirrorNode): StyledRange[] {
   let range: StyledRange | null = null;
   let openLength = 0;
   for (const run of map.runs) {
+    // A fence is drawn as a block, not revealed a character at a time, so its
+    // delimiters never become marker widgets.
+    if (run.nodeName === "codeBlock") continue;
     if (run.openLen > 0) {
       range ??= { from: run.pmPos, to: run.pmPos, markers: [] };
       range.markers.push({
@@ -488,6 +500,25 @@ function collectStyledRanges(doc: ProseMirrorNode): StyledRange[] {
     }
   }
   return ranges;
+}
+
+/** Whether the caret sits inside a fenced code block. */
+function isInCodeBlock(view: EditorView): boolean {
+  return view.state.selection.$from.parent.type.spec.code === true;
+}
+
+/**
+ * Two blank lines at the end of a fence leave it, the way every code editor
+ * does. Without this a fence at the end of the prompt is a trap: Enter only
+ * ever adds another line and there is no way back to prose.
+ */
+function exitCodeBlockOnTrailingBlankLines(view: EditorView): boolean {
+  const { $from, empty } = view.state.selection;
+  if (!empty || $from.parent.type.spec.code !== true) return false;
+  if ($from.parentOffset !== $from.parent.content.size) return false;
+  if (!$from.parent.textContent.endsWith("\n\n")) return false;
+  view.dispatch(view.state.tr.delete($from.pos - 2, $from.pos));
+  return exitCode(view.state, (tr) => view.dispatch(tr.scrollIntoView()));
 }
 
 const MarkerPluginKey = new PluginKey("composer-rich-markers");
@@ -713,16 +744,16 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
       expandedCursor: nextExpandedCursor,
       contextIds: map.contextIds,
     };
-    const cursorAdjacentToMention =
+    // A fence holds no chips, so nothing in it should summon the mention or
+    // command menu: `@` in code is a decorator, not a file. Suppressing the
+    // trigger here also keeps the store from inserting a link the block can
+    // only show as literal text, which the store would then count as a chip.
+    const inCodeBlock = updated.state.selection.$from.parent.type.spec.code === true;
+    const suppressTrigger =
+      inCodeBlock ||
       isCollapsedCursorAdjacentToInlineToken(nextValue, nextCursor, "left") ||
       isCollapsedCursorAdjacentToInlineToken(nextValue, nextCursor, "right");
-    onChangeRef.current(
-      nextValue,
-      nextCursor,
-      nextExpandedCursor,
-      cursorAdjacentToMention,
-      map.contextIds,
-    );
+    onChangeRef.current(nextValue, nextCursor, nextExpandedCursor, suppressTrigger, map.contextIds);
   }, []);
 
   const editor = useEditor(
@@ -751,6 +782,17 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
         ComposerMarkersExtension,
         ...(richText
           ? [
+              ComposerCodeBlockExtension.extend({
+                addNodeView() {
+                  return ReactNodeViewRenderer(ComposerCodeBlockNodeView);
+                },
+              }),
+              composerCodeBlockHighlight({
+                resolveTheme: () =>
+                  resolveDiffThemeName(
+                    document.documentElement.classList.contains("dark") ? "dark" : "light",
+                  ),
+              }),
               TaskList,
               ComposerTaskItemExtension.extend({
                 addInputRules() {
@@ -869,6 +911,43 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
             event.preventDefault();
             return true;
           }
+          // Inside a fence Tab belongs to the code, not to the composer's
+          // focus order or its autocomplete.
+          if (event.key === "Tab" && !event.metaKey && !event.ctrlKey && isInCodeBlock(view)) {
+            event.preventDefault();
+            event.stopPropagation();
+            return indentCodeBlock(view.state, event.shiftKey ? "out" : "in", (tr) =>
+              view.dispatch(tr),
+            );
+          }
+          // A fence is multi-line by definition, so Enter belongs to the code
+          // rather than to sending: inside a block it makes a line, and on a
+          // line that is only an opening fence it opens the block. Sending
+          // from inside a fence is still Cmd/Ctrl+Enter, which falls through.
+          if (
+            event.key === "Enter" &&
+            richText &&
+            !event.shiftKey &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.isComposing
+          ) {
+            if (isInCodeBlock(view)) {
+              event.preventDefault();
+              event.stopPropagation();
+              const dispatch = (tr: typeof view.state.tr) => view.dispatch(tr.scrollIntoView());
+              return (
+                exitCodeBlockOnTrailingBlankLines(view) ||
+                indentedNewlineInCodeBlock(view.state, dispatch) ||
+                newlineInCode(view.state, dispatch)
+              );
+            }
+            if (convertCodeFenceOnEnter(view.state, (tr) => view.dispatch(tr))) {
+              event.preventDefault();
+              event.stopPropagation();
+              return true;
+            }
+          }
           const handler = onCommandKeyDownRef.current;
           if (event.key === "Enter") {
             const instance = editorHolder.current;
@@ -946,6 +1025,14 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
           const pastedText = clipboardData.getData("text/plain");
           if (!pastedText) return false;
           event.preventDefault();
+          // A fence takes the clipboard verbatim. Running the markdown path
+          // here would split the block on newlines, nest a pasted fence and
+          // build chips the code block's schema cannot hold anyway.
+          if (isInCodeBlock(view)) {
+            const { from, to } = view.state.selection;
+            view.dispatch(view.state.tr.insertText(pastedText, from, to).scrollIntoView());
+            return true;
+          }
           const importFragment = importFragmentRef.current;
           let text = importFragment
             ? importPastedComposerText(clipboardData, importFragment)
