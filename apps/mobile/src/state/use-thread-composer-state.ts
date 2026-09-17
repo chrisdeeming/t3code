@@ -396,19 +396,15 @@ export function useThreadComposerState() {
     const reconnectMcpCommand =
       attachments.length === 0 &&
       (draft.context?.records.length ?? 0) === 0 &&
-      (provider?.driver === "codex" || thread.session?.providerName === "codex") &&
       isReconnectMcpCommand(text);
     if (reconnectMcpCommand) {
-      if (thread.session === null || thread.session.providerName !== "codex") {
-        Alert.alert(
-          "Start a Codex thread first",
-          "Send a message before reconnecting its MCP servers.",
-        );
+      if (thread.session === null) {
+        Alert.alert("Start a thread first", "Send a message before reconnecting its MCP servers.");
         return null;
       }
       if (thread.session.status === "starting" || thread.session.status === "running") {
         Alert.alert(
-          "Codex is still working",
+          "Agent is still working",
           "Wait for the current turn to finish, then reconnect MCP servers.",
         );
         return null;

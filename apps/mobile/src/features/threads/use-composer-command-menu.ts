@@ -85,7 +85,7 @@ export function buildComposerSlashCommandItems(input: {
       label: "/default",
       description: "Switch to default mode",
     },
-    ...(input.hasThread && input.selectedProviderStatus?.driver === "codex"
+    ...(input.hasThread
       ? [
           {
             id: "cmd:reconnect-mcp",

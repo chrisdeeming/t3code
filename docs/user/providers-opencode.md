@@ -47,3 +47,10 @@ restart before T3 Code can see configuration changes.
 
 Existing threads keep their selected model and options even when it disappears
 from the catalog. If OpenCode rejects that model, select an available one and retry.
+
+## Reconnect MCP servers
+
+In an idle thread, send `/reconnect-mcp` to restart that thread's MCP servers with
+fresh tool definitions on the next message. The conversation is preserved. This
+restarts T3 Code's managed OpenCode server for the thread; an external server
+configured via `serverUrl` may need its own reload or restart instead.

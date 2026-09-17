@@ -2296,7 +2296,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           label: "/model",
           description: "Switch response model for this thread",
         },
-        ...(selectedProvider === "codex"
+        ...(activeThread?.session
           ? ([
               {
                 id: "slash:reconnect-mcp",
@@ -2428,6 +2428,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     return [];
   }, [
+    activeThread?.session,
     compactSlashCommandAvailable,
     composerTrigger,
     exactPullRequestLookup.data,

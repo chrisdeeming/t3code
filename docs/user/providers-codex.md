@@ -51,12 +51,13 @@ contains a copied Codex setup. Use a fresh shadow directory and sign in again.
 
 ## Reconnect MCP servers
 
-In an idle Codex thread, send `/reconnect-mcp` to disconnect that thread's MCP servers. They
+In an idle thread, send `/reconnect-mcp` to disconnect that thread's MCP servers. They
 restart with fresh tool definitions when you send the next message. The command preserves the
 conversation and workspace, but it reconnects every MCP server used by that thread. Wait for an
 active turn and any background agents or monitoring tasks to finish before running it. The
 initial notification confirms the request; wait for the session to stop before sending your next
-message. If stopping fails, the error appears in the thread.
+message. If stopping fails, the error appears in the thread. The command works for every
+provider, not just Codex.
 
 ## Answer questions while Codex works
 

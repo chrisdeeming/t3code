@@ -53,6 +53,13 @@ You can also send `/compact` in an existing conversation. Web and desktop offer
 a large older thread. See [commands and skills](./composer.md#commands-and-skills)
 for using composer commands.
 
+## Reconnect MCP servers
+
+In an idle thread, send `/reconnect-mcp` to restart that thread's MCP servers with
+fresh tool definitions on the next message. The conversation is preserved. Servers
+added through the project `.mcp.json` file must be approved in `claude` first;
+reconnecting alone does not approve them.
+
 ## Usage limits
 
 If your Claude subscription runs out of usage mid-turn, the thread shows which

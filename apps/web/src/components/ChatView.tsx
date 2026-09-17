@@ -7058,7 +7058,6 @@ export default function ChatView(props: ChatViewProps) {
       elementContextCount: composerPreviewAnnotations.length + composerReviewComments.length,
     });
     const reconnectMcpCommand =
-      ctxSelectedProvider === "codex" &&
       composerImages.length === 0 &&
       composerFiles.length === 0 &&
       sendableComposerTerminalContexts.length === 0 &&
@@ -7066,15 +7065,11 @@ export default function ChatView(props: ChatViewProps) {
       composerReviewComments.length === 0 &&
       isReconnectMcpCommand(trimmed);
     if (reconnectMcpCommand) {
-      if (
-        !isServerThread ||
-        activeThread.session === null ||
-        activeThread.session.providerName !== "codex"
-      ) {
+      if (!isServerThread || activeThread.session === null) {
         toastManager.add(
           stackedThreadToast({
             type: "warning",
-            title: "Start a Codex thread first",
+            title: "Start a thread first",
             description: "Send a message before reconnecting its MCP servers.",
           }),
         );
@@ -7084,7 +7079,7 @@ export default function ChatView(props: ChatViewProps) {
         toastManager.add(
           stackedThreadToast({
             type: "warning",
-            title: "Codex is still working",
+            title: "Agent is still working",
             description: "Wait for the current turn to finish, then reconnect MCP servers.",
           }),
         );

@@ -101,9 +101,9 @@ describe("mobile slash commands", () => {
     ).toEqual({ text: "/plan ", cursor: 6, interactionMode: null });
   });
 
-  it("offers MCP reconnect only for existing Codex threads", () => {
-    const codex = {
-      driver: ProviderDriverKind.make("codex"),
+  it("offers MCP reconnect for existing threads on any provider", () => {
+    const claude = {
+      driver: ProviderDriverKind.make("claudeAgent"),
       slashCommands: [],
     };
     expect(
@@ -112,7 +112,7 @@ describe("mobile slash commands", () => {
         atMessageStart: true,
         hasThread: true,
         allowInteractionMode: false,
-        selectedProviderStatus: codex,
+        selectedProviderStatus: claude,
       }).map((item) => item.id),
     ).toEqual(["cmd:reconnect-mcp"]);
     expect(
@@ -121,7 +121,7 @@ describe("mobile slash commands", () => {
         atMessageStart: true,
         hasThread: false,
         allowInteractionMode: false,
-        selectedProviderStatus: codex,
+        selectedProviderStatus: claude,
       }),
     ).toEqual([]);
   });
