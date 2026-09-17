@@ -618,6 +618,25 @@ const horizontalRuleInputRule = new InputRule({
   },
 });
 
+/**
+ * `# ` through `###### ` at a top-level paragraph make a heading. The space
+ * is required, which is exactly what keeps `#1234` a pull request reference
+ * with its picker rather than a heading. Not inside lists or quotes, whose
+ * serializers have no line for one.
+ */
+const headingInputRule = new InputRule({
+  find: /^(#{1,6})\s$/,
+  handler: ({ state, range, match, chain }) => {
+    const $from = state.doc.resolve(range.from);
+    if ($from.parent.type.name !== "paragraph" || $from.depth !== 1) return null;
+    chain()
+      .deleteRange(range)
+      .setNode("heading", { level: match[1]?.length ?? 1, space: " " })
+      .run();
+    return undefined;
+  },
+});
+
 /** Whether the caret sits inside a fenced code block. */
 function isInCodeBlock(view: EditorView): boolean {
   return view.state.selection.$from.parent.type.spec.code === true;
@@ -922,7 +941,13 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
                           return [horizontalRuleInputRule];
                         },
                       })
-                    : extension,
+                    : extension.name === "heading"
+                      ? extension.extend({
+                          addInputRules() {
+                            return [headingInputRule];
+                          },
+                        })
+                      : extension,
               ),
               ...ComposerListExtensions.map((extension) =>
                 extension.name === "listItem"

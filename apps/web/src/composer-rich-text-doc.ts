@@ -1,6 +1,7 @@
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Blockquote } from "@tiptap/extension-blockquote";
 import { CodeBlock } from "@tiptap/extension-code-block";
+import { Heading } from "@tiptap/extension-heading";
 import { HorizontalRule } from "@tiptap/extension-horizontal-rule";
 import { BulletList, ListItem, OrderedList } from "@tiptap/extension-list";
 import { TaskItem } from "@tiptap/extension-task-item";
@@ -142,10 +143,23 @@ export const ComposerHorizontalRuleExtension = HorizontalRule.extend({
   },
 });
 
+/**
+ * A heading keeps the exact whitespace between its `#`s and its text. The
+ * `#`s must be followed by whitespace to count, which is also what keeps a
+ * `#1234` pull request reference a reference: the marker owns no document
+ * characters, closing `#`s stay literal text, and nothing is ever stripped.
+ */
+export const ComposerHeadingExtension = Heading.extend({
+  addAttributes() {
+    return { ...this.parent?.(), space: { default: " " } };
+  },
+});
+
 /** Block-level nodes beyond lists and fences, in the order the parser tries them. */
 export const ComposerBlockExtensions = [
   ComposerBlockquoteExtension,
   ComposerHorizontalRuleExtension,
+  ComposerHeadingExtension,
 ];
 
 function randomNodeKey(): string {
@@ -390,6 +404,7 @@ export function buildTiptapContent(
   const entries: (
     | { code: Record<string, unknown> }
     | { rule: string }
+    | { heading: { level: number; space: string; inline: InlineJson[] } }
     | { quote: { prefix: string; inline: InlineJson[] } }
     | { line: DocLine }
   )[] = [];
@@ -408,6 +423,17 @@ export function buildTiptapContent(
       // `***` on its own line is a rule rather than an empty bold span.
       if (styling && /^([-*_])(?:[ \t]*\1){2,}[ \t]*$/.test(line)) {
         entries.push({ rule: line });
+        continue;
+      }
+      const heading = styling ? /^(#{1,6})([ \t]+)(.*)$/.exec(line) : null;
+      if (heading) {
+        entries.push({
+          heading: {
+            level: heading[1]!.length,
+            space: heading[2]!,
+            inline: buildInline(heading[3]!),
+          },
+        });
         continue;
       }
       const quote = styling ? /^(>[ \t]*)(.*)$/.exec(line) : null;
@@ -485,6 +511,15 @@ export function buildTiptapContent(
     if ("rule" in entry) {
       flushLists();
       blocks.push({ type: "horizontalRule", attrs: { source: entry.rule } });
+      continue;
+    }
+    if ("heading" in entry) {
+      flushLists();
+      blocks.push({
+        type: "heading",
+        attrs: { level: entry.heading.level, space: entry.heading.space },
+        content: entry.heading.inline,
+      });
       continue;
     }
     const line = entry.line;
@@ -896,6 +931,27 @@ export function serializeEditorDoc(doc: ProseMirrorNode): RichDocMap {
       appendCodeBlockRun(block, pmBlockStart + 1, acc);
     } else if (block.type.name === "blockquote") {
       walkBlockquote(block, pmBlockStart, acc);
+    } else if (block.type.name === "heading") {
+      const attrs = block.attrs as Record<string, unknown>;
+      const level = typeof attrs.level === "number" ? attrs.level : 1;
+      const space = typeof attrs.space === "string" ? attrs.space : " ";
+      const prefix = `${"#".repeat(level)}${space}`;
+      acc.runs.push({
+        kind: "prefix",
+        flatStart: acc.flat,
+        docLen: 0,
+        collapsedLen: prefix.length,
+        mdLen: prefix.length,
+        openLen: 0,
+        closeLen: 0,
+        pmPos: pmBlockStart + 1,
+        mdStart: acc.md,
+        collapsedStart: acc.collapsed,
+      });
+      acc.value += prefix;
+      acc.collapsed += prefix.length;
+      acc.md += prefix.length;
+      appendInlineRuns(block, pmBlockStart + 1, acc);
     } else if (block.type.name === "horizontalRule") {
       const attrs = block.attrs as Record<string, unknown>;
       const source = typeof attrs.source === "string" && attrs.source ? attrs.source : "---";

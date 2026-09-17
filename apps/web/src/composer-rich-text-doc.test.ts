@@ -451,7 +451,81 @@ describe("composer rich text document model", () => {
     ]);
   });
 
-  it.each(["> quoted", "> a\n>b", "---", "- - -"])(
+  it.each([
+    "# Heading",
+    "## Two",
+    "###### Six",
+    "####### seven hashes stays a paragraph",
+    "#  two spaces",
+    "#\tTab",
+    "# Trailing hashes stay literal #",
+    "#1234",
+    "#1234 is a pull request, not a heading",
+    "# Heading with **bold** and @README.md",
+    "#",
+    "# ",
+    "text\n# Heading\ntext",
+    "# Heading\n- item\n> quote\n---",
+  ])("round-trips the heading %s through a real ProseMirror document", (value) => {
+    expect(roundTrip(value).value).toBe(value);
+  });
+
+  it.each(["> quoted", "> a\n>b", "---", "- - -", "# Heading", "#1234"])(
+    "keeps the block %s literal in plain mode",
+    (value) => {
+      expect(roundTripPlain(value).value).toBe(value);
+    },
+  );
+
+  it("parses the blocks it renders as the right node types", () => {
+    const json = buildDocJson("# Title\n> quote\n---\n#1234 ref\n- - -", (n) => ({
+      label: n,
+      description: null,
+    }));
+    expect(json.content.map((block) => block.type)).toEqual([
+      "heading",
+      "blockquote",
+      "horizontalRule",
+      "paragraph",
+      "horizontalRule",
+    ]);
+  });
+
+  it("parses rules ahead of lists and emphasis", () => {
+    const json = buildDocJson("- - -\n***\n___\ntext\n---\n- item", (n) => ({
+      label: n,
+      description: null,
+    }));
+    expect(json.content.map((block) => block.type)).toEqual([
+      "horizontalRule",
+      "horizontalRule",
+      "horizontalRule",
+      "paragraph",
+      "horizontalRule",
+      "bulletList",
+    ]);
+  });
+
+  it.each([
+    "# Heading",
+    "## Two",
+    "###### Six",
+    "####### seven hashes stays a paragraph",
+    "#  two spaces",
+    "#\tTab",
+    "# Trailing hashes stay literal #",
+    "#1234",
+    "#1234 is a pull request, not a heading",
+    "# Heading with **bold** and @README.md",
+    "#",
+    "# ",
+    "text\n# Heading\ntext",
+    "# Heading\n- item\n> quote\n---",
+  ])("round-trips the heading %s through a real ProseMirror document", (value) => {
+    expect(roundTrip(value).value).toBe(value);
+  });
+
+  it.each(["> quoted", "> a\n>b", "---", "- - -", "# Heading", "#1234"])(
     "keeps the block %s literal in plain mode",
     (value) => {
       expect(roundTripPlain(value).value).toBe(value);
@@ -464,7 +538,14 @@ describe("composer rich text document model", () => {
     expect((json.content[0] as { content: unknown[] }).content).toHaveLength(2);
   });
 
-  it.each(["> a\n> b", "> **q** @README.md", "text\n---\nmore", "---\ntext"])(
+  it.each([
+    "> a\n> b",
+    "> **q** @README.md",
+    "text\n---\nmore",
+    "---\ntext",
+    "# Heading text",
+    "## **b** @README.md",
+  ])(
     "maps every document offset of the block %s through collapsed coordinates and back",
     (value) => {
       const map = roundTrip(value);
@@ -475,12 +556,17 @@ describe("composer rich text document model", () => {
     },
   );
 
-  it("clamps offsets inside a quote marker to the start of the text", () => {
-    const map = roundTrip("> quoted");
-    for (let collapsed = 0; collapsed <= "> ".length; collapsed += 1) {
-      expect(collapsedToFlat(map, collapsed)).toBe(0);
+  it("clamps offsets inside a quote or heading marker to the start of the text", () => {
+    for (const [value, prefix] of [
+      ["> quoted", "> "],
+      ["# Heading", "# "],
+    ] as const) {
+      const map = roundTrip(value);
+      for (let collapsed = 0; collapsed <= prefix.length; collapsed += 1) {
+        expect(collapsedToFlat(map, collapsed)).toBe(0);
+      }
+      expect(flatToCollapsed(map, 0)).toBe(prefix.length);
     }
-    expect(flatToCollapsed(map, 0)).toBe("> ".length);
   });
 
   it.each([
