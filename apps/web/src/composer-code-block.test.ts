@@ -177,6 +177,27 @@ describe("indentCodeBlock", () => {
   });
 });
 
+describe("selections across two identical fences", () => {
+  /** Two structurally equal code blocks; the selection spans from one into the other. */
+  function twoBlockEditor() {
+    const block = { type: "codeBlock", content: [{ type: "text", text: "  a" }] };
+    const editor = new Editor({ extensions, content: { type: "doc", content: [block, block] } });
+    // First block: 1..4 (text "  a" occupies 1..4); second block starts at 5.
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 2, 7)),
+    );
+    return editor;
+  }
+
+  it("leaves Tab and Enter alone rather than editing through the boundary", () => {
+    const editor = twoBlockEditor();
+    const before = editor.getJSON();
+    expect(indentCodeBlock(editor.state, "in", (tr) => editor.view.dispatch(tr))).toBe(false);
+    expect(indentedNewlineInCodeBlock(editor.state, (tr) => editor.view.dispatch(tr))).toBe(false);
+    expect(editor.getJSON()).toEqual(before);
+  });
+});
+
 describe("convertCodeFenceOnEnter", () => {
   /** Builds an editor holding one paragraph with the caret at its end. */
   function paragraphEditor(text: string) {
