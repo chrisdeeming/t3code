@@ -1734,6 +1734,12 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
+/* The composer shows the marker the source has, `3)` or a nested `7.`, not the
+   browser counter. Browsers without ::marker content fall back to `start`. */
+.composer-tiptap ol > li[data-marker]::marker {
+  content: attr(data-marker) " ";
+}
+
 :is(.chat-markdown, .composer-tiptap) ul ul {
   list-style-type: circle;
 }
@@ -1742,7 +1748,7 @@ code {
   list-style-type: square;
 }
 
-:is(.chat-markdown, .composer-tiptap) ol ol {
+.chat-markdown ol ol {
   list-style-type: lower-alpha;
 }
 
