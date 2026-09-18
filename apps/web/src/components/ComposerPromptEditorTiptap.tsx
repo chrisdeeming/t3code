@@ -62,6 +62,7 @@ import {
   convertCodeFenceOnEnter,
   indentCodeBlock,
   indentedNewlineInCodeBlock,
+  selectionInOneCodeBlock,
 } from "~/composer-code-block";
 import { nextOrderedMarkerText } from "~/composer-list-continuation";
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
@@ -1106,7 +1107,12 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
           }
           // Inside a fence Tab belongs to the code, not to the composer's
           // focus order or its autocomplete.
-          if (event.key === "Tab" && !event.metaKey && !event.ctrlKey && isInCodeBlock(view)) {
+          if (
+            event.key === "Tab" &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            selectionInOneCodeBlock(view.state)
+          ) {
             event.preventDefault();
             event.stopPropagation();
             return indentCodeBlock(view.state, event.shiftKey ? "out" : "in", (tr) =>
@@ -1125,7 +1131,7 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
             !event.ctrlKey &&
             !event.isComposing
           ) {
-            if (isInCodeBlock(view)) {
+            if (selectionInOneCodeBlock(view.state)) {
               event.preventDefault();
               event.stopPropagation();
               const dispatch = (tr: typeof view.state.tr) => view.dispatch(tr.scrollIntoView());
