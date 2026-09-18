@@ -48,7 +48,9 @@ function codeBlockRange(
   const { $from, $to } = state.selection;
   const parent = $from.parent;
   if (parent.type.spec.code !== true) return null;
-  if (!$to.parent.eq(parent)) return null;
+  // Same occurrence, not merely equal structure: two identical fences would
+  // otherwise let a selection across them edit through the block boundary.
+  if (!$from.sameParent($to)) return null;
   const from = $from.start();
   return { from, to: from + parent.content.size, text: parent.textContent };
 }
