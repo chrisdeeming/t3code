@@ -3,6 +3,7 @@ import { Blockquote } from "@tiptap/extension-blockquote";
 import { CodeBlock } from "@tiptap/extension-code-block";
 import { Heading } from "@tiptap/extension-heading";
 import { HorizontalRule } from "@tiptap/extension-horizontal-rule";
+import { mergeAttributes } from "@tiptap/core";
 import { BulletList, ListItem, OrderedList } from "@tiptap/extension-list";
 import { TaskItem } from "@tiptap/extension-task-item";
 
@@ -114,6 +115,11 @@ const ComposerListItemExtension = ListItem.extend({
       marker: { default: "-" },
       space: { default: " " },
     };
+  },
+  // The source marker rides on the item so the composer draws `3)` and a
+  // nested `7.` as written, rather than the browser own numbering.
+  renderHTML({ node, HTMLAttributes }) {
+    return ["li", mergeAttributes(HTMLAttributes, { "data-marker": node.attrs.marker }), 0];
   },
 });
 
