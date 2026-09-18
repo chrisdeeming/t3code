@@ -2171,28 +2171,6 @@ code {
   padding: 0.05em 0.25em;
 }
 
-/* The fence node view reuses chat's code block markup and class names, so the
-   shared rules above carry the surface. What is left is what only an editable
-   fence needs: the code itself, and a caret that can sit on an empty line. */
-.composer-tiptap .chat-markdown-codeblock pre {
-  padding: 0.25rem 0.7rem 0.5rem;
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.composer-tiptap .chat-markdown-codeblock pre code {
-  display: block;
-  min-height: 1lh;
-  border: none;
-  background: transparent;
-  padding: 0;
-  color: inherit;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-code, 0.92em);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 .composer-rich-marker {
   color: var(--muted-foreground);
   opacity: 0.75;
