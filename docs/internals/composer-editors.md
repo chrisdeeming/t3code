@@ -40,8 +40,10 @@ has no list flag and runs first, so Enter sends and it is Shift+Enter that
 reaches the list branch. Rendered items split natively there (marks and chips
 survive), ordered items counting up the way the literal continuation does; Tab
 still goes through the literal store edit, which the rebuilt document reads back
-as nesting. The bullet input rule claims `- ` as soon as it is typed, so the
-task gesture is `[ ] ` inside a bullet item rather than `- [ ] ` in a paragraph.
+as nesting. The dash bullet rule waits for the first character after `- ` and carries
+it into the item, so the GFM task gesture `- [ ] ` is typed whole and reaches
+the task rule; `*` and `+` convert on the space, since they are not task
+markers here. `[ ] ` inside an existing bullet converts it as well.
 
 A quote is a `blockquote` node carrying the exact `>` prefix of its lines as an
 attribute, applied to every child paragraph on the way out; one source line is
