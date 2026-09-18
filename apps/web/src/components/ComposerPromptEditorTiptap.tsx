@@ -530,8 +530,9 @@ function listMarkerInputRule(find: RegExp, listType: "bulletList" | "orderedList
   return new InputRule({
     find,
     handler: ({ state, range, match, chain }) => {
-      const marker = match[1] ?? "-";
-      const carried = match[2] ?? "";
+      const marker = match.groups?.marker ?? "-";
+      const space = match.groups?.space ?? " ";
+      const carried = match.groups?.carried ?? "";
       const $from = state.doc.resolve(range.from);
       if ($from.parent.type.name !== "paragraph" || hasAncestor($from, "blockquote")) return null;
       const command = chain()
@@ -540,7 +541,7 @@ function listMarkerInputRule(find: RegExp, listType: "bulletList" | "orderedList
           listType,
           listType === "orderedList" ? { start: Number.parseInt(marker, 10) || 1 } : {},
         )
-        .updateAttributes("listItem", { marker, space: " " });
+        .updateAttributes("listItem", { marker, space });
       (carried ? command.insertContent(carried) : command).run();
       return undefined;
     },
@@ -963,10 +964,18 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
                       addInputRules() {
                         return this.name === "bulletList"
                           ? [
-                              listMarkerInputRule(/^([*+])\s$/, "bulletList"),
-                              listMarkerInputRule(/^(-) ([^\s[])$/, "bulletList"),
+                              listMarkerInputRule(/^(?<marker>[*+])(?<space>\s)$/, "bulletList"),
+                              listMarkerInputRule(
+                                /^(?<marker>-)(?<space>[ \t]+)(?<carried>[^\s[])$/,
+                                "bulletList",
+                              ),
                             ]
-                          : [listMarkerInputRule(/^(\d+[.)])\s$/, "orderedList")];
+                          : [
+                              listMarkerInputRule(
+                                /^(?<marker>\d+[.)])(?<space>\s)$/,
+                                "orderedList",
+                              ),
+                            ];
                       },
                     }),
               ),
