@@ -1,11 +1,16 @@
 import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 
 import { useTheme } from "../../hooks/useTheme";
-import { MarkdownCodeBlockTitleContent } from "../ChatMarkdown";
+import {
+  MARKDOWN_CODE_BLOCK_CLASS_NAME,
+  MARKDOWN_CODE_BLOCK_HEADER_CLASS_NAME,
+  MARKDOWN_CODE_BLOCK_TITLE_CLASS_NAME,
+  MarkdownCodeBlockTitleContent,
+} from "../ChatMarkdown";
 
 /**
- * Draws a composer fence as the chat view draws a rendered one, down to the
- * class names, so a draft looks like the message it is about to become.
+ * Draws a composer fence with the chat view's own code block frame, so a
+ * draft looks like the message it is about to become.
  *
  * The chrome stops at the language icon. Chat's wrap and copy buttons act on
  * text the reader cannot change; here the text is the draft, and both are
@@ -20,15 +25,12 @@ export function ComposerCodeBlockNodeView({ node }: NodeViewProps) {
   return (
     <NodeViewWrapper
       as="div"
-      className="chat-markdown-codeblock my-[0.65rem] overflow-hidden rounded-[var(--radius)] border border-border/70 bg-secondary leading-snug dark:border-transparent dark:bg-input/32"
+      className={MARKDOWN_CODE_BLOCK_CLASS_NAME}
       data-language={language}
       data-wrap="true"
     >
-      <div
-        contentEditable={false}
-        className="chat-markdown-codeblock-header flex items-center justify-between gap-2 pt-1.5 pr-1.5 pb-0 pl-3 select-none"
-      >
-        <span className="inline-flex min-w-0 items-center gap-[0.4rem] [font-family:var(--font-mono,ui-monospace,SFMono-Regular,monospace)] [font-size:0.6875rem]">
+      <div contentEditable={false} className={MARKDOWN_CODE_BLOCK_HEADER_CLASS_NAME}>
+        <span className={MARKDOWN_CODE_BLOCK_TITLE_CLASS_NAME}>
           <MarkdownCodeBlockTitleContent
             fenceTitle={null}
             language={language}
@@ -37,8 +39,12 @@ export function ComposerCodeBlockNodeView({ node }: NodeViewProps) {
         </span>
       </div>
       <div className="chat-markdown-shiki">
-        <pre>
-          <NodeViewContent<"code"> as="code" />
+        <pre className="max-w-full overflow-x-auto px-[0.7rem] pt-1 pb-2">
+          {/* A caret needs a line to sit on even before any code is typed. */}
+          <NodeViewContent<"code">
+            as="code"
+            className="block min-h-[1lh] border-0 bg-transparent p-0 font-mono whitespace-pre-wrap [color:inherit] [font-size:var(--font-size-code,0.92em)] [overflow-wrap:anywhere]"
+          />
         </pre>
       </div>
     </NodeViewWrapper>
