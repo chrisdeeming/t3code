@@ -519,31 +519,38 @@ function collectStyledRanges(doc: ProseMirrorNode): StyledRange[] {
 /**
  * A typed marker becomes a list item that remembers the marker it was typed
  * with, so the stored Markdown keeps `*` or `3)` rather than a canonical `-`.
+ *
+ * `- ` alone is not enough for a dash: it waits for the first character after
+ * the space, which it carries into the new item. That is what lets the GFM
+ * task gesture `- [ ] ` or `- [x] ` be typed whole and reach the task rule,
+ * instead of being cut off by an instant bullet. A `- ` left on its own is
+ * still a bullet the next time the draft is rebuilt.
  */
 function listMarkerInputRule(find: RegExp, listType: "bulletList" | "orderedList"): InputRule {
   return new InputRule({
     find,
     handler: ({ state, range, match, chain }) => {
       const marker = match[1] ?? "-";
+      const carried = match[2] ?? "";
       const $from = state.doc.resolve(range.from);
       if ($from.parent.type.name !== "paragraph" || hasAncestor($from, "blockquote")) return null;
-      chain()
+      const command = chain()
         .deleteRange(range)
         .wrapInList(
           listType,
           listType === "orderedList" ? { start: Number.parseInt(marker, 10) || 1 } : {},
         )
-        .updateAttributes("listItem", { marker, space: " " })
-        .run();
+        .updateAttributes("listItem", { marker, space: " " });
+      (carried ? command.insertContent(carried) : command).run();
       return undefined;
     },
   });
 }
 
 /**
- * `[ ] ` at the start of a bullet item turns it into a task. The bullet rule
- * takes `- ` the moment it is typed, so this is how the task gesture from a
- * plain paragraph still lands where it always did.
+ * `[ ] ` at the start of an existing bullet item turns it into a task, for
+ * items that were already a list when the checkbox was wanted. New tasks are
+ * typed whole, `- [ ] `, and reach the task rule directly.
  */
 const bulletToTaskInputRule = new InputRule({
   find: /^\[([ xX])\] $/,
@@ -955,7 +962,10 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
                   : extension.extend({
                       addInputRules() {
                         return this.name === "bulletList"
-                          ? [listMarkerInputRule(/^([-*+])\s$/, "bulletList")]
+                          ? [
+                              listMarkerInputRule(/^([*+])\s$/, "bulletList"),
+                              listMarkerInputRule(/^(-) ([^\s[])$/, "bulletList"),
+                            ]
                           : [listMarkerInputRule(/^(\d+[.)])\s$/, "orderedList")];
                       },
                     }),
