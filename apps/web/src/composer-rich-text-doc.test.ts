@@ -649,6 +649,40 @@ describe("composer rich text document model", () => {
     expect(roundTrip(value).value).toBe(expected);
   });
 
+  it("keeps a chip in a fence info string as source and keeps later chips aligned", () => {
+    const value = "```@README.md\ncode\n```\n$my-skill after";
+    expect(roundTrip(value).value).toBe(value);
+    const json = buildDocJson(value, (n) => ({ label: n, description: null }));
+    const after = json.content[1] as {
+      content: { type: string; attrs?: { skillName?: string } }[];
+    };
+    expect(after.content.map((n) => n.type)).toEqual(["composer-skill", "text"]);
+    expect(after.content[0]?.attrs?.skillName).toBe("my-skill");
+  });
+
+  it.each([
+    ["listItem", { marker: "-", space: "" }, "bulletList", "- text"],
+    ["listItem", { marker: "1.", space: "" }, "orderedList", "1. text"],
+  ])("gives a bare %s a space once it has text", (item, attrs, list, expected) => {
+    const doc = ProseMirrorNode.fromJSON(schema, {
+      type: "doc",
+      content: [
+        {
+          type: list,
+          content: [
+            {
+              type: item,
+              attrs,
+              content: [{ type: "paragraph", content: [{ type: "text", text: "text" }] }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(serializeEditorDoc(doc).value).toBe(expected);
+    expect(roundTrip("-").value).toBe("-");
+  });
+
   it("keeps fences literal in plain mode", () => {
     const value = "```ts\nconst a = 1;\n```";
     expect(roundTripPlain(value).value).toBe(value);

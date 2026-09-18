@@ -460,7 +460,9 @@ export function buildTiptapContent(
     entries.push({
       code: {
         type: "codeBlock",
-        attrs: { language: opening.language, fence: opening.fence, close },
+        // The info string went through the sentinel pass like every line, so
+        // a token in it is put back as source here, in order, before the body.
+        attrs: { language: restoreSources(opening.language), fence: opening.fence, close },
         ...(content ? { content: [{ type: "text", text: content }] } : {}),
       },
     });
@@ -811,7 +813,10 @@ function listItemPrefix(item: ProseMirrorNode, empty: boolean): string {
     return `${indent}-${markerSpace}[${attrs.checked === true ? "x" : " "}]${contentSpace}`;
   }
   const marker = typeof attrs.marker === "string" && attrs.marker ? attrs.marker : "-";
-  const space = typeof attrs.space === "string" ? attrs.space : " ";
+  // A bare `-` keeps its missing space only while the item is empty: once it
+  // has text, `-text` would not be a list line any more.
+  const space =
+    typeof attrs.space === "string" ? attrs.space || (empty ? "" : " ") : empty ? "" : " ";
   return `${indent}${marker}${space}`;
 }
 
