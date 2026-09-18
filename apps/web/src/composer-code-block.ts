@@ -42,6 +42,12 @@ export function indentLines(lines: ReadonlyArray<string>, direction: "in" | "out
  * same block: a selection that reaches past the fence belongs to the document,
  * not to the code.
  */
+/** Whether every endpoint of the selection sits in the same code block. */
+export function selectionInOneCodeBlock(state: EditorState): boolean {
+  const { $from, $to } = state.selection;
+  return $from.parent.type.spec.code === true && $from.sameParent($to);
+}
+
 function codeBlockRange(
   state: EditorState,
 ): { readonly from: number; readonly to: number; readonly text: string } | null {
