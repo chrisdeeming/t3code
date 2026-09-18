@@ -3,9 +3,11 @@ import * as NodeV8 from "node:v8";
 import {
   CommandId,
   EventId,
+  MessageId,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
+  TurnId,
   TurnItemId,
   type OrchestrationV2DomainEvent,
 } from "@t3tools/contracts";
@@ -206,6 +208,61 @@ layer("OrchestrationEventStore", (it) => {
             "OrchestrationEventStore.readFromSequence:decodeRows",
           ),
         );
+      }
+    }),
+  );
+
+  it.effect("decodes persisted message events with a reasoning role", () =>
+    Effect.gen(function* () {
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const now = "2026-01-01T00:00:00.000Z";
+      const threadId = ThreadId.make("thread-reasoning-role");
+
+      // Builds that emit thinking traces persist reasoning messages as
+      // thread.message-sent events. The store must still replay them.
+      yield* sql`
+        INSERT INTO orchestration_events (
+          event_id,
+          aggregate_kind,
+          stream_id,
+          stream_version,
+          event_type,
+          occurred_at,
+          command_id,
+          causation_event_id,
+          correlation_id,
+          actor_kind,
+          payload_json,
+          metadata_json
+        )
+        VALUES (
+          ${EventId.make("evt-store-reasoning-role")},
+          ${"thread"},
+          ${threadId},
+          ${0},
+          ${"thread.message-sent"},
+          ${now},
+          ${CommandId.make("provider:test:reasoning")},
+          ${null},
+          ${null},
+          ${"provider"},
+          ${`{"threadId":"${threadId}","messageId":"${MessageId.make("reasoning:summary:test")}","role":"reasoning","text":"thinking","turnId":"${TurnId.make("turn-reasoning-role")}","streaming":false,"createdAt":"${now}","updatedAt":"${now}"}`},
+          ${"{}"}
+        )
+      `;
+
+      const sequence = yield* sql<{ readonly sequence: number }>`
+        SELECT sequence FROM orchestration_events WHERE event_id = ${"evt-store-reasoning-role"}
+      `;
+      const replayed = yield* Stream.runCollect(
+        eventStore.readFromSequence((sequence[0]?.sequence ?? 1) - 1, 10),
+      ).pipe(Effect.map((chunk) => Array.from(chunk)));
+      assert.equal(replayed.length, 1);
+      if (replayed[0]?.type === "thread.message-sent") {
+        assert.equal(replayed[0].payload.role, "reasoning");
+      } else {
+        assert.fail(`expected thread.message-sent, got ${replayed[0]?.type}`);
       }
     }),
   );
