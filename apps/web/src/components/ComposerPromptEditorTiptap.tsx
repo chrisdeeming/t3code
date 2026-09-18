@@ -583,11 +583,14 @@ function hasAncestor($pos: ResolvedPos, name: string): boolean {
  * a quote holds prose lines, and a list item is not one.
  */
 const blockquoteInputRule = new InputRule({
-  find: /^>\s$/,
-  handler: ({ state, range, chain }) => {
+  find: /^>(\s)$/,
+  handler: ({ state, range, match, chain }) => {
     const $from = state.doc.resolve(range.from);
     if ($from.parent.type.name !== "paragraph" || $from.depth !== 1) return null;
-    chain().deleteRange(range).wrapIn("blockquote", { prefix: "> " }).run();
+    chain()
+      .deleteRange(range)
+      .wrapIn("blockquote", { prefix: `>${match[1] ?? " "}` })
+      .run();
     return undefined;
   },
 });
@@ -603,8 +606,8 @@ const blockquoteInputRule = new InputRule({
 const horizontalRuleInputRule = new InputRule({
   find: /^(---|\*\*\*|___)\s?$/,
   handler: ({ state, range, match, chain }) => {
-    const source = match[1] ?? "---";
-    if (source !== "---" && !/\s$/.test(match[0] ?? "")) return null;
+    const source = match[0] ?? "---";
+    if (!source.startsWith("---") && !/\s$/.test(source)) return null;
     const $from = state.doc.resolve(range.from);
     if ($from.parent.type.name !== "paragraph" || $from.depth !== 1) return null;
     chain()
@@ -634,13 +637,13 @@ const horizontalRuleInputRule = new InputRule({
  * serializers have no line for one.
  */
 const headingInputRule = new InputRule({
-  find: /^(#{1,6})\s$/,
+  find: /^(#{1,6})(\s)$/,
   handler: ({ state, range, match, chain }) => {
     const $from = state.doc.resolve(range.from);
     if ($from.parent.type.name !== "paragraph" || $from.depth !== 1) return null;
     chain()
       .deleteRange(range)
-      .setNode("heading", { level: match[1]?.length ?? 1, space: " " })
+      .setNode("heading", { level: match[1]?.length ?? 1, space: match[2] ?? " " })
       .run();
     return undefined;
   },
