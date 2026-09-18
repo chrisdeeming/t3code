@@ -876,6 +876,18 @@ function MarkdownDetails({
  * icon (redundant next to its own name) and fall back to the language text
  * when no specific icon exists or it fails to load.
  */
+/**
+ * The code block frame, shared with the composer so an editable fence and a
+ * rendered one cannot drift apart: the wrapper, its header row, and the
+ * title slot the language icon sits in.
+ */
+export const MARKDOWN_CODE_BLOCK_CLASS_NAME =
+  "chat-markdown-codeblock my-[0.65rem] overflow-hidden rounded-[var(--radius)] border border-border/70 bg-secondary leading-snug dark:border-transparent dark:bg-input/32";
+export const MARKDOWN_CODE_BLOCK_HEADER_CLASS_NAME =
+  "chat-markdown-codeblock-header flex items-center justify-between gap-2 pt-1.5 pr-1.5 pb-0 pl-3 select-none";
+export const MARKDOWN_CODE_BLOCK_TITLE_CLASS_NAME =
+  "inline-flex min-w-0 items-center gap-[0.4rem] [font-family:var(--font-mono,ui-monospace,SFMono-Regular,monospace)] [font-size:0.6875rem]";
+
 export function MarkdownCodeBlockTitleContent({
   fenceTitle,
   language,
@@ -971,12 +983,12 @@ function MarkdownCodeBlock({
 
   return (
     <div
-      className="chat-markdown-codeblock my-[0.65rem] overflow-hidden rounded-[var(--radius)] border border-border/70 bg-secondary leading-snug dark:border-transparent dark:bg-input/32"
+      className={MARKDOWN_CODE_BLOCK_CLASS_NAME}
       data-language={language}
       data-wrap={wrapped ? "true" : "false"}
     >
-      <div className="chat-markdown-codeblock-header flex items-center justify-between gap-2 pt-1.5 pr-1.5 pb-0 pl-3 select-none">
-        <span className="inline-flex min-w-0 items-center gap-[0.4rem] [font-family:var(--font-mono,ui-monospace,SFMono-Regular,monospace)] [font-size:0.6875rem]">
+      <div className={MARKDOWN_CODE_BLOCK_HEADER_CLASS_NAME}>
+        <span className={MARKDOWN_CODE_BLOCK_TITLE_CLASS_NAME}>
           <MarkdownCodeBlockTitleContent
             fenceTitle={fenceTitle}
             language={language}
