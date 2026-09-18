@@ -87,7 +87,7 @@ export const ComposerCodeBlockExtension = CodeBlock.extend({
 });
 
 /** The markdown a code block node serializes to, delimiters included. */
-export function codeBlockSource(node: ProseMirrorNode): {
+function codeBlockSource(node: ProseMirrorNode): {
   open: string;
   content: string;
   close: string;
@@ -106,7 +106,7 @@ export function codeBlockSource(node: ProseMirrorNode): {
  * or `3)`, `space` what followed it, and `indent` the leading whitespace.
  * Numbering is not renumbered: what the user typed is what the agent gets.
  */
-export const ComposerListItemExtension = ListItem.extend({
+const ComposerListItemExtension = ListItem.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -126,7 +126,7 @@ export const ComposerListExtensions = [BulletList, OrderedList, ComposerListItem
  * prefix differs starts a sibling quote. Nested markers and list markers
  * inside a quote stay literal text: the composer quotes prose, not documents.
  */
-export const ComposerBlockquoteExtension = Blockquote.extend({
+const ComposerBlockquoteExtension = Blockquote.extend({
   addAttributes() {
     return { ...this.parent?.(), prefix: { default: "> " } };
   },
@@ -137,7 +137,7 @@ export const ComposerBlockquoteExtension = Blockquote.extend({
  * it round-trips byte-identically. It owns no document characters: offsets
  * inside its source clamp to the block after it.
  */
-export const ComposerHorizontalRuleExtension = HorizontalRule.extend({
+const ComposerHorizontalRuleExtension = HorizontalRule.extend({
   addAttributes() {
     return { ...this.parent?.(), source: { default: "---" } };
   },
@@ -149,7 +149,7 @@ export const ComposerHorizontalRuleExtension = HorizontalRule.extend({
  * `#1234` pull request reference a reference: the marker owns no document
  * characters, closing `#`s stay literal text, and nothing is ever stripped.
  */
-export const ComposerHeadingExtension = Heading.extend({
+const ComposerHeadingExtension = Heading.extend({
   addAttributes() {
     return { ...this.parent?.(), space: { default: " " } };
   },

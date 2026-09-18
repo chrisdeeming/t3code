@@ -12,9 +12,7 @@ interface HighlightedBlock {
   readonly decorations: ReadonlyArray<{ from: number; to: number; color: string }>;
 }
 
-export const composerCodeBlockHighlightKey = new PluginKey<DecorationSet>(
-  "composerCodeBlockHighlight",
-);
+const composerCodeBlockHighlightKey = new PluginKey<DecorationSet>("composerCodeBlockHighlight");
 
 const MAX_CACHED_BLOCKS = 64;
 /**
