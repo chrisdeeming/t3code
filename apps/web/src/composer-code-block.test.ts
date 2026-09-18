@@ -13,11 +13,12 @@ import {
 } from "./composer-code-block";
 import StarterKit from "@tiptap/starter-kit";
 
-import { ComposerCodeBlockExtension } from "./composer-rich-text-doc";
+import { ComposerCodeBlockExtension, ComposerListExtensions } from "./composer-rich-text-doc";
 
 const extensions = [
   StarterKit.configure({ codeBlock: false, trailingNode: false }),
   ComposerCodeBlockExtension,
+  ...ComposerListExtensions,
 ];
 
 describe("leadingWhitespace", () => {
@@ -230,6 +231,34 @@ describe("convertCodeFenceOnEnter", () => {
   it.each(["``", "```ts extra", "text ```", "```ts trailing"])("leaves %s alone", (text) => {
     const editor = paragraphEditor(text);
     expect(convertCodeFenceOnEnter(editor.state, (tr) => editor.view.dispatch(tr))).toBe(false);
+  });
+
+  it("refuses to open a fence inside a list item", () => {
+    const text = "```ts";
+    const editor = new Editor({
+      extensions,
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "bulletList",
+            content: [
+              {
+                type: "listItem",
+                content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    // Inside listItem > paragraph: position 3 is the paragraph start.
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 3 + text.length)),
+    );
+    const before = editor.getJSON();
+    expect(convertCodeFenceOnEnter(editor.state, (tr) => editor.view.dispatch(tr))).toBe(false);
+    expect(editor.getJSON()).toEqual(before);
   });
 
   it("ignores a fence with the caret before its end", () => {
