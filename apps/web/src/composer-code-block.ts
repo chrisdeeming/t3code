@@ -152,7 +152,9 @@ export function convertCodeFenceOnEnter(
   dispatch?: (transaction: Transaction) => void,
 ): boolean {
   const { $from, empty } = state.selection;
-  if (!empty || $from.parent.type.name !== "paragraph") return false;
+  // Top-level paragraphs only: the list and quote serializers have no line
+  // to write a fence into, so one created inside them would vanish.
+  if (!empty || $from.parent.type.name !== "paragraph" || $from.depth !== 1) return false;
   if ($from.parentOffset !== $from.parent.content.size) return false;
   const match = /^(`{3,}|~{3,})([A-Za-z0-9_+#.-]*)$/.exec($from.parent.textContent);
   const codeBlock = state.schema.nodes.codeBlock;

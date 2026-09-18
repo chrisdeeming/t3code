@@ -945,6 +945,12 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
                 addNodeView() {
                   return ReactNodeViewRenderer(ComposerCodeBlockNodeView);
                 },
+                // Tiptap's own ``` + space rule would open a fence inside a
+                // list item or quote, where the serializer has no line for
+                // it. Enter on a fence line covers the gesture at top level.
+                addInputRules() {
+                  return [];
+                },
               }),
               composerCodeBlockHighlight({
                 resolveTheme: () =>
@@ -1278,9 +1284,20 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
           }
           const editorInstance = editorHolder.current;
           if (editorInstance) {
-            insertMarkdownParagraphs(text, skillLabelFor, { styling: richText }, (content) => {
-              editorInstance.commands.insertContent(content);
-            });
+            // Inside a list item or quote, pasted block markup has nowhere to
+            // go: it stays literal lines the next rebuild reads back.
+            const $paste = view.state.selection.$from;
+            const nested = ["listItem", "taskItem", "blockquote"].some((name) =>
+              hasAncestor($paste, name),
+            );
+            insertMarkdownParagraphs(
+              text,
+              skillLabelFor,
+              { styling: richText && !nested },
+              (content) => {
+                editorInstance.commands.insertContent(content);
+              },
+            );
             scrollTiptapCaretIntoView(editorInstance);
           }
           return true;
