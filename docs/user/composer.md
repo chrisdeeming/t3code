@@ -24,8 +24,9 @@ Lists render as lists: `- `, `* ` or `+ ` starts a bulleted item and `1. ` or
 `1) ` a numbered one. Inside an item, **Shift+Enter** continues the list (a
 numbered list counts up), Shift+Enter on an empty item leaves the list, and
 **Tab** nests the item. Enter still sends. `- [ ] ` and `- [x] ` make task
-items, and `[ ] ` at the start of an existing bulleted item turns it into one. The list is stored exactly as you wrote it:
-the marker you typed and the numbers you used are what the agent receives.
+items, and `[ ] ` at the start of an existing bulleted item turns it into
+one. The list is stored exactly as you wrote it: the marker you typed and the
+numbers you used are what the agent receives.
 
 `> ` at the start of a line opens a quote. Each line inside it is quoted, so
 Shift+Enter continues the quote and Shift+Enter on an empty line leaves it.
