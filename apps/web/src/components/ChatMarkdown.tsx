@@ -878,17 +878,54 @@ function MarkdownDetails({
  */
 /**
  * The code block frame, shared with the composer so an editable fence and a
- * rendered one cannot drift apart: the wrapper, its header row, and the
- * title slot the language icon sits in.
+ * rendered one cannot drift apart: the wrapper, its header row with the
+ * language title, an optional actions slot, and the body as children. The
+ * composer passes Tiptap's node view wrapper as the outer element.
  */
-export const MARKDOWN_CODE_BLOCK_CLASS_NAME =
-  "chat-markdown-codeblock my-[0.65rem] overflow-hidden rounded-[var(--radius)] border border-border/70 bg-secondary leading-snug dark:border-transparent dark:bg-input/32";
-export const MARKDOWN_CODE_BLOCK_HEADER_CLASS_NAME =
-  "chat-markdown-codeblock-header flex items-center justify-between gap-2 pt-1.5 pr-1.5 pb-0 pl-3 select-none";
-export const MARKDOWN_CODE_BLOCK_TITLE_CLASS_NAME =
-  "inline-flex min-w-0 items-center gap-[0.4rem] [font-family:var(--font-mono,ui-monospace,SFMono-Regular,monospace)] [font-size:0.6875rem]";
+export function MarkdownCodeBlockFrame({
+  as: Wrapper = "div",
+  language,
+  fenceTitle,
+  theme,
+  wrapped = true,
+  actions,
+  headerProps,
+  children,
+}: {
+  as?: React.ElementType;
+  language: string;
+  fenceTitle: string | null;
+  theme: "light" | "dark";
+  wrapped?: boolean;
+  actions?: React.ReactNode;
+  headerProps?: React.HTMLAttributes<HTMLDivElement>;
+  children: React.ReactNode;
+}) {
+  return (
+    <Wrapper
+      className="chat-markdown-codeblock my-[0.65rem] overflow-hidden rounded-[var(--radius)] border border-border/70 bg-secondary leading-snug dark:border-transparent dark:bg-input/32"
+      data-language={language}
+      data-wrap={wrapped ? "true" : "false"}
+    >
+      <div
+        {...headerProps}
+        className="chat-markdown-codeblock-header flex items-center justify-between gap-2 pt-1.5 pr-1.5 pb-0 pl-3 select-none"
+      >
+        <span className="inline-flex min-w-0 items-center gap-[0.4rem] [font-family:var(--font-mono,ui-monospace,SFMono-Regular,monospace)] [font-size:0.6875rem]">
+          <MarkdownCodeBlockTitleContent
+            fenceTitle={fenceTitle}
+            language={language}
+            theme={theme}
+          />
+        </span>
+        {actions}
+      </div>
+      {children}
+    </Wrapper>
+  );
+}
 
-export function MarkdownCodeBlockTitleContent({
+function MarkdownCodeBlockTitleContent({
   fenceTitle,
   language,
   theme,
@@ -982,19 +1019,12 @@ function MarkdownCodeBlock({
   );
 
   return (
-    <div
-      className={MARKDOWN_CODE_BLOCK_CLASS_NAME}
-      data-language={language}
-      data-wrap={wrapped ? "true" : "false"}
-    >
-      <div className={MARKDOWN_CODE_BLOCK_HEADER_CLASS_NAME}>
-        <span className={MARKDOWN_CODE_BLOCK_TITLE_CLASS_NAME}>
-          <MarkdownCodeBlockTitleContent
-            fenceTitle={fenceTitle}
-            language={language}
-            theme={theme}
-          />
-        </span>
+    <MarkdownCodeBlockFrame
+      language={language}
+      fenceTitle={fenceTitle}
+      theme={theme}
+      wrapped={wrapped}
+      actions={
         <span className="flex items-center gap-0.5" role="toolbar" aria-label="Code block actions">
           <Tooltip>
             <TooltipTrigger
@@ -1032,9 +1062,10 @@ function MarkdownCodeBlock({
             <TooltipPopup side="top">{copyLabel}</TooltipPopup>
           </Tooltip>
         </span>
-      </div>
+      }
+    >
       {children}
-    </div>
+    </MarkdownCodeBlockFrame>
   );
 }
 
