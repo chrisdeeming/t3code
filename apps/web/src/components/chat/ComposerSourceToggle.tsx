@@ -1,9 +1,7 @@
 import { CodeIcon } from "lucide-react";
 import { memo } from "react";
 
-import { cn } from "~/lib/utils";
-
-import { Button } from "../ui/button";
+import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const LABEL_ON = "Edit the Markdown source";
@@ -29,20 +27,18 @@ export const ComposerSourceToggle = memo(function ComposerSourceToggle(props: {
     <Tooltip>
       <TooltipTrigger
         render={
-          <Button
-            type="button"
+          <Toggle
             variant="ghost"
-            size="icon-sm"
+            size="sm"
+            pressed={!props.richTextEnabled}
+            onPressedChange={props.onToggle}
             aria-label={label}
-            aria-pressed={!props.richTextEnabled}
             data-composer-source-toggle={props.richTextEnabled ? "closed" : "open"}
-            className={cn(!props.richTextEnabled && "bg-accent text-accent-foreground")}
             onPointerDown={(event) => event.preventDefault()}
-            onClick={props.onToggle}
           />
         }
       >
-        <CodeIcon />
+        <CodeIcon className="size-4 sm:size-3.5" />
       </TooltipTrigger>
       <TooltipPopup>{label}</TooltipPopup>
     </Tooltip>
