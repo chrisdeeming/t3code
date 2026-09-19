@@ -4972,11 +4972,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           data-resting-controls-separator="true"
         />
       ) : null}
-      <ComposerSourceToggle
-        richTextEnabled={settings.composerRichTextEnabled}
-        size={composerControlsInStrip ? "xs" : "sm"}
-        onToggle={toggleComposerRichText}
-      />
       <ProviderModelPicker
         isComposerOwned
         disabled={providerCatalogPending || isSendBusy}
@@ -6950,6 +6945,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   }
                   className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                 >
+                  <ComposerSourceToggle
+                    richTextEnabled={settings.composerRichTextEnabled}
+                    onToggle={toggleComposerRichText}
+                  />
                   {showComposerAttachAction ? (
                     <>
                       <input
