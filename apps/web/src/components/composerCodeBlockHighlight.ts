@@ -131,7 +131,8 @@ export function composerCodeBlockHighlight(options: {
 
               void Promise.all(
                 pending.map(async ({ node }) => {
-                  const language = String(node.attrs.language ?? "") || "text";
+                  // The stored info string keeps its whitespace; Shiki wants the name.
+                  const language = String(node.attrs.language ?? "").trim() || "text";
                   const signature = blockSignature(node, theme);
                   const highlighter = await getSyntaxHighlighterPromise(language);
                   if (disposed) return;
