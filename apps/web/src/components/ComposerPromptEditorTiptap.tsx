@@ -561,7 +561,9 @@ const bulletToTaskInputRule = new InputRule({
     const $from = state.doc.resolve(range.from);
     const item = $from.node(-1);
     if ($from.parent.type.name !== "paragraph" || item?.type.name !== "listItem") return null;
-    if ((item.attrs as { marker?: string }).marker !== "-") return null;
+    // Any bullet converts; the task grammar only knows `-`, so a `*` or `+`
+    // item comes back out as `- [ ]`.
+    if (!["-", "*", "+"].includes((item.attrs as { marker?: string }).marker ?? "")) return null;
     const indent = typeof item.attrs.indent === "string" ? item.attrs.indent : "";
     chain()
       .deleteRange(range)
