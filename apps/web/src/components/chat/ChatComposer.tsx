@@ -5233,7 +5233,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (command !== "composer.toggleRichText") return;
       event.preventDefault();
       event.stopPropagation();
-      if (isCommandPaletteOpen()) return;
+      // A held key auto-repeats keydown; one press is one flip.
+      if (event.repeat || isCommandPaletteOpen()) return;
       toggleComposerRichText();
     };
     window.addEventListener("keydown", handler, true);
