@@ -50,10 +50,11 @@ language, then press Enter or Space. Inside a fence:
 Code is syntax highlighted using your current theme, and the language you
 declared is named in the corner of the block.
 
-Use **Edit the Markdown source** in the composer controls to switch to literal
-Markdown, with every marker shown as you typed it and nothing styled. Chips,
-attachments and your cursor survive the switch, so you can move between the two
-freely. The same switch lives in Settings as the rich text composer option.
+Press `mod+/` to switch the composer to literal Markdown, with every marker
+shown as you typed it and nothing styled, and again to come back. Chips,
+attachments and your cursor survive the switch. The same switch lives in
+Settings as the rich text composer option, and the shortcut can be changed
+under Settings → Keybindings.
 
 ## Attach files
 

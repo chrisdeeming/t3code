@@ -246,7 +246,6 @@ import {
 } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
 import { useDebouncedValue } from "~/state/queries";
-import { ComposerSourceToggle } from "./ComposerSourceToggle";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
@@ -2097,11 +2096,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const hasMultilinePrompt = prompt.includes("\n") || hasWrappedPrompt;
   const [isStashMenuOpen, setIsStashMenuOpen] = useState(false);
   const updateClientSettings = useUpdateClientSettings();
-  // Flipping the setting remounts the editor, which drops focus. The token
-  // tells the new instance that the user asked for this from the composer and
-  // wants the caret back; changing the same setting from Settings leaves it
-  // alone. Rich text is a client setting rather than composer state, so both
-  // entry points drive the same switch.
+  // Flipping the setting remounts the editor, which drops focus. The flag
+  // tells the new instance that the user asked for this from the composer's
+  // shortcut and wants the caret back; changing the same setting from
+  // Settings leaves it alone. Rich text is a client setting rather than
+  // composer state, so both entry points drive the same switch.
   const [pendingComposerFocusRestore, setPendingComposerFocusRestore] = useState(false);
   const toggleComposerRichText = useCallback(() => {
     setPendingComposerFocusRestore(true);
@@ -5184,6 +5183,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setIsStashMenuOpen(false);
   }, [prompt]);
 
+  // The composer's own way to flip rich text, so the caret comes back after
+  // the remount. The Settings panel flips the same setting without a restore.
+  useEffect(() => {
+    const handler = (event: globalThis.KeyboardEvent) => {
+      const command = resolveShortcutCommand(event, keybindings, {
+        context: {
+          terminalFocus: getTerminalFocusOwner() !== null,
+          terminalOpen,
+          modelPickerOpen: isComposerModelPickerOpen,
+        },
+      });
+      if (command !== "composer.toggleRichText") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (isCommandPaletteOpen()) return;
+      toggleComposerRichText();
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [isComposerModelPickerOpen, keybindings, terminalOpen, toggleComposerRichText]);
+
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
       const command = resolveShortcutCommand(event, keybindings, {
@@ -6970,10 +6990,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   }
                   className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                 >
-                  <ComposerSourceToggle
-                    richTextEnabled={settings.composerRichTextEnabled}
-                    onToggle={toggleComposerRichText}
-                  />
                   {showComposerAttachAction ? (
                     <>
                       <input

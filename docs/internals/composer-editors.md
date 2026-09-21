@@ -97,7 +97,7 @@ lines exit the block, which is the only way out of a fence at the end of a promp
 Highlighting is Shiki decorations over the editable text, per block and cached by
 content, so a keystroke re-tokenizes only the block that changed.
 
-The source toggle is not a second editor. It writes `composerRichTextEnabled`,
+The `composer.toggleRichText` shortcut is not a second editor. It writes `composerRichTextEnabled`,
 which remounts the same engine with the mark extensions off, so the draft and its
 chips survive the flip. The surface does not change font: plain mode is the same
 prose the user was already looking at, minus the styling.
@@ -105,8 +105,8 @@ prose the user was already looking at, minus the styling.
 The caret survives it too. A collapsed cursor means the same offset in both modes,
 because markers are literal characters in the stored value either way, so the
 remounted editor restores it from the stored cursor. Two traps sit in the way.
-The flip has to be signalled by the control that was clicked rather than derived
-from the setting: adjusting state during render makes React discard that render
+The flip has to be signalled by the shortcut handler rather than derived from
+the setting: adjusting state during render makes React discard that render
 pass including its children, so a flag computed that way never reaches the
 editor being mounted, and flipping the setting from Settings should not pull
 focus into the composer anyway. And `useEditor` returns null on its first render
