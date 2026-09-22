@@ -43,6 +43,7 @@ export function providersWithLimits(
 export type LimitPresentations = ReadonlyMap<
   EnvironmentId,
   {
+    readonly connection: { readonly phase: string };
     readonly entry: { readonly target: { readonly label: string } };
     readonly serverConfig: {
       readonly providers?: readonly ServerProvider[] | undefined;
@@ -154,6 +155,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
     });
   };
   for (const [environmentId, presentation] of presentations) {
+    if (presentation.connection.phase !== "connected") continue;
     const label = presentation.entry.target.label;
     for (const provider of providersWithLimits(presentation.serverConfig?.providers ?? [])) {
       if (!provider.usageLimits || limitsNotice(provider.usageLimits) !== null) continue;
@@ -180,6 +182,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
   // keeps the redeem target consistent with whichever snapshot wins.
   const labelEnvironment = presentations.size > 1;
   for (const [environmentId, presentation] of presentations) {
+    if (presentation.connection.phase !== "connected") continue;
     for (const source of presentation.serverConfig?.usageLimitSources ?? []) {
       const sourceLabel = labelEnvironment
         ? `${presentation.entry.target.label} · ${source.label}`
@@ -224,6 +227,7 @@ export function collectLimitNotices(presentations: LimitPresentations): readonly
     presentations.size > 1 ? `${environmentLabel} · ${subject}` : subject;
   const notices: string[] = [];
   for (const presentation of presentations.values()) {
+    if (presentation.connection.phase !== "connected") continue;
     const environmentLabel = presentation.entry.target.label;
     for (const provider of providersWithLimits(presentation.serverConfig?.providers ?? [])) {
       // An account that can never report (API key) is left out; one that

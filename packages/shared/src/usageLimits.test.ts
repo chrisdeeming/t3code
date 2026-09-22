@@ -146,7 +146,7 @@ describe("pools", () => {
     label: "hub",
     checkedAt,
   };
-  const laptop = { entry: { target: { label: "Laptop" } } };
+  const laptop = { connection: { phase: "connected" }, entry: { target: { label: "Laptop" } } };
 
   it("merges one account reported natively on two environments and by a hub into one entry", () => {
     const native = provider({
@@ -160,6 +160,7 @@ describe("pools", () => {
       [
         EnvironmentId.make("env-b"),
         {
+          connection: { phase: "connected" },
           entry: { target: { label: "Desktop" } },
           serverConfig: {
             providers: [
@@ -320,7 +321,11 @@ describe("pools", () => {
       [EnvironmentId.make("env-a"), { ...laptop, serverConfig: { providers: [stale] } }],
       [
         EnvironmentId.make("env-b"),
-        { entry: { target: { label: "Desktop" } }, serverConfig: { providers: [fresh] } },
+        {
+          connection: { phase: "connected" },
+          entry: { target: { label: "Desktop" } },
+          serverConfig: { providers: [fresh] },
+        },
       ],
     ]);
     const [account] = collectLimitAccounts(input);
@@ -461,7 +466,11 @@ describe("pools", () => {
       [EnvironmentId.make("env-a"), { ...laptop, serverConfig: { usageLimitSources: [hub] } }],
       [
         EnvironmentId.make("env-b"),
-        { entry: { target: { label: "Desktop" } }, serverConfig: { usageLimitSources: [hub] } },
+        {
+          connection: { phase: "connected" },
+          entry: { target: { label: "Desktop" } },
+          serverConfig: { usageLimitSources: [hub] },
+        },
       ],
     ]);
     const accounts = collectLimitAccounts(input);
@@ -694,7 +703,7 @@ describe("pooled account columns", () => {
 describe("collectLimitNotices", () => {
   const checkedAt = "2026-09-03T11:00:00.000Z";
   const claude = ProviderDriverKind.make("claudeAgent");
-  const laptop = { entry: { target: { label: "Laptop" } } };
+  const laptop = { connection: { phase: "connected" }, entry: { target: { label: "Laptop" } } };
   const hub = {
     id: UsageLimitSourceId.make("hub"),
     kind: "cliproxy" as const,
@@ -739,6 +748,7 @@ describe("collectLimitNotices", () => {
     ]);
 
     one.set(EnvironmentId.make("env-b"), {
+      connection: { phase: "connected" },
       entry: { target: { label: "Desktop" } },
       serverConfig: { providers: [], usageLimitSources: [] },
     });
@@ -778,10 +788,21 @@ describe("/usage-limits", () => {
     hubs: UsageLimitSourceSnapshots = sources,
   ): LimitPresentations {
     return new Map([
-      [threadEnv, { entry: { target: { label: "Thread host" } }, serverConfig: { providers } }],
+      [
+        threadEnv,
+        {
+          connection: { phase: "connected" },
+          entry: { target: { label: "Thread host" } },
+          serverConfig: { providers },
+        },
+      ],
       [
         hubEnv,
-        { entry: { target: { label: "Hub host" } }, serverConfig: { usageLimitSources: hubs } },
+        {
+          connection: { phase: "connected" },
+          entry: { target: { label: "Hub host" } },
+          serverConfig: { usageLimitSources: hubs },
+        },
       ],
     ]);
   }
@@ -803,6 +824,43 @@ describe("/usage-limits", () => {
     expect(
       collectProviderUsageLimits(selected.driver, presentations([unsupported], []), now),
     ).toBeNull();
+  });
+
+  it("excludes disconnected hosts and restores their quotas on reconnect", () => {
+    const all = presentations([selected]);
+    const disconnected: LimitPresentations = new Map(
+      [...all].map(([id, presentation]) => [
+        id,
+        { ...presentation, connection: { phase: "offline" } },
+      ]),
+    );
+    expect(collectLimitAccounts(disconnected)).toEqual([]);
+    expect(collectLimitNotices(disconnected)).toEqual([]);
+    expect(collectProviderUsageLimits(selected.driver, disconnected, now)).toBeNull();
+    expect(hasPooledProviderUsageLimits(selected.driver, disconnected)).toBe(false);
+
+    const reconnected = new Map(disconnected);
+    reconnected.set(hubEnv, all.get(hubEnv)!);
+    expect(hasPooledProviderUsageLimits(selected.driver, reconnected)).toBe(true);
+    expect(
+      collectProviderUsageLimits(selected.driver, reconnected, now)?.accounts.map(
+        (account) => account.id,
+      ),
+    ).toEqual(["hub:duplicate", "hub:oss"]);
+  });
+
+  it("does not offer the command for errors cached on an offline hub", () => {
+    const all = presentations([], [{ ...sources[0]!, accounts: [], error: "Hub unavailable" }]);
+    expect(hasPooledProviderUsageLimits(selected.driver, all)).toBe(true);
+    const offline: LimitPresentations = new Map(
+      [...all].map(([id, presentation]) => [
+        id,
+        { ...presentation, connection: { phase: "offline" } },
+      ]),
+    );
+    expect(collectLimitNotices(offline)).toEqual([]);
+    expect(collectProviderUsageLimits(selected.driver, offline, now)).toBeNull();
+    expect(hasPooledProviderUsageLimits(selected.driver, offline)).toBe(false);
   });
 
   it("finds remote Claude hub accounts for an API-key Claude thread", () => {
