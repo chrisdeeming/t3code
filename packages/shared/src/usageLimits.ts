@@ -474,7 +474,7 @@ export function isUsageLimitsCommand(prompt: string): boolean {
  * read keeps no accounts, so its error counts for every driver rather than
  * disappearing until the next successful refresh.
  */
-export function hasProviderUsageLimits(
+function hasProviderUsageLimits(
   driver: ServerProvider["driver"],
   providers: readonly ServerProvider[],
   sources: UsageLimitSourceSnapshots,
