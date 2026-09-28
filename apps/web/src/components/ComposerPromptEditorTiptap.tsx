@@ -1,5 +1,4 @@
 import { Extension, InputRule, Node, wrappingInputRule, type JSONContent } from "@tiptap/core";
-import { TaskList } from "@tiptap/extension-task-list";
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { type Node as ProseMirrorNode } from "@tiptap/pm/model";
@@ -53,6 +52,7 @@ import {
   collapsedToFlat,
   ComposerCodeExtension,
   ComposerTaskItemExtension,
+  ComposerTaskListExtension,
   flatToCollapsed,
   flatToMarkdown,
   flatToPm,
@@ -1033,7 +1033,7 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
                       },
                     }),
               ),
-              TaskList,
+              ComposerTaskListExtension,
               ComposerTaskItemExtension.extend({
                 addInputRules() {
                   return [

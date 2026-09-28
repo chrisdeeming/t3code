@@ -7,6 +7,7 @@ import { HorizontalRule } from "@tiptap/extension-horizontal-rule";
 import { mergeAttributes } from "@tiptap/core";
 import { BulletList, ListItem, OrderedList } from "@tiptap/extension-list";
 import { TaskItem } from "@tiptap/extension-task-item";
+import { TaskList } from "@tiptap/extension-task-list";
 
 import { splitPromptIntoComposerSegments } from "~/composer-editor-mentions";
 import { parseInlineMarkdown, RICH_TEXT_DELIMITERS, type RichTextMark } from "~/composer-rich-text";
@@ -60,6 +61,30 @@ export const ComposerCodeExtension = Code.extend({ excludes: "code" });
  * round-trips byte-identically. Checkbox case (`[X]`) normalizes to `[x]` —
  * the same fixed-point deal as `__bold__` becoming `**bold**`.
  */
+/**
+ * Tiptap's block extensions each bind a chord that turns the current block
+ * into their node (Mod-Shift-8 for a list, Mod-Alt-c for a fence, and so on).
+ * The composer does not offer them, and they are not harmless: run inside a
+ * quote they nest a block the quote serializer cannot write, and the text in
+ * it drops out of the stored draft. `keep` names the keys the composer does
+ * rely on, such as Backspace and the arrows at a block's edge; the rest go.
+ */
+function withoutBlockChords<Shortcuts extends Record<string, unknown>>(
+  shortcuts: Shortcuts | undefined,
+  drop: readonly string[],
+): Shortcuts {
+  return Object.fromEntries(
+    Object.entries(shortcuts ?? {}).filter(([key]) => !drop.includes(key)),
+  ) as Shortcuts;
+}
+
+/** Task lists come from `- [ ]` alone; Mod-Shift-9 would nest one in a quote. */
+export const ComposerTaskListExtension = TaskList.extend({
+  addKeyboardShortcuts() {
+    return withoutBlockChords(this.parent?.(), ["Mod-Shift-9"]);
+  },
+});
+
 export const ComposerTaskItemExtension = TaskItem.extend({
   addAttributes() {
     return {
@@ -92,6 +117,9 @@ export const ComposerCodeBlockExtension = CodeBlock.extend({
       fence: { default: "```" },
       close: { default: "\n```" },
     };
+  },
+  addKeyboardShortcuts() {
+    return withoutBlockChords(this.parent?.(), ["Mod-Alt-c"]);
   },
 });
 
@@ -131,7 +159,19 @@ const ComposerListItemExtension = ListItem.extend({
   },
 });
 
-export const ComposerListExtensions = [BulletList, OrderedList, ComposerListItemExtension];
+export const ComposerListExtensions = [
+  BulletList.extend({
+    addKeyboardShortcuts() {
+      return withoutBlockChords(this.parent?.(), ["Mod-Shift-8"]);
+    },
+  }),
+  OrderedList.extend({
+    addKeyboardShortcuts() {
+      return withoutBlockChords(this.parent?.(), ["Mod-Shift-7"]);
+    },
+  }),
+  ComposerListItemExtension,
+];
 
 /**
  * A quote keeps the exact `>` prefix its lines were written with, applied to
@@ -143,6 +183,9 @@ export const ComposerListExtensions = [BulletList, OrderedList, ComposerListItem
 const ComposerBlockquoteExtension = Blockquote.extend({
   addAttributes() {
     return { ...this.parent?.(), prefix: { default: "> " } };
+  },
+  addKeyboardShortcuts() {
+    return withoutBlockChords(this.parent?.(), ["Mod-Shift-b"]);
   },
 });
 
@@ -166,6 +209,10 @@ const ComposerHorizontalRuleExtension = HorizontalRule.extend({
 const ComposerHeadingExtension = Heading.extend({
   addAttributes() {
     return { ...this.parent?.(), space: { default: " " } };
+  },
+  // Its only shortcuts are the Mod-Alt-1…6 block chords.
+  addKeyboardShortcuts() {
+    return {};
   },
 });
 
