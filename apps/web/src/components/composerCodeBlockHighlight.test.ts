@@ -2,7 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { DiffThemeName } from "~/lib/diffRendering";
 
-import { tokenizeBlock } from "./composerCodeBlockHighlight";
+import {
+  MAX_HIGHLIGHTED_CODE_BLOCK_LENGTH,
+  shouldHighlightCodeBlock,
+  tokenizeBlock,
+} from "./composerCodeBlockHighlight";
 
 const THEME = "github-dark" as DiffThemeName;
 
@@ -60,5 +64,17 @@ describe("composer code block highlighting", () => {
     } as unknown as Parameters<typeof tokenizeBlock>[0];
 
     expect(tokenizeBlock(throwing, "const answer = 42", "nope", THEME)).toEqual([]);
+  });
+});
+
+describe("the highlighting size cap", () => {
+  // Each keystroke re-tokenizes the whole fence on the main thread; past a
+  // few hundred lines that stalls typing, so large fences stay plain.
+  it("highlights a fence up to the cap", () => {
+    expect(shouldHighlightCodeBlock("x".repeat(MAX_HIGHLIGHTED_CODE_BLOCK_LENGTH))).toBe(true);
+  });
+
+  it("leaves a fence past the cap plain", () => {
+    expect(shouldHighlightCodeBlock("x".repeat(MAX_HIGHLIGHTED_CODE_BLOCK_LENGTH + 1))).toBe(false);
   });
 });

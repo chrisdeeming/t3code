@@ -16,6 +16,19 @@ interface HighlightedBlock {
 const composerCodeBlockHighlightKey = new PluginKey<DecorationSet>("composerCodeBlockHighlight");
 
 const MAX_CACHED_BLOCKS = 64;
+
+/**
+ * Past this many characters a fence is left plain. Any edit changes a block's
+ * signature, so each keystroke re-tokenizes the whole block synchronously on
+ * the main thread: a few milliseconds for a couple of hundred lines, but ~80ms
+ * at a thousand, which stalls typing. 20k characters is roughly 400–500 lines
+ * of ordinary code; a fence that shrinks back under it is highlighted again.
+ */
+export const MAX_HIGHLIGHTED_CODE_BLOCK_LENGTH = 20_000;
+
+export function shouldHighlightCodeBlock(code: string): boolean {
+  return code.length <= MAX_HIGHLIGHTED_CODE_BLOCK_LENGTH;
+}
 /**
  * Bounded so a long session cannot grow the set without limit, but far above
  * the number of fences any composer prompt realistically holds. This set alone
@@ -119,7 +132,9 @@ export function composerCodeBlockHighlight(options: {
               if (!themeChanged && view.state.doc === scannedDoc) return;
               scannedDoc = view.state.doc;
               const pending = collectCodeBlocks(view.state).filter(
-                ({ node }) => !attempted.has(blockSignature(node, theme)),
+                ({ node }) =>
+                  shouldHighlightCodeBlock(node.textContent) &&
+                  !attempted.has(blockSignature(node, theme)),
               );
               if (pending.length === 0) {
                 // A theme switch keeps every signature but changes which one
@@ -213,6 +228,7 @@ function buildDecorations(
 ): DecorationSet {
   const decorations: Decoration[] = [];
   for (const { node, pos } of collectCodeBlocks(state)) {
+    if (!shouldHighlightCodeBlock(node.textContent)) continue;
     const highlighted = cache.get(blockSignature(node, theme));
     if (!highlighted) continue;
     // Token offsets index the block's text, which lines up with document
