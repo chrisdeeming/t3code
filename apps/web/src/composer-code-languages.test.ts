@@ -30,6 +30,11 @@ describe("withInfoStringLanguage", () => {
     ["js", "", ""],
     // ...but a bare `title=x` would read as the language, so it keeps `text`.
     ["js title=example", "", "text title=example"],
+    // Whitespace between the fence and the language is the user's formatting.
+    ["  js title=x", "python", "  python title=x"],
+    ["  js title=x", "", "  text title=x"],
+    [" js", "go", " go"],
+    ["  ", "go", "  go"],
   ])("sets %j to %j as %j", (info, language, expected) => {
     expect(withInfoStringLanguage(info, language)).toBe(expected);
   });

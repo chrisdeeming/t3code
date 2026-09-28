@@ -72,16 +72,18 @@ export function languageOfInfoString(info: string): string {
 }
 
 /**
- * Replaces the language and keeps everything after it. Plain text clears it,
- * unless something follows: a bare `title=x` would read as the language, so
- * that keeps `text` in front.
+ * Replaces the language and keeps everything around it: the whitespace the
+ * fence had before it and whatever follows it. Plain text clears it, unless
+ * something follows: a bare `title=x` would read as the language, so that
+ * keeps `text` in front.
  */
 export function withInfoStringLanguage(info: string, language: string): string {
-  const current = languageOfInfoString(info);
-  const start = info.indexOf(current);
-  const rest = current ? info.slice(start + current.length) : info.trimStart();
-  if (language) return `${language}${rest && !/^\s/.test(rest) ? ` ${rest}` : rest}`;
-  return rest.trim() ? `text${/^\s/.test(rest) ? rest : ` ${rest}`}` : "";
+  const leading = /^\s*/.exec(info)![0];
+  // The language is the first word, so what follows it is empty or starts
+  // with whitespace.
+  const rest = info.slice(leading.length + languageOfInfoString(info).length);
+  if (language) return `${leading}${language}${rest}`;
+  return rest.trim() ? `${leading}text${rest}` : "";
 }
 
 /** The canonical entry a language names, if the picker lists it. */
