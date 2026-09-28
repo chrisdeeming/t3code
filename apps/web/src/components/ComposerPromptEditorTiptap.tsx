@@ -64,6 +64,7 @@ import {
   COMPOSER_UNDO_GROUP_DELAY,
   type ComposerChangeKind,
   groupUndoByChangeKind,
+  markAsPaste,
 } from "~/composer-undo-grouping";
 import {
   convertCodeFenceOnEnter,
@@ -1351,7 +1352,9 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
           // build chips the code block's schema cannot hold anyway.
           if (isInCodeBlock(view)) {
             const { from, to } = view.state.selection;
-            view.dispatch(view.state.tr.insertText(pastedText, from, to).scrollIntoView());
+            view.dispatch(
+              markAsPaste(view.state.tr.insertText(pastedText, from, to)).scrollIntoView(),
+            );
             return true;
           }
           const importFragment = importFragmentRef.current;
@@ -1388,7 +1391,16 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
               skillLabelFor,
               { styling: richText && !nested },
               (content) => {
-                editorInstance.commands.insertContent(content);
+                // Tagged on the same transaction insertContent builds, so the
+                // paste is one undo step of its own.
+                editorInstance
+                  .chain()
+                  .command(({ tr }) => {
+                    markAsPaste(tr);
+                    return true;
+                  })
+                  .insertContent(content)
+                  .run();
               },
             );
             scrollTiptapCaretIntoView(editorInstance);

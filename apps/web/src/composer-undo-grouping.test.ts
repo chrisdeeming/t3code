@@ -8,6 +8,7 @@ import {
   COMPOSER_UNDO_GROUP_DELAY,
   type ComposerChangeKind,
   groupUndoByChangeKind,
+  markAsPaste,
 } from "./composer-undo-grouping";
 
 const schema = getSchema([StarterKit]);
@@ -51,9 +52,14 @@ function composer(text = "") {
       }
       return api;
     },
+    /**
+     * The transaction the composer's `handlePaste` dispatches: a plain insert,
+     * tagged by `markAsPaste`. ProseMirror's own paste path would tag it, but
+     * the composer takes every text paste before that path runs.
+     */
     paste: (s: string) => {
       clock += 80;
-      dispatch(state.tr.insertText(s).setMeta("uiEvent", "paste"));
+      dispatch(markAsPaste(state.tr.insertText(s)));
       return api;
     },
     /** A store-driven rewrite: autocomplete inserting a chip, list continuation. */
