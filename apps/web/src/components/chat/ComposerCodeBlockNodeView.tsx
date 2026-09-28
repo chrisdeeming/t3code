@@ -26,11 +26,11 @@ export function ComposerCodeBlockNodeView({ node }: NodeViewProps) {
       headerProps={{ contentEditable: false }}
     >
       <div className="chat-markdown-shiki">
-        <pre className="max-w-full overflow-x-auto px-[0.7rem] pt-1 pb-2">
+        <pre className="max-w-full overflow-x-auto px-3 pt-1 pb-2">
           {/* A caret needs a line to sit on even before any code is typed. */}
           <NodeViewContent<"code">
             as="code"
-            className="block min-h-[1lh] font-mono whitespace-pre-wrap [color:inherit] [font-size:var(--font-size-code,0.92em)] [overflow-wrap:anywhere]"
+            className="block min-h-[1lh] font-mono whitespace-pre-wrap text-inherit [overflow-wrap:anywhere]"
           />
         </pre>
       </div>
