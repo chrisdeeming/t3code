@@ -49,8 +49,8 @@ describe("KeybindingsSettings.logic", () => {
   );
   it("orders Usage bindings and command choices like the page", () => {
     const expected = [
-      "usage.cost",
       "usage.open",
+      "usage.cost",
       "usage.tokens",
       "usage.limits",
       "usage.period.day",
@@ -63,6 +63,16 @@ describe("KeybindingsSettings.logic", () => {
     expect(
       buildKeybindingCommandOptions(bindings).filter((command) => command.startsWith("usage.")),
     ).toEqual(expected);
+  });
+
+  it("orders Usage bindings the same whatever order the bindings arrive in", () => {
+    const rows = (bindings: typeof DEFAULT_RESOLVED_KEYBINDINGS) =>
+      buildKeybindingRows(bindings, "usage").map((row) => row.command);
+    const forward = rows(DEFAULT_RESOLVED_KEYBINDINGS);
+    expect(rows(DEFAULT_RESOLVED_KEYBINDINGS.toReversed())).toEqual(forward);
+    expect(
+      rows([...DEFAULT_RESOLVED_KEYBINDINGS.slice(1), DEFAULT_RESOLVED_KEYBINDINGS[0]!]),
+    ).toEqual(forward);
   });
 
   it("builds searchable rows with readable key and when values", () => {
