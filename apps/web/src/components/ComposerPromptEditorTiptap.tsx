@@ -1184,14 +1184,15 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
               view.dispatch(tr),
             );
           }
-          // A fence is multi-line by definition, so Enter belongs to the code
-          // rather than to sending: inside a block it makes a line, and on a
-          // line that is only an opening fence it opens the block. Sending
-          // from inside a fence is still Cmd/Ctrl+Enter, which falls through.
+          // A fence is multi-line by definition, so Enter and Shift+Enter
+          // belong to the code rather than to sending or splitting: inside a
+          // block they make a line (a generic split would cut the fence in
+          // two), and on a line that is only an opening fence they open the
+          // block. Sending from inside a fence is still Cmd/Ctrl+Enter, which
+          // falls through.
           if (
             event.key === "Enter" &&
             richText &&
-            !event.shiftKey &&
             !event.metaKey &&
             !event.ctrlKey &&
             !event.isComposing
