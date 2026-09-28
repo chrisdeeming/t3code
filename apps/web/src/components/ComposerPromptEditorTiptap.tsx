@@ -967,7 +967,15 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
               ComposerCodeExtension,
               ComposerCodeBlockExtension.extend({
                 addNodeView() {
-                  return ReactNodeViewRenderer(ComposerCodeBlockNodeView);
+                  return ReactNodeViewRenderer(ComposerCodeBlockNodeView, {
+                    // The header holds the language picker. Tiptap only shields
+                    // events aimed at the button element itself, so a click on
+                    // its icon or label would reach ProseMirror and move the
+                    // selection; keep every header event away from the editor.
+                    stopEvent: ({ event }) =>
+                      event.target instanceof Element &&
+                      event.target.closest(".chat-markdown-codeblock-header") !== null,
+                  });
                 },
                 // Tiptap's own ``` + space rule would open a fence inside a
                 // list item or quote, where the serializer has no line for

@@ -47,8 +47,8 @@ language, then press Enter or Space. Inside a fence:
 - **Tab** and **Shift+Tab** indent and outdent the lines your selection touches.
 - Two blank lines at the end leave the block and return to prose.
 
-Code is syntax highlighted using your current theme, and the language you
-declared is named in the corner of the block.
+Code is syntax highlighted using your current theme. The block's language is
+shown in its corner; choose it to switch to another language, or to plain text.
 
 Press `mod+/` to switch the composer to literal Markdown, with every marker
 shown as you typed it and nothing styled, and again to come back. Chips,

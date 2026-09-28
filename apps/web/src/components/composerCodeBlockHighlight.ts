@@ -4,6 +4,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 
 import type { DiffThemeName } from "~/lib/diffRendering";
+import { languageOfInfoString } from "~/composer-code-languages";
 import { getSyntaxHighlighterPromise } from "~/lib/syntaxHighlighting";
 
 interface HighlightedBlock {
@@ -131,8 +132,10 @@ export function composerCodeBlockHighlight(options: {
 
               void Promise.all(
                 pending.map(async ({ node }) => {
-                  // The stored info string keeps its whitespace; Shiki wants the name.
-                  const language = String(node.attrs.language ?? "").trim() || "text";
+                  // The stored info string keeps everything after the language
+                  // (`js title=x`); Shiki wants only the name.
+                  const language =
+                    languageOfInfoString(String(node.attrs.language ?? "")) || "text";
                   const signature = blockSignature(node, theme);
                   const highlighter = await getSyntaxHighlighterPromise(language);
                   if (disposed) return;

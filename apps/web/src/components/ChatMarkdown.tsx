@@ -910,6 +910,7 @@ export function MarkdownCodeBlockFrame({
   fenceTitle,
   theme,
   wrapped = true,
+  title,
   actions,
   headerProps,
   children,
@@ -919,6 +920,8 @@ export function MarkdownCodeBlockFrame({
   fenceTitle: string | null;
   theme: "light" | "dark";
   wrapped?: boolean;
+  /** Replaces the language title, as the composer does with its language picker. */
+  title?: React.ReactNode;
   actions?: React.ReactNode;
   headerProps?: React.HTMLAttributes<HTMLDivElement>;
   children: React.ReactNode;
@@ -936,13 +939,15 @@ export function MarkdownCodeBlockFrame({
           headerProps?.className,
         )}
       >
-        <span className="inline-flex min-w-0 items-center gap-1.5 font-mono text-2xs">
-          <MarkdownCodeBlockTitleContent
-            fenceTitle={fenceTitle}
-            language={language}
-            theme={theme}
-          />
-        </span>
+        {title ?? (
+          <span className="inline-flex min-w-0 items-center gap-1.5 font-mono text-2xs">
+            <MarkdownCodeBlockTitleContent
+              fenceTitle={fenceTitle}
+              language={language}
+              theme={theme}
+            />
+          </span>
+        )}
         {actions}
       </div>
       {children}
