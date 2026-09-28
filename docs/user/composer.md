@@ -14,47 +14,23 @@ to keep a large paste editable in the composer instead.
 
 ## Formatting
 
-The composer writes Markdown and shows it styled as you type. Bold, italic,
-strikethrough and inline code are marked up as usual; the markers stay in the
-text and appear beside the styled words when your cursor is on them, so nothing
-you typed is ever hidden from you. Task lists come from `- [ ]` and get
-checkboxes you can click.
+The composer writes Markdown and shows it styled as you type. Markers such as
+`**` stay in the text and show beside the styled words when your cursor is on
+them. Lines starting with `- `, `1. `, `- [ ] `, `> `, `# ` or `---` become lists,
+task lists, quotes, headings and rules; ` ``` ` followed by Enter opens a code
+block. What you typed is what the agent receives, markers and numbering
+included, and `#1234` without a space still looks up a pull request.
 
-Lists render as lists: `- `, `* ` or `+ ` starts a bulleted item and `1. ` or
-`1) ` a numbered one. Inside an item, **Shift+Enter** continues the list (a
-numbered list counts up), Shift+Enter on an empty item leaves the list, and
-**Tab** nests the item. Enter still sends. `- [ ] ` and `- [x] ` make task
-items, and `[ ] ` at the start of an existing bulleted item turns it into
-one. The list is stored exactly as you wrote it: the marker you typed and the
-numbers you used are what the agent receives.
+Enter sends. In a list or quote, **Shift+Enter** continues it, and Shift+Enter
+on an empty line leaves it; **Tab** nests a list item. In a code block, Enter
+starts a new line at the current indentation, **Tab** and **Shift+Tab** indent
+the selected lines, and two blank lines at the end leave the block. Choose the
+language in a code block's corner to change it. Very large code blocks are
+shown without syntax highlighting.
 
-`> ` at the start of a line opens a quote. Each line inside it is quoted, so
-Shift+Enter continues the quote and Shift+Enter on an empty line leaves it.
-Quotes hold prose: list markers and further `>` marks inside one stay literal.
-
-Three dashes on their own line become a horizontal rule as you type them;
-`***` or `___` followed by a space do the same. The rule is stored as the
-characters you typed.
-
-`# ` through `###### ` at the start of a line make a heading; the space after
-the hashes is what makes it one, so `#1234` still looks up a pull request.
-Shift+Enter after a heading starts an ordinary line.
-
-Start a fenced code block with three backticks, optionally followed by a
-language, then press Enter or Space. Inside a fence:
-
-- **Enter** starts a new line at the current indentation.
-- **Tab** and **Shift+Tab** indent and outdent the lines your selection touches.
-- Two blank lines at the end leave the block and return to prose.
-
-Code is syntax highlighted using your current theme. The block's language is
-shown in its corner; choose it to switch to another language, or to plain text.
-
-Press `mod+/` to switch the composer to literal Markdown, with every marker
-shown as you typed it and nothing styled, and again to come back. Chips,
-attachments and your cursor survive the switch. The same switch lives in
-Settings as the rich text composer option, and the shortcut can be changed
-under Settings → Keybindings.
+Press `mod+/` to switch between rich text and literal Markdown. Your cursor and
+chips survive the switch. The same option is in Settings, and the shortcut can
+be changed under Settings → Keybindings.
 
 ## Attach files
 
