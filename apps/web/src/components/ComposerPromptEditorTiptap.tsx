@@ -61,6 +61,11 @@ import {
   type SkillMeta,
 } from "~/composer-rich-text-doc";
 import {
+  COMPOSER_UNDO_GROUP_DELAY,
+  type ComposerChangeKind,
+  groupUndoByChangeKind,
+} from "~/composer-undo-grouping";
+import {
   convertCodeFenceOnEnter,
   indentCodeBlock,
   indentedNewlineInCodeBlock,
@@ -670,6 +675,26 @@ const headingInputRule = new InputRule({
   },
 });
 
+/**
+ * Starts a new undo step when the kind of change switches (typing, deleting,
+ * a paste or a store rewrite), the way the Lexical composer grouped undo.
+ * Runs as dispatch middleware because the grouping has to be decided before
+ * the history plugin applies the transaction.
+ */
+const ComposerUndoGroupingExtension = Extension.create<
+  Record<string, never>,
+  { previous: ComposerChangeKind | null }
+>({
+  name: "composer-undo-grouping",
+  addStorage() {
+    return { previous: null };
+  },
+  dispatchTransaction({ transaction, next }) {
+    this.storage.previous = groupUndoByChangeKind(transaction, this.storage.previous);
+    next(transaction);
+  },
+});
+
 /** Whether the caret sits inside a fenced code block. */
 function isInCodeBlock(view: EditorView): boolean {
   return view.state.selection.$from.parent.type.spec.code === true;
@@ -954,9 +979,11 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
           gapcursor: false,
           trailingNode: false,
           code: false,
+          undoRedo: { newGroupDelay: COMPOSER_UNDO_GROUP_DELAY },
           // Plain mode has no marks: typed markers stay literal characters.
           ...(richText ? {} : { bold: false, italic: false, strike: false }),
         }),
+        ComposerUndoGroupingExtension,
         ComposerMentionExtension,
         ComposerSkillExtension,
         ComposerCitationExtension,
