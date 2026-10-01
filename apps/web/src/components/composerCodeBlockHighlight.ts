@@ -59,6 +59,9 @@ export function composerCodeBlockHighlight(options: {
       // drops the signatures the document no longer holds. The cache is then
       // bounded by the document itself, and no block it holds is ever evicted.
       const cache = new Map<string, HighlightedBlock>();
+      // The latest scan's signatures, so a tokenize that resolves after its
+      // block was edited away does not put it back.
+      let live = new Set<string>();
 
       return [
         new Plugin<DecorationSet>({
@@ -99,9 +102,9 @@ export function composerCodeBlockHighlight(options: {
               if (!themeChanged && view.state.doc === scannedDoc) return;
               scannedDoc = view.state.doc;
               const blocks = collectCodeBlocks(view.state);
-              const current = new Set(blocks.map(({ node }) => blockSignature(node, theme)));
+              live = new Set(blocks.map(({ node }) => blockSignature(node, theme)));
               for (const signature of cache.keys()) {
-                if (!current.has(signature)) cache.delete(signature);
+                if (!live.has(signature)) cache.delete(signature);
               }
               const pending = blocks.filter(
                 ({ node }) =>
@@ -125,7 +128,7 @@ export function composerCodeBlockHighlight(options: {
                     languageOfInfoString(String(node.attrs.language ?? "")) || "text";
                   const signature = blockSignature(node, theme);
                   const highlighter = await getSyntaxHighlighterPromise(language);
-                  if (disposed || cache.has(signature)) return;
+                  if (disposed || cache.has(signature) || !live.has(signature)) return;
                   cache.set(signature, {
                     signature,
                     decorations: tokenizeBlock(highlighter, node.textContent, language, theme),
