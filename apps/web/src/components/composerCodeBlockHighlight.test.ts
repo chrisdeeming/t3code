@@ -19,7 +19,7 @@ function fakeHighlighter(colorFor: (content: string) => string | undefined) {
   return {
     codeToTokens(code: string) {
       return {
-        tokens: code.split("\n").map((line) =>
+        tokens: code.split(/\r?\n/).map((line) =>
           line
             .split(/(\s+)/)
             .filter((part) => part.length > 0)
@@ -46,6 +46,14 @@ describe("composer code block highlighting", () => {
 
     // "one" is 3 characters, then the newline, so "two" starts at 4.
     expect(decorations).toEqual([{ from: 4, to: 7, color: "#00ff00" }]);
+  });
+
+  it("accounts for both characters of a CRLF line break", () => {
+    const highlighter = fakeHighlighter((content) => (content === "two" ? "#00ff00" : undefined));
+
+    const decorations = tokenizeBlock(highlighter, "one\r\ntwo", "ts", THEME);
+
+    expect(decorations).toEqual([{ from: 5, to: 8, color: "#00ff00" }]);
   });
 
   it("skips whitespace-only tokens so indentation is not decorated", () => {

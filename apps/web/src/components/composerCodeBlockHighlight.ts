@@ -15,8 +15,6 @@ interface HighlightedBlock {
 
 const composerCodeBlockHighlightKey = new PluginKey<DecorationSet>("composerCodeBlockHighlight");
 
-const MAX_CACHED_BLOCKS = 64;
-
 /**
  * Past this many characters a fence is left plain. Any edit changes a block's
  * signature, so each keystroke re-tokenizes the whole block synchronously on
@@ -29,14 +27,6 @@ export const MAX_HIGHLIGHTED_CODE_BLOCK_LENGTH = 20_000;
 export function shouldHighlightCodeBlock(code: string): boolean {
   return code.length <= MAX_HIGHLIGHTED_CODE_BLOCK_LENGTH;
 }
-/**
- * Bounded so a long session cannot grow the set without limit, but far above
- * the number of fences any composer prompt realistically holds. This set alone
- * only raises the threshold at which repeated eviction would keep work looking
- * pending; the unconditional loop breaker is the `scannedDoc` check below.
- */
-const MAX_ATTEMPTED_SIGNATURES = 2048;
-
 function blockSignature(node: ProseMirrorNode, theme: DiffThemeName): string {
   // A separator that cannot occur in a language name keeps the parts distinct.
   return [theme, String(node.attrs.language ?? ""), node.textContent].join("\u0000");
@@ -65,33 +55,10 @@ export function composerCodeBlockHighlight(options: {
     name: "composerCodeBlockHighlight",
 
     addProseMirrorPlugins() {
-      // Every keystroke in a code block mints a new signature, so the cache is
-      // bounded and evicts oldest-first rather than growing with the session.
+      // Every keystroke in a code block mints a new signature, so each scan
+      // drops the signatures the document no longer holds. The cache is then
+      // bounded by the document itself, and no block it holds is ever evicted.
       const cache = new Map<string, HighlightedBlock>();
-      // Which signatures have been tokenized, whether or not their decorations
-      // survived eviction. Without this, a document with more blocks than the
-      // cache holds would always report work as pending: each pass would evict
-      // the entries the previous pass added, and the repaint would never settle.
-      const attempted = new Set<string>();
-      const rememberAttempt = (signature: string) => {
-        attempted.add(signature);
-        // Generous next to the decoration cache so a large document still
-        // settles, but bounded so a long editing session cannot grow it without
-        // limit. Eviction here can only cost a re-tokenize, never a loop.
-        while (attempted.size > MAX_ATTEMPTED_SIGNATURES) {
-          const oldest = attempted.values().next();
-          if (oldest.done) break;
-          attempted.delete(oldest.value);
-        }
-      };
-      const remember = (signature: string, block: HighlightedBlock) => {
-        cache.set(signature, block);
-        while (cache.size > MAX_CACHED_BLOCKS) {
-          const oldest = cache.keys().next();
-          if (oldest.done) break;
-          cache.delete(oldest.value);
-        }
-      };
 
       return [
         new Plugin<DecorationSet>({
@@ -131,10 +98,15 @@ export function composerCodeBlockHighlight(options: {
               // building a signature means concatenating every block's text.
               if (!themeChanged && view.state.doc === scannedDoc) return;
               scannedDoc = view.state.doc;
-              const pending = collectCodeBlocks(view.state).filter(
+              const blocks = collectCodeBlocks(view.state);
+              const current = new Set(blocks.map(({ node }) => blockSignature(node, theme)));
+              for (const signature of cache.keys()) {
+                if (!current.has(signature)) cache.delete(signature);
+              }
+              const pending = blocks.filter(
                 ({ node }) =>
                   shouldHighlightCodeBlock(node.textContent) &&
-                  !attempted.has(blockSignature(node, theme)),
+                  !cache.has(blockSignature(node, theme)),
               );
               if (pending.length === 0) {
                 // A theme switch keeps every signature but changes which one
@@ -153,10 +125,8 @@ export function composerCodeBlockHighlight(options: {
                     languageOfInfoString(String(node.attrs.language ?? "")) || "text";
                   const signature = blockSignature(node, theme);
                   const highlighter = await getSyntaxHighlighterPromise(language);
-                  if (disposed) return;
-                  rememberAttempt(signature);
-                  if (cache.has(signature)) return;
-                  remember(signature, {
+                  if (disposed || cache.has(signature)) return;
+                  cache.set(signature, {
                     signature,
                     decorations: tokenizeBlock(highlighter, node.textContent, language, theme),
                   });
@@ -209,7 +179,8 @@ export function tokenizeBlock(
   const decorations: Array<{ from: number; to: number; color: string }> = [];
   let offset = 0;
   for (const [lineIndex, line] of tokens.entries()) {
-    if (lineIndex > 0) offset += 1; // the newline between lines
+    // The separator between lines, which Shiki drops; CRLF is two characters.
+    if (lineIndex > 0) offset += code.startsWith("\r\n", offset) ? 2 : 1;
     for (const token of line) {
       const length = token.content.length;
       if (token.color && token.content.trim()) {
