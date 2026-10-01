@@ -60,7 +60,7 @@ import {
   COMPOSER_UNDO_GROUP_DELAY,
   type ComposerChangeKind,
   groupUndoByChangeKind,
-  markAsPaste,
+  markAsClipboardEdit,
 } from "~/composer-undo-grouping";
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
 import { cn, isMacPlatform } from "~/lib/utils";
@@ -1081,7 +1081,7 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
               editorInstance
                 .chain()
                 .command(({ tr }) => {
-                  markAsPaste(tr);
+                  markAsClipboardEdit(tr, "paste");
                   return true;
                 })
                 .insertContent(content)
@@ -1346,7 +1346,15 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
         clipboardData.setData("text/html", encodeComposerContextClipboardHtml(text, fragment));
       }
       if (cut) {
-        editor.chain().focus().deleteSelection().run();
+        editor
+          .chain()
+          .focus()
+          .command(({ tr }) => {
+            markAsClipboardEdit(tr, "cut");
+            return true;
+          })
+          .deleteSelection()
+          .run();
       }
     },
     [editor],

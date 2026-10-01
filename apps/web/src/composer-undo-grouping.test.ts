@@ -8,7 +8,7 @@ import {
   COMPOSER_UNDO_GROUP_DELAY,
   type ComposerChangeKind,
   groupUndoByChangeKind,
-  markAsPaste,
+  markAsClipboardEdit,
 } from "./composer-undo-grouping";
 
 const schema = getSchema([StarterKit]);
@@ -54,12 +54,19 @@ function composer(text = "") {
     },
     /**
      * The transaction the composer's `handlePaste` dispatches: a plain insert,
-     * tagged by `markAsPaste`. ProseMirror's own paste path would tag it, but
-     * the composer takes every text paste before that path runs.
+     * tagged by `markAsClipboardEdit`. ProseMirror's own paste path would tag
+     * it, but the composer takes every text paste before that path runs.
      */
     paste: (s: string) => {
       clock += 80;
-      dispatch(markAsPaste(state.tr.insertText(s)));
+      dispatch(markAsClipboardEdit(state.tr.insertText(s), "paste"));
+      return api;
+    },
+    /** The composer's cut handler: a plain delete of the selection, tagged. */
+    cut: (n: number) => {
+      clock += 80;
+      const at = state.selection.from;
+      dispatch(markAsClipboardEdit(state.tr.delete(at - n, at), "cut"));
       return api;
     },
     /** A store-driven rewrite: autocomplete inserting a chip, list continuation. */
@@ -115,6 +122,14 @@ describe("composer undo grouping", () => {
     const editor = composer().type("see ").paste("pasted text").type(" ok");
     expect(editor.undo().text()).toBe("see pasted text");
     expect(editor.undo().text()).toBe("see ");
+  });
+
+  it("gives a cut its own step between deletions", () => {
+    const editor = composer().type("hello world").backspace(1).cut(3).backspace(1);
+    expect(editor.text()).toBe("hello ");
+    expect(editor.undo().text()).toBe("hello w");
+    expect(editor.undo().text()).toBe("hello worl");
+    expect(editor.undo().text()).toBe("hello world");
   });
 
   it("keeps IME composition as one run of typing", () => {

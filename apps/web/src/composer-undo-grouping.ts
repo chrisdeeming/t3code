@@ -17,13 +17,14 @@ export const COMPOSER_UNDO_GROUP_DELAY = 1000;
 export type ComposerChangeKind = "insert" | "delete" | "other";
 
 /**
- * Tags a transaction as a paste, so it becomes its own undo step. ProseMirror
- * tags pastes itself only on its built-in paste path; the composer's
- * `handlePaste` takes every text paste before that path runs, so each of its
- * dispatches must call this, or the paste merges with the typing around it.
+ * Tags a transaction as a paste or cut, so it becomes its own undo step.
+ * ProseMirror tags these itself only on its built-in clipboard paths; the
+ * composer's `handlePaste` and cut handler replace those paths, so each of
+ * their dispatches must call this, or the change merges with the typing or
+ * deleting around it.
  */
-export function markAsPaste(tr: Transaction): Transaction {
-  return tr.setMeta("uiEvent", "paste");
+export function markAsClipboardEdit(tr: Transaction, event: "paste" | "cut"): Transaction {
+  return tr.setMeta("uiEvent", event);
 }
 
 function changeKindOf(tr: Transaction): ComposerChangeKind | null {
