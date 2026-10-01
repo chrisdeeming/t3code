@@ -57,7 +57,6 @@ describe("KeybindingsSettings.logic", () => {
       "usage.period.week",
       "usage.period.month",
       "usage.period.quarter",
-      "usage.open",
     ];
     const bindings = DEFAULT_RESOLVED_KEYBINDINGS.toReversed();
     expect(buildKeybindingRows(bindings, "usage").map((row) => row.command)).toEqual(expected);
