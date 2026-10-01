@@ -983,7 +983,10 @@ import {
 } from "@t3tools/client-runtime/providerSkills";
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useDelayedStatus } from "../../hooks/useDelayedStatus";
-import { useUpdateClientSettings } from "../../hooks/useSettings";
+import { useClientSettingsHydrated, useUpdateClientSettings } from "../../hooks/useSettings";
+import { isElectron } from "../../env";
+import { isEditableFocused } from "../../lib/editableFocus";
+import { isPreviewFocused } from "../../lib/previewFocus";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { usePanelAnimationSettings } from "../../panelAnimations";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -2142,6 +2145,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const hasMultilinePrompt = prompt.includes("\n") || hasWrappedPrompt;
   const [isStashMenuOpen, setIsStashMenuOpen] = useState(false);
   const updateClientSettings = useUpdateClientSettings();
+  const clientSettingsHydrated = useClientSettingsHydrated();
   // Flipping the setting remounts the editor, which drops focus. The flag
   // tells the new instance that the user asked for this from the composer's
   // shortcut and wants the caret back; changing the same setting from
@@ -2149,9 +2153,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // composer state, so both entry points drive the same switch.
   const [pendingComposerFocusRestore, setPendingComposerFocusRestore] = useState(false);
   const toggleComposerRichText = useCallback(() => {
+    // Before hydration the setting reads as its default, so flipping it could
+    // write the value the user already has and leave the restore armed.
+    if (!clientSettingsHydrated) return;
     setPendingComposerFocusRestore(true);
     void updateClientSettings({ composerRichTextEnabled: !settings.composerRichTextEnabled });
-  }, [settings.composerRichTextEnabled, updateClientSettings]);
+  }, [clientSettingsHydrated, settings.composerRichTextEnabled, updateClientSettings]);
   const [isTasksDrawerOpen, setIsTasksDrawerOpen] = useState(false);
   const [stashPulse, setStashPulse] = useState<{ key: number; active: boolean }>({
     key: 0,
@@ -5237,7 +5244,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         context: {
           terminalFocus: getTerminalFocusOwner() !== null,
           terminalOpen,
+          previewFocus: isPreviewFocused(),
+          editableFocus: isEditableFocused(event.target),
           modelPickerOpen: isComposerModelPickerOpen,
+          isWeb: !isElectron,
+          isDesktop: isElectron,
         },
       });
       if (command !== "composer.toggleRichText") return;
