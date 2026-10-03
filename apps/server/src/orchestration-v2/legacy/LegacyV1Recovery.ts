@@ -285,7 +285,7 @@ const recoverSnapshot = Effect.fn("LegacyV1Recovery.recoverSnapshot")(function* 
     const sourceProject = projects.find((candidate) => candidate.project_id === row.project_id);
     if (!sourceProject)
       return yield* new LegacyV1RecoveryError({
-        operation: `missing source project for ${row.thread_id}`,
+        operation: "missing source project",
       });
     if (project?.deleted_at !== null && project !== undefined) {
       warnings.add(`Skipped thread ${row.thread_id}: its v2 project is deleted.`);
@@ -293,7 +293,7 @@ const recoverSnapshot = Effect.fn("LegacyV1Recovery.recoverSnapshot")(function* 
     }
     if (project && project.workspace_root !== sourceProject.workspace_root) {
       return yield* new LegacyV1RecoveryError({
-        operation: `project identity collision for ${row.project_id}`,
+        operation: "project identity collision",
       });
     }
     const conflict =
@@ -306,7 +306,7 @@ const recoverSnapshot = Effect.fn("LegacyV1Recovery.recoverSnapshot")(function* 
     const targetThreadId = action === "copy" ? `recovery-v1-${key}` : row.thread_id;
     if (action === "copy" && targetThreadMap.has(targetThreadId)) {
       return yield* new LegacyV1RecoveryError({
-        operation: `recovered thread identity collision for ${row.thread_id}`,
+        operation: "recovered thread identity collision",
       });
     }
     const selected = action === "append" ? missing : sourceMessages;
@@ -341,7 +341,7 @@ const recoverSnapshot = Effect.fn("LegacyV1Recovery.recoverSnapshot")(function* 
   for (const project of newProjects) {
     if (project.deleted_at !== null)
       return yield* new LegacyV1RecoveryError({
-        operation: `source project ${project.project_id} is deleted`,
+        operation: "source project is deleted",
       });
     if (
       targetProjects.some(
@@ -349,7 +349,7 @@ const recoverSnapshot = Effect.fn("LegacyV1Recovery.recoverSnapshot")(function* 
       )
     ) {
       return yield* new LegacyV1RecoveryError({
-        operation: `workspace already belongs to a different V2 project: ${project.workspace_root}`,
+        operation: "workspace already belongs to a different V2 project",
       });
     }
   }
