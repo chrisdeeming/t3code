@@ -189,8 +189,7 @@ const recoverSnapshot = Effect.fn("LegacyV1Recovery.recoverSnapshot")(function* 
     SELECT DISTINCT stream_id FROM orchestration_events
     WHERE application_event_version = 2 AND aggregate_kind = 'thread'
       AND event_id NOT LIKE 'migration:v1:%' AND event_id NOT LIKE 'recovery:v1:%'
-      AND event_type NOT IN ('thread.metadata-updated', 'thread.settled', 'thread.unsettled',
-        'thread.pull-request-synced', 'thread.visited', 'thread.archived', 'thread.unarchived')
+      AND (event_type IN ('message.updated', 'turn-item.updated') OR event_type LIKE 'run.%')
   `).map((row) => row.stream_id),
   );
   const messages = yield* sql<LegacyImport.LegacyMessageRow>`
@@ -227,13 +226,20 @@ const recoverSnapshot = Effect.fn("LegacyV1Recovery.recoverSnapshot")(function* 
   const ledgerExists = yield* sql`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'orchestration_v2_v1_recoveries'
   `;
-  const recovered = new Set(
+  const recoveries =
     ledgerExists.length === 0
       ? []
-      : (yield* sql<{ recovery_key: string }>`
-    SELECT recovery_key FROM orchestration_v2_v1_recoveries
-  `).map((row) => row.recovery_key),
-  );
+      : yield* sql<{ recovery_key: string; source_thread_id: string; target_thread_id: string }>`
+    SELECT recovery_key, source_thread_id, target_thread_id FROM orchestration_v2_v1_recoveries
+    ORDER BY recovered_at DESC
+  `;
+  const recovered = new Set(recoveries.map((row) => row.recovery_key));
+  const messagesByTarget = new Map<string, LegacyImport.LegacyMessageRow[]>();
+  for (const message of targetMessages) {
+    const list = messagesByTarget.get(message.thread_id) ?? [];
+    list.push(message);
+    messagesByTarget.set(message.thread_id, list);
+  }
   const excluded = yield* sql<{ role: string; count: number }>`
     SELECT role, COUNT(*) AS count FROM recovery_v1.projection_thread_messages
     WHERE role NOT IN ('user', 'assistant') GROUP BY role
@@ -302,14 +308,54 @@ const recoverSnapshot = Effect.fn("LegacyV1Recovery.recoverSnapshot")(function* 
         (target.deleted_at !== null ||
           target.created_at !== row.created_at ||
           nativeConversationThreads.has(row.thread_id)));
-    const action = conflict ? "copy" : target === undefined ? "import" : "append";
-    const targetThreadId = action === "copy" ? `recovery-v1-${key}` : row.thread_id;
+    let action: RecoveryThread["action"] = conflict
+      ? "copy"
+      : target === undefined
+        ? "import"
+        : "append";
+    let targetThreadId = action === "copy" ? `recovery-v1-${key}` : row.thread_id;
+    let selected = action === "append" ? missing : sourceMessages;
+    if (conflict) {
+      // Reuse an earlier copy only while every recovered message still matches Stable.
+      // Native continuations, edits and deletions keep that copy independent.
+      for (const prior of recoveries) {
+        if (prior.source_thread_id !== row.thread_id || prior.target_thread_id === row.thread_id)
+          continue;
+        const copy = targetThreadMap.get(prior.target_thread_id);
+        if (
+          !copy ||
+          copy.deleted_at !== null ||
+          copy.created_at !== row.created_at ||
+          nativeConversationThreads.has(copy.thread_id)
+        )
+          continue;
+        const prefix = `recovery:v1:message:${copy.thread_id.slice("recovery-v1-".length)}:`;
+        const mapped = sourceMessages.map((message) => ({
+          ...message,
+          thread_id: copy.thread_id,
+          message_id: `${prefix}${message.message_id}`,
+        }));
+        const sourceDigests = new Map(
+          mapped.map((message) => [message.message_id, messageDigest(message)]),
+        );
+        if (
+          !(messagesByTarget.get(copy.thread_id) ?? []).every(
+            (message) => sourceDigests.get(message.message_id) === messageDigest(message),
+          )
+        )
+          continue;
+        action = "append";
+        targetThreadId = copy.thread_id;
+        selected = mapped.filter((message) => !current.has(message.message_id));
+        break;
+      }
+    }
+    if (action === "append" && selected.length === 0) continue;
     if (action === "copy" && targetThreadMap.has(targetThreadId)) {
       return yield* new LegacyV1RecoveryError({
         operation: "recovered thread identity collision",
       });
     }
-    const selected = action === "append" ? missing : sourceMessages;
     for (const message of selected) {
       // The legacy converter tolerates invalid attachment JSON; recovery must not silently drop it.
       yield* decodeAttachments(message.attachments_json ?? "[]");
@@ -449,7 +495,7 @@ const recoverSnapshot = Effect.fn("LegacyV1Recovery.recoverSnapshot")(function* 
         const threadId = ThreadId.make(operation.report.targetThreadId);
         const thread =
           operation.report.action === "append"
-            ? yield* decodeThread(targetThreadMap.get(row.thread_id)!.payload_json)
+            ? yield* decodeThread(targetThreadMap.get(threadId)!.payload_json)
             : LegacyImport.importedThread(row);
         const imported = {
           ...thread,
@@ -482,6 +528,10 @@ const recoverSnapshot = Effect.fn("LegacyV1Recovery.recoverSnapshot")(function* 
             ],
           });
         }
+        let nextOrdinal = (yield* sql<{ ordinal: number }>`
+          SELECT COALESCE(MAX(ordinal), 0) AS ordinal FROM orchestration_v2_turn_item_positions
+          WHERE thread_id = ${threadId}
+        `)[0]!.ordinal;
         for (let offset = 0; offset < operation.messages.length; offset += 50) {
           const batch = operation.messages.slice(offset, offset + 50);
           const events: OrchestrationV2DomainEvent[] = [];
@@ -494,11 +544,14 @@ const recoverSnapshot = Effect.fn("LegacyV1Recovery.recoverSnapshot")(function* 
                     message_id: `recovery:v1:message:${key}:${message.message_id}`,
                   }
                 : message;
+            // Append after existing positions even if Stable's timestamps sort earlier.
+            // Persist the same ordinal in the event so projection rebuilds retain it.
+            const positioned = { ...copied, ordinal: ++nextOrdinal };
             // Keep importer IDs so pending hydration cannot duplicate these messages.
-            const converted = LegacyImport.messageEvents(copied);
+            const converted = LegacyImport.messageEvents(positioned);
             for (const event of converted) events.push(event);
             yield* sql`INSERT INTO orchestration_v2_turn_item_positions (thread_id, turn_item_id, ordinal)
-            VALUES (${threadId}, ${`migration:v1:turn-item:${copied.message_id}`}, ${copied.ordinal})
+            VALUES (${threadId}, ${`migration:v1:turn-item:${positioned.message_id}`}, ${positioned.ordinal})
             ON CONFLICT(thread_id, turn_item_id) DO NOTHING`;
           }
           yield* sink.write({ events });
@@ -517,7 +570,7 @@ const recoverSnapshot = Effect.fn("LegacyV1Recovery.recoverSnapshot")(function* 
             },
           ],
         });
-        if (operation.report.action === "append") {
+        if (operation.report.action === "append" && threadId === row.thread_id) {
           yield* sql`UPDATE orchestration_v2_legacy_imports SET transcript_imported_at = ${now},
           imported_message_count = ${(sourceByThread.get(row.thread_id) ?? []).length},
           last_error = NULL WHERE thread_id = ${threadId}`;

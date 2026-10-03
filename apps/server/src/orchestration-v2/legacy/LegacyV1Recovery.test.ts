@@ -247,6 +247,100 @@ it.effect(
 );
 
 it.effect(
+  "recovers an earlier-dated Stable message without changing existing timeline positions",
+  () =>
+    Effect.gen(function* () {
+      const files = yield* fixture();
+      const db = new NodeSqlite.DatabaseSync(files.source);
+      try {
+        db.prepare(
+          "INSERT INTO projection_thread_messages (message_id,thread_id,role,text,is_streaming,created_at,updated_at) VALUES ('interleaved','shared','user','Earlier Stable work',0,'2026-01-02T12:00:00.000Z',?)",
+        ).run(later);
+      } finally {
+        db.close();
+      }
+      const sourceBytes = NodeFS.readFileSync(files.source);
+      const targetBytes = NodeFS.readFileSync(files.target);
+      yield* (yield* Recovery.LegacyV1Recovery).recover(files);
+      assert.deepEqual(NodeFS.readFileSync(files.source), sourceBytes);
+      assert.deepEqual(NodeFS.readFileSync(files.target), targetBytes);
+      yield* Effect.gen(function* () {
+        const projections = yield* ProjectionStore.ProjectionStoreV2;
+        const shared = yield* projections.getThreadProjection(ThreadId.make("shared"));
+        assert.deepEqual(
+          shared.messages.map((message) => message.text),
+          ["old 0", "old 1", "old 2", "old 3", "Earlier Stable work", "Stable continuation"],
+        );
+        const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+        assert.equal((yield* maintenance.rebuild).valid, true);
+        assert.deepEqual(
+          (yield* projections.getThreadProjection(ThreadId.make("shared"))).messages.map(
+            (message) => message.text,
+          ),
+          shared.messages.map((message) => message.text),
+        );
+      }).pipe(Effect.provide(withTarget(files.output)));
+    }).pipe(
+      Effect.provide(Recovery.layer.pipe(Layer.provideMerge(NodeServices.layer))),
+      Effect.scoped,
+    ),
+);
+
+it.effect("preserves V2 pinning, ordering and snoozing while appending Stable work", () =>
+  Effect.gen(function* () {
+    const files = yield* fixture();
+    yield* Effect.gen(function* () {
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const shared = yield* projections.getThreadProjection(ThreadId.make("shared"));
+      const payload = {
+        ...shared.thread,
+        pinnedAt: DateTime.makeUnsafe(later),
+        pinOrderKey: "a0",
+        activeOrderKey: "a1",
+        snoozedUntil: DateTime.makeUnsafe("2026-04-01T00:00:00.000Z"),
+      };
+      const sink = yield* EventSink.EventSinkV2;
+      for (const type of [
+        "thread.pinned",
+        "thread.pin-reordered",
+        "thread.active-reordered",
+        "thread.snoozed",
+      ] as const) {
+        yield* sink.write({
+          events: [
+            {
+              id: EventId.make(`native:${type}`),
+              type,
+              threadId: shared.thread.id,
+              occurredAt: DateTime.makeUnsafe(later),
+              payload,
+            },
+          ],
+        });
+      }
+    }).pipe(Effect.provide(withTarget(files.target)));
+    const report = yield* (yield* Recovery.LegacyV1Recovery).recover(files);
+    assert.equal(
+      report.threads.find((thread) => thread.sourceThreadId === "shared")?.action,
+      "append",
+    );
+    yield* Effect.gen(function* () {
+      const shared = yield* (yield* ProjectionStore.ProjectionStoreV2).getThreadProjection(
+        ThreadId.make("shared"),
+      );
+      assert.equal(shared.messages.at(-1)?.text, "Stable continuation");
+      assert.equal(shared.thread.pinOrderKey, "a0");
+      assert.equal(shared.thread.activeOrderKey, "a1");
+      assert.equal(DateTime.formatIso(shared.thread.pinnedAt!), later);
+      assert.equal(DateTime.formatIso(shared.thread.snoozedUntil!), "2026-04-01T00:00:00.000Z");
+    }).pipe(Effect.provide(withTarget(files.output)));
+  }).pipe(
+    Effect.provide(Recovery.layer.pipe(Layer.provideMerge(NodeServices.layer))),
+    Effect.scoped,
+  ),
+);
+
+it.effect(
   "refuses existing outputs and unsafe paths and leaves inputs unchanged on invalid attachments",
   () =>
     Effect.gen(function* () {
@@ -284,10 +378,10 @@ it.effect(
     Effect.gen(function* () {
       const files = yield* fixture();
       const recovery = yield* Recovery.LegacyV1Recovery;
-      yield* recovery.recover(files);
+      const first = yield* recovery.recover(files);
       const db = new NodeSqlite.DatabaseSync(files.source);
       try {
-        for (const id of ["shared", "new-thread"]) {
+        for (const id of ["shared", "new-thread", "diverged", "deleted", "edited"]) {
           db.prepare(
             "INSERT INTO projection_thread_messages (message_id,thread_id,role,text,is_streaming,created_at,updated_at) VALUES (?,?,'user','More Stable work',0,?,?)",
           ).run(`${id}-next`, id, "2026-03-01T00:00:00.000Z", "2026-03-01T00:00:00.000Z");
@@ -303,7 +397,40 @@ it.effect(
         [
           ["new-thread", "append", 1],
           ["shared", "append", 1],
-        ],
+          ["diverged", "append", 1],
+          ["deleted", "append", 1],
+          ["edited", "append", 1],
+        ].sort(),
+      );
+      for (const copied of first.threads.filter((thread) => thread.action === "copy")) {
+        assert.equal(
+          laterPlan.threads.find((thread) => thread.sourceThreadId === copied.sourceThreadId)
+            ?.targetThreadId,
+          copied.targetThreadId,
+        );
+      }
+      const nextOutput = NodePath.join(files.directory, "second.sqlite");
+      yield* recovery.recover({ source: files.source, target: files.output, output: nextOutput });
+      yield* Effect.gen(function* () {
+        const projections = yield* ProjectionStore.ProjectionStoreV2;
+        for (const thread of laterPlan.threads) {
+          const recovered = yield* projections.getThreadProjection(
+            ThreadId.make(thread.targetThreadId),
+          );
+          assert.equal(recovered.messages.at(-1)?.text, "More Stable work");
+          assert.equal(
+            recovered.messages.length,
+            thread.sourceThreadId === "new-thread" ? 2 : thread.sourceThreadId === "edited" ? 5 : 6,
+          );
+        }
+        assert.equal(
+          (yield* (yield* ProjectionMaintenance.ProjectionMaintenanceV2).rebuild).valid,
+          true,
+        );
+      }).pipe(Effect.provide(withTarget(nextOutput)));
+      assert.deepEqual(
+        (yield* recovery.recover({ source: files.source, target: nextOutput })).threads,
+        [],
       );
       const edit = new NodeSqlite.DatabaseSync(files.source);
       try {
@@ -320,17 +447,12 @@ it.effect(
         conflictPlan.threads.find((thread) => thread.sourceThreadId === "shared")?.action,
         "copy",
       );
-      const original = new NodeSqlite.DatabaseSync(files.output, { readOnly: true });
-      try {
-        const saved = original
-          .prepare(
-            "SELECT json_extract(payload_json,'$.text') AS text FROM orchestration_v2_projection_messages WHERE message_id='shared-new'",
-          )
-          .get();
-        assert.equal(saved?.text, "Stable continuation");
-      } finally {
-        original.close();
-      }
+      yield* Effect.gen(function* () {
+        const shared = yield* (yield* ProjectionStore.ProjectionStoreV2).getThreadProjection(
+          ThreadId.make("shared"),
+        );
+        assert.equal(shared.messages.at(-1)?.text, "Stable continuation");
+      }).pipe(Effect.provide(withTarget(files.output)));
     }).pipe(
       Effect.provide(Recovery.layer.pipe(Layer.provideMerge(NodeServices.layer))),
       Effect.scoped,

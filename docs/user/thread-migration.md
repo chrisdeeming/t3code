@@ -53,6 +53,8 @@ Run this on the machine hosting the environment. Use `--base-dir <T3-home>` for 
 home, or `--source <v1-database>` and `--target <v2-database>` for recovery copies. Sources must
 have reached V1 schema 54. Without `--output`, the command only reports its plan. Repeating recovery
 against the recovered database skips unchanged work.
+Later Stable messages extend an existing recovered copy if that copy has not diverged. Messages
+added to an existing thread appear after its current timeline, even when their timestamps are earlier.
 
 Before using the output, stop the V2 host, retain its current database as a backup, and put the
 recovered file in its place as `userdata/statev2.sqlite`. Do not replace a running database. If
